@@ -1,0 +1,25 @@
+{
+  "name": "@interwebalchemy/engram-core",
+  "version": "0.1.0",
+  "description": "Portable AI knowledge store — core library for LLM conversation memory management",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "clean": "rm -rf dist",
+    "test": "node --test dist/**/*.test.js",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "gpt-tokenizer": "^2.7.0",
+    "yaml": "^2.4.5"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "typescript": "^5.4.5"
+  },
+  "keywords": ["llm", "memory", "obsidian", "vault", "ai", "mcp"],
+  "license": "MIT"
+}
