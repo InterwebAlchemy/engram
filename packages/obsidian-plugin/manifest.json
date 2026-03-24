@@ -1,0 +1,10 @@
+{
+  "id": "engram",
+  "name": "Engram",
+  "version": "0.1.0",
+  "minAppVersion": "1.5.0",
+  "description": "Chat with LLMs from within Obsidian. Provider-agnostic, with persistent memory management backed by your vault.",
+  "author": "Interweb Alchemy",
+  "authorUrl": "https://github.com/InterwebAlchemy",
+  "isDesktopOnly": false
+}

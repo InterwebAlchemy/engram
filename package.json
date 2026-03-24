@@ -8,7 +8,10 @@
     "build": "npm run build --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
-    "clean": "npm run clean --workspaces --if-present"
+    "clean": "npm run clean --workspaces --if-present",
+    "setup": "bash scripts/setup-dev.sh",
+    "dev": "bash scripts/dev.sh",
+    "dev:build": "bash scripts/dev.sh --build"
   },
   "devDependencies": {
     "typescript": "^5.4.5"

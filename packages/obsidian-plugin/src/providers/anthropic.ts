@@ -1,0 +1,181 @@
+import { requestUrl } from 'obsidian';
+import type { ChatMessage } from '@interwebalchemy/engram-core';
+import type {
+  ProviderAdapter,
+  ProviderConfig,
+  CompletionConfig,
+  CompletionResult,
+  StreamChunk,
+  Model,
+} from './types';
+
+const ANTHROPIC_API_URL = 'https://api.anthropic.com';
+const ANTHROPIC_VERSION = '2023-06-01';
+
+/**
+ * Adapter for the Anthropic Messages API.
+ *
+ * Anthropic uses a different request format from OpenAI:
+ * - System prompt is a top-level `system` field, not a message
+ * - Streaming uses SSE with `content_block_delta` events
+ * - No /v1/models endpoint (model list is static)
+ */
+export class AnthropicAdapter implements ProviderAdapter {
+  readonly id: string;
+  readonly name: string;
+  private apiKey: string;
+
+  constructor(config: ProviderConfig) {
+    this.id = config.id;
+    this.name = config.name;
+    this.apiKey = config.apiKey ?? '';
+  }
+
+  updateConfig(config: Partial<ProviderConfig>): void {
+    if (config.apiKey !== undefined) this.apiKey = config.apiKey;
+  }
+
+  // ─── Completion ─────────────────────────────────────────────────────────
+
+  async complete(
+    messages: ChatMessage[],
+    config: CompletionConfig,
+  ): Promise<CompletionResult> {
+    const body = this.buildRequestBody(messages, config, false);
+    const response = await requestUrl({
+      url: `${ANTHROPIC_API_URL}/v1/messages`,
+      method: 'POST',
+      headers: this.headers(),
+      body: JSON.stringify(body),
+    });
+
+    const data = response.json;
+    const content =
+      data.content?.map((b: { text?: string }) => b.text ?? '').join('') ?? '';
+
+    return {
+      content,
+      model: data.model ?? config.model,
+      usage: data.usage
+        ? {
+            prompt_tokens: data.usage.input_tokens,
+            completion_tokens: data.usage.output_tokens,
+            total_tokens: data.usage.input_tokens + data.usage.output_tokens,
+          }
+        : undefined,
+    };
+  }
+
+  // ─── Streaming ──────────────────────────────────────────────────────────
+
+  async *stream(
+    messages: ChatMessage[],
+    config: CompletionConfig,
+    signal?: AbortSignal,
+  ): AsyncIterable<StreamChunk> {
+    const body = this.buildRequestBody(messages, config, true);
+
+    const response = await fetch(`${ANTHROPIC_API_URL}/v1/messages`, {
+      method: 'POST',
+      headers: this.headers(),
+      body: JSON.stringify(body),
+      signal,
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Anthropic API error (${response.status}): ${error}`);
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error('No response body');
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed.startsWith('data: ')) continue;
+          const payload = trimmed.slice(6);
+
+          try {
+            const event = JSON.parse(payload);
+            if (event.type === 'content_block_delta') {
+              const text = event.delta?.text ?? '';
+              if (text) yield { content: text, done: false };
+            } else if (event.type === 'message_stop') {
+              yield { content: '', done: true };
+              return;
+            }
+          } catch {
+            // Skip malformed events
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+
+    yield { content: '', done: true };
+  }
+
+  // ─── Model listing ──────────────────────────────────────────────────────
+
+  async listModels(): Promise<Model[]> {
+    // Anthropic doesn't expose a /v1/models endpoint.
+    // Return known models statically; users can override via settings.
+    return [
+      { id: 'claude-opus-4-6', name: 'Claude Opus 4.6', contextWindow: 200000 },
+      { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6', contextWindow: 200000 },
+      { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5', contextWindow: 200000 },
+    ];
+  }
+
+  // ─── Private ────────────────────────────────────────────────────────────
+
+  private headers(): Record<string, string> {
+    return {
+      'Content-Type': 'application/json',
+      'x-api-key': this.apiKey,
+      'anthropic-version': ANTHROPIC_VERSION,
+    };
+  }
+
+  private buildRequestBody(
+    messages: ChatMessage[],
+    config: CompletionConfig,
+    stream: boolean,
+  ): Record<string, unknown> {
+    // Extract system messages — Anthropic requires them as a top-level field
+    const systemParts: string[] = [];
+    const conversationMessages: Array<{ role: string; content: string }> = [];
+
+    for (const m of messages) {
+      if (m.role === 'system') {
+        systemParts.push(m.content);
+      } else {
+        conversationMessages.push({ role: m.role, content: m.content });
+      }
+    }
+
+    const body: Record<string, unknown> = {
+      model: config.model,
+      messages: conversationMessages,
+      max_tokens: config.maxTokens ?? 4096,
+      stream,
+    };
+    if (systemParts.length > 0) body.system = systemParts.join('\n\n');
+    if (config.temperature !== undefined) body.temperature = config.temperature;
+    if (config.topP !== undefined) body.top_p = config.topP;
+    return body;
+  }
+}

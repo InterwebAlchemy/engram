@@ -104,6 +104,32 @@ export function defaultMemoryConfig(
   };
 }
 
+// ─── Chat Messages (provider-agnostic output) ────────────────────────────────
+
+/** Minimal message shape compatible with OpenAI-style chat completion endpoints. */
+export interface ChatMessage {
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+}
+
+/**
+ * Options for pruning a message list down to what fits in a context window.
+ * Pass to `pruneMessages()` or `Conversation.toChatMessages()`.
+ */
+export interface PruneOptions {
+  /** Maximum token budget for the returned messages (estimated via gpt-tokenizer). */
+  maxTokens?: number;
+  /**
+   * Maximum number of non-core messages to include (matches the original plugin's
+   * maxMemoryCount setting). Core messages are always included regardless of this cap.
+   */
+  maxMessages?: number;
+  /** System prompt to prepend. If provided, its tokens count against the budget. */
+  systemPrompt?: string;
+  /** Token estimator correction factor (default 1.0). */
+  correctionFactor?: number;
+}
+
 // ─── Search ───────────────────────────────────────────────────────────────────
 
 export interface SearchResult {

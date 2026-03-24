@@ -5,4 +5,7 @@ dist/
 .DS_Store
 .env
 *.env.*
+.dev-settings.json
+tmp/
+packages/obsidian-plugin/main.js
 .claude/settings.local.json

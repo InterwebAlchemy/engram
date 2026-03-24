@@ -1,8 +1,9 @@
 import * as yaml from 'yaml';
 import { MemoryState } from './types';
-import type { Message, TokenBudget, ConversationFrontmatter } from './types';
+import type { Message, ChatMessage, TokenBudget, PruneOptions, ConversationFrontmatter } from './types';
 import { VaultNote } from './vault';
 import { ContextBuilder } from './context';
+import { pruneMessages } from './prune';
 
 export class Conversation {
   constructor(
@@ -60,6 +61,16 @@ export class Conversation {
     }
 
     return result;
+  }
+
+  /**
+   * Return a provider-agnostic ChatMessage[] ready to send to any chat
+   * completion API.  Delegates to the standalone `pruneMessages()` function
+   * so the same pruning logic is available with or without a Conversation
+   * instance.
+   */
+  toChatMessages(options: PruneOptions = {}): ChatMessage[] {
+    return pruneMessages(this.messages, options);
   }
 
   // ─── Serialization ────────────────────────────────────────────────────────

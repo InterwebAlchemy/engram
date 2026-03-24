@@ -1,0 +1,277 @@
+/* ─── Layout ──────────────────────────────────────────────────────────────── */
+
+.engram-chat-container,
+.engram-memory-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 0;
+}
+
+/* ─── Toolbar ─────────────────────────────────────────────────────────────── */
+
+.engram-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.engram-provider-select {
+  flex: 1;
+  min-width: 0;
+}
+
+.engram-toolbar-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.engram-toolbar-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  cursor: pointer;
+  background: none;
+  border: none;
+  border-radius: var(--radius-s);
+  color: var(--text-muted);
+}
+
+.engram-toolbar-btn:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+/* ─── Messages ────────────────────────────────────────────────────────────── */
+
+.engram-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.engram-message {
+  padding: 8px 12px;
+  border-radius: var(--radius-m);
+  max-width: 95%;
+}
+
+.engram-message-user {
+  align-self: flex-end;
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
+.engram-message-assistant {
+  align-self: flex-start;
+  background: var(--background-secondary);
+}
+
+.engram-message-system {
+  align-self: center;
+  font-size: var(--font-smaller);
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.engram-message-streaming {
+  opacity: 0.85;
+}
+
+.engram-message-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.engram-message-role {
+  font-size: var(--font-smaller);
+  font-weight: 600;
+  opacity: 0.7;
+}
+
+.engram-message-content {
+  font-size: var(--font-ui-small);
+  line-height: 1.5;
+}
+
+.engram-message-content p:first-child {
+  margin-top: 0;
+}
+
+.engram-message-content p:last-child {
+  margin-bottom: 0;
+}
+
+/* ─── Memory state badges ─────────────────────────────────────────────────── */
+
+.engram-memory-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: var(--radius-s);
+  cursor: pointer;
+  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+.engram-memory-badge:empty {
+  display: none;
+}
+
+.engram-memory-core {
+  background: var(--color-accent);
+  color: var(--text-on-accent);
+}
+
+.engram-memory-remembered {
+  background: var(--background-modifier-success);
+  color: var(--text-on-accent);
+}
+
+.engram-memory-forgotten {
+  background: var(--background-modifier-error);
+  color: var(--text-on-accent);
+}
+
+.engram-memory-default {
+  background: var(--background-modifier-border);
+  color: var(--text-muted);
+}
+
+/* ─── Input area ──────────────────────────────────────────────────────────── */
+
+.engram-input-container {
+  padding: 8px 12px;
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.engram-input {
+  width: 100%;
+  resize: vertical;
+  min-height: 60px;
+  font-family: inherit;
+  font-size: var(--font-ui-small);
+}
+
+.engram-input-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.engram-send-btn {
+  padding: 4px 16px;
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border: none;
+  border-radius: var(--radius-s);
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.engram-send-btn:hover {
+  background: var(--interactive-accent-hover);
+}
+
+.engram-cancel-btn {
+  padding: 4px 16px;
+  background: var(--background-modifier-error);
+  color: var(--text-on-accent);
+  border: none;
+  border-radius: var(--radius-s);
+  cursor: pointer;
+}
+
+/* ─── Memory manager view ─────────────────────────────────────────────────── */
+
+.engram-memory-filters {
+  display: flex;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--background-modifier-border);
+  align-items: center;
+}
+
+.engram-filter-select {
+  flex: 1;
+  min-width: 0;
+}
+
+.engram-memory-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+}
+
+.engram-empty {
+  color: var(--text-muted);
+  text-align: center;
+  padding: 24px;
+  font-style: italic;
+}
+
+.engram-memory-group {
+  margin-bottom: 16px;
+}
+
+.engram-group-header {
+  margin: 0 0 8px 0;
+  text-transform: capitalize;
+  font-size: var(--font-ui-small);
+  color: var(--text-muted);
+}
+
+.engram-memory-item {
+  padding: 8px;
+  border-radius: var(--radius-s);
+  background: var(--background-secondary);
+  margin-bottom: 6px;
+}
+
+.engram-memory-item-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.engram-memory-name {
+  font-weight: 600;
+  font-size: var(--font-ui-small);
+  cursor: pointer;
+  color: var(--text-accent);
+}
+
+.engram-memory-name:hover {
+  text-decoration: underline;
+}
+
+.engram-memory-tags {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
+.engram-tag {
+  font-size: 10px;
+  padding: 1px 6px;
+  background: var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  color: var(--text-muted);
+}
+
+.engram-memory-preview {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  line-height: 1.4;
+}

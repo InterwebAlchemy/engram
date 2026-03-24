@@ -5,7 +5,9 @@ export type {
   NoteFrontmatter,
   ConversationFrontmatter,
   Message,
+  ChatMessage,
   TokenBudget,
+  PruneOptions,
   ContextSection,
   MemoryConfig,
   MemoryFilters,
@@ -23,4 +25,5 @@ export { Conversation } from './conversation';
 export type { FileSystemAdapter } from './adapters/types';
 export { NodeAdapter } from './adapters/node';
 
+export { pruneMessages } from './prune';
 export { slugify, datePath } from './utils';
