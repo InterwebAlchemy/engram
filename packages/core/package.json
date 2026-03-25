@@ -21,5 +21,5 @@
     "typescript": "^5.4.5"
   },
   "keywords": ["llm", "memory", "obsidian", "vault", "ai", "mcp"],
-  "license": "MIT"
+  "license": "GPL-3.0-only"
 }

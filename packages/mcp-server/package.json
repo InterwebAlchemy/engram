@@ -23,5 +23,5 @@
     "typescript": "^5.4.5"
   },
   "keywords": ["mcp", "llm", "memory", "obsidian", "claude", "ai"],
-  "license": "MIT"
+  "license": "GPL-3.0-only"
 }

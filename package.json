@@ -13,6 +13,7 @@
     "dev": "bash scripts/dev.sh",
     "dev:build": "bash scripts/dev.sh --build"
   },
+  "license": "GPL-3.0-only",
   "devDependencies": {
     "typescript": "^5.4.5"
   }
