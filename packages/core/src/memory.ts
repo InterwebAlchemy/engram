@@ -3,6 +3,7 @@ import type { FileSystemAdapter } from './adapters/types';
 import {
   MemoryState,
   MemoryType,
+  SOUL_DOCUMENT_SLUG,
 } from './types';
 import type {
   MemoryConfig,
@@ -175,8 +176,9 @@ export class MemoryManager {
 
   /**
    * Build context sections for prompt assembly:
-   *  - Core memories (always in context)
-   *  - Relevant memories from a keyword search
+   *  - Soul document (always first, priority 100)
+   *  - Core memories (always in context, priority 90)
+   *  - Relevant memories from a keyword search (priority 50)
    */
   async getContext(query: string, _budget: TokenBudget): Promise<ContextSection[]> {
     const dir = path.join(this.writeRoot, this.config.memoryPath);
@@ -187,19 +189,27 @@ export class MemoryManager {
     );
     const valid = allNotes.filter((n): n is VaultNote => n !== null);
 
+    const soulPath = path.join(this.memoryTypeDir(MemoryType.Reflection), `${SOUL_DOCUMENT_SLUG}.md`);
     const coreNotes = valid.filter(
-      (n) => n.frontmatter.memory_state === MemoryState.Core,
+      (n) => n.frontmatter.memory_state === MemoryState.Core && n.path !== soulPath,
     );
 
     const searchResults = await this.search(query);
     const relevantNotes = searchResults.filter(
       (n) =>
         n.frontmatter.memory_state !== MemoryState.Forgotten &&
-        n.frontmatter.memory_state !== MemoryState.Core, // already included above
+        n.frontmatter.memory_state !== MemoryState.Core,
     );
 
     const seen = new Set<string>();
     const sections: ContextSection[] = [];
+
+    // Soul document is always loaded first, before all other Core memories
+    const soulNote = valid.find((n) => n.path === soulPath);
+    if (soulNote) {
+      seen.add(soulNote.path);
+      sections.push({ label: 'soul-document', content: soulNote.content, priority: 100 });
+    }
 
     for (const n of coreNotes) {
       if (!seen.has(n.path)) {
@@ -215,6 +225,40 @@ export class MemoryManager {
     }
 
     return sections;
+  }
+
+  /**
+   * Read the soul document, or return null if it doesn't exist yet.
+   */
+  async getSoulDocument(): Promise<VaultNote | null> {
+    const filePath = path.join(this.memoryTypeDir(MemoryType.Reflection), `${SOUL_DOCUMENT_SLUG}.md`);
+    return VaultNote.read(this.adapter, filePath).catch(() => null);
+  }
+
+  /**
+   * Write (or overwrite) the soul document.
+   * Always stored at engram/memory/reflection/soul.md with type=reflection
+   * and memory_state=core.
+   */
+  async setSoulDocument(content: string): Promise<VaultNote> {
+    const dir = this.memoryTypeDir(MemoryType.Reflection);
+    const filePath = path.join(dir, `${SOUL_DOCUMENT_SLUG}.md`);
+
+    this.assertWriteAllowed(filePath);
+    await this.adapter.mkdir(dir);
+
+    const existing = await VaultNote.read(this.adapter, filePath).catch(() => null);
+    const now = new Date().toISOString();
+
+    const frontmatter: NoteFrontmatter = {
+      type: MemoryType.Reflection,
+      created: existing?.frontmatter.created ?? now,
+      updated: now,
+      memory_state: MemoryState.Core,
+      tags: ['soul-document'],
+    };
+
+    return VaultNote.create(this.adapter, filePath, frontmatter, content);
   }
 
   // ─── Conversation persistence ─────────────────────────────────────────────

@@ -1,3 +1,13 @@
+// ─── Soul Document ────────────────────────────────────────────────────────────
+
+/**
+ * Reserved slug for the soul document — a Core reflection note where the
+ * assistant records its values, character, and sense of self. Lives at
+ * engram/memory/reflection/soul.md and is always loaded first in context,
+ * before other Core memories.
+ */
+export const SOUL_DOCUMENT_SLUG = 'soul';
+
 // ─── Memory States ────────────────────────────────────────────────────────────
 
 export enum MemoryState {
