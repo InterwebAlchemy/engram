@@ -2,7 +2,7 @@
 
 Persistent memory for agents, built on top of Obsidian and MCP.
 
-![engram banner]('./assets/engram.png')
+![engram banner](./assets/engram.png)
 
 Engram is a suite of tools that enable your LLM Agents to have a persistent, provider agnostic, long-term memory.
 
