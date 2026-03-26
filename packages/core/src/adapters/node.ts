@@ -14,6 +14,10 @@ export class NodeAdapter implements FileSystemAdapter {
     await fs.writeFile(filePath, content, 'utf-8');
   }
 
+  async delete(filePath: string): Promise<void> {
+    await fs.unlink(filePath);
+  }
+
   async exists(filePath: string): Promise<boolean> {
     try {
       await fs.access(filePath);

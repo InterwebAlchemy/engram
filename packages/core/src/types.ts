@@ -29,6 +29,10 @@ export enum MemoryType {
   Reflection = 'reflection',
   Conversation = 'conversation',
   Working = 'working',
+  /** Persistent procedural knowledge — how to do things. Retrieved by slug, not search. */
+  Skill = 'skill',
+  /** Ephemeral workspace. Not injected into context. Cleared manually or by consolidation. */
+  Scratch = 'scratch',
 }
 
 // ─── Frontmatter ─────────────────────────────────────────────────────────────
@@ -94,6 +98,8 @@ export interface MemoryConfig {
   memoryPath: string;
   conversationsPath: string;
   workingPath: string;
+  scratchPath: string;
+  archivePath: string;
   readPaths: string[];
   tokenCorrections: Record<string, number>;
 }
@@ -109,6 +115,8 @@ export function defaultMemoryConfig(
     memoryPath: 'memory',
     conversationsPath: 'conversations',
     workingPath: 'working',
+    scratchPath: 'scratch',
+    archivePath: 'archive',
     readPaths: [],
     tokenCorrections: {},
   };

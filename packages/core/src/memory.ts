@@ -65,6 +65,14 @@ export class MemoryManager {
     return path.join(this.writeRoot, this.config.workingPath);
   }
 
+  private scratchDir(): string {
+    return path.join(this.writeRoot, this.config.scratchPath);
+  }
+
+  private archiveDir(): string {
+    return path.join(this.writeRoot, this.config.archivePath);
+  }
+
   // ─── Core memory operations ───────────────────────────────────────────────
 
   /**
@@ -259,6 +267,158 @@ export class MemoryManager {
     };
 
     return VaultNote.create(this.adapter, filePath, frontmatter, content);
+  }
+
+  // ─── Skill operations ─────────────────────────────────────────────────────
+
+  /**
+   * Store or overwrite a skill by slug.
+   * Skills live at engram/memory/skill/{slug}.md and default to Core state
+   * so they are always available for retrieval but loaded on demand, not
+   * auto-injected like soul.
+   */
+  async storeSkill(slug: string, content: string, tags: string[] = []): Promise<VaultNote> {
+    const dir = this.memoryTypeDir(MemoryType.Skill);
+    const filePath = path.join(dir, `${slug}.md`);
+
+    this.assertWriteAllowed(filePath);
+    await this.adapter.mkdir(dir);
+
+    const existing = await VaultNote.read(this.adapter, filePath).catch(() => null);
+    const now = new Date().toISOString();
+
+    const frontmatter: NoteFrontmatter = {
+      type: MemoryType.Skill,
+      created: existing?.frontmatter.created ?? now,
+      updated: now,
+      memory_state: MemoryState.Core,
+      tags,
+    };
+
+    return VaultNote.create(this.adapter, filePath, frontmatter, content);
+  }
+
+  /**
+   * Retrieve a skill by slug. Returns null if not found.
+   */
+  async getSkill(slug: string): Promise<VaultNote | null> {
+    const filePath = path.join(this.memoryTypeDir(MemoryType.Skill), `${slug}.md`);
+    return VaultNote.read(this.adapter, filePath).catch(() => null);
+  }
+
+  /**
+   * List all stored skills.
+   */
+  async listSkills(): Promise<VaultNote[]> {
+    const dir = this.memoryTypeDir(MemoryType.Skill);
+    const files = await this.adapter.list(dir).catch(() => [] as string[]);
+    const notes = await Promise.all(
+      files.map((f) => VaultNote.read(this.adapter, f).catch(() => null)),
+    );
+    return notes.filter((n): n is VaultNote => n !== null);
+  }
+
+  // ─── Scratch operations ───────────────────────────────────────────────────
+
+  /**
+   * Write (or overwrite) a scratch note by key.
+   * Scratch notes live at engram/scratch/{key}.md and are never injected
+   * into context — they exist solely as an assistant workspace.
+   */
+  async writeScratch(key: string, content: string): Promise<VaultNote> {
+    const dir = this.scratchDir();
+    const filePath = path.join(dir, `${key}.md`);
+
+    this.assertWriteAllowed(filePath);
+    await this.adapter.mkdir(dir);
+
+    const existing = await VaultNote.read(this.adapter, filePath).catch(() => null);
+    const now = new Date().toISOString();
+
+    const frontmatter: NoteFrontmatter = {
+      type: MemoryType.Scratch,
+      created: existing?.frontmatter.created ?? now,
+      updated: now,
+      memory_state: MemoryState.Forgotten,
+    };
+
+    return VaultNote.create(this.adapter, filePath, frontmatter, content);
+  }
+
+  /**
+   * Read a scratch note by key. Returns null if not found.
+   */
+  async readScratch(key: string): Promise<VaultNote | null> {
+    const filePath = path.join(this.scratchDir(), `${key}.md`);
+    return VaultNote.read(this.adapter, filePath).catch(() => null);
+  }
+
+  /**
+   * List all current scratch keys (filenames without extension).
+   */
+  async listScratch(): Promise<string[]> {
+    const dir = this.scratchDir();
+    const files = await this.adapter.list(dir).catch(() => [] as string[]);
+    return files.map((f) => path.basename(f, '.md'));
+  }
+
+  /**
+   * Hard-delete scratch notes. If a key is provided, only that note is deleted.
+   * If no key is provided, all scratch notes are deleted.
+   * Scratch is explicitly ephemeral — deletion is permanent with no archiving.
+   */
+  async clearScratch(key?: string): Promise<void> {
+    const dir = this.scratchDir();
+    const targets = key
+      ? [path.join(dir, `${key}.md`)]
+      : (await this.adapter.list(dir).catch(() => [] as string[]));
+
+    await Promise.all(
+      targets.map(async (filePath) => {
+        this.assertWriteAllowed(filePath);
+        await this.adapter.delete(filePath);
+      }),
+    );
+  }
+
+  /**
+   * Move all forgotten memory notes to the archive directory, preserving their
+   * relative path structure under engram/archive/.
+   *
+   * Optionally restrict to notes that have been forgotten for at least
+   * `olderThanDays` days (based on the `updated` timestamp, which is set when
+   * a note is marked forgotten).
+   *
+   * Returns the list of paths that were archived.
+   */
+  async archiveForgotten(olderThanDays?: number): Promise<string[]> {
+    const forgotten = await this.list({ state: MemoryState.Forgotten });
+
+    const cutoff = olderThanDays !== undefined
+      ? new Date(Date.now() - olderThanDays * 24 * 60 * 60 * 1000)
+      : null;
+
+    const toArchive = cutoff
+      ? forgotten.filter((n) => new Date(n.frontmatter.updated as string) <= cutoff)
+      : forgotten;
+
+    const archived: string[] = [];
+
+    await Promise.all(
+      toArchive.map(async (note) => {
+        // Derive archive path by replacing the writeRoot prefix with archiveDir
+        const relative = path.relative(this.writeRoot, note.path);
+        const dest = path.join(this.archiveDir(), relative);
+
+        this.assertWriteAllowed(note.path);
+        await this.adapter.mkdir(path.dirname(dest));
+        await this.adapter.write(dest, note.serialize());
+        await this.adapter.delete(note.path);
+        archived.push(dest);
+      }),
+    );
+
+    return archived;
   }
 
   // ─── Conversation persistence ─────────────────────────────────────────────
