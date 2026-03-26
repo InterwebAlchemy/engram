@@ -43,6 +43,8 @@ export interface CompletionResult {
 export interface StreamChunk {
   content: string;
   done: boolean;
+  /** Reasoning / thinking tokens emitted before the main response. */
+  reasoning?: string;
 }
 
 // ─── Provider Adapter ────────────────────────────────────────────────────────

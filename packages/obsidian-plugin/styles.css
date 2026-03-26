@@ -84,6 +84,73 @@
   opacity: 0.85;
 }
 
+/* ─── Reasoning section ───────────────────────────────────────────────────── */
+
+.engram-reasoning-details {
+  margin-bottom: 6px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  overflow: hidden;
+}
+
+.engram-reasoning-summary {
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: var(--font-smaller);
+  font-weight: 600;
+  color: var(--text-muted);
+  user-select: none;
+  list-style: none;
+  background: var(--background-primary-alt);
+}
+
+.engram-reasoning-summary::-webkit-details-marker { display: none; }
+.engram-reasoning-summary::marker { display: none; }
+
+.engram-reasoning-summary::before {
+  content: '▶';
+  font-size: 8px;
+  display: inline-block;
+  width: 12px;
+  margin-right: 4px;
+  transition: transform 0.15s ease;
+}
+
+details[open] > .engram-reasoning-summary::before {
+  transform: rotate(90deg);
+}
+
+.engram-reasoning-content {
+  padding: 8px;
+  font-size: var(--font-smaller);
+  color: var(--text-muted);
+  border-top: 1px solid var(--background-modifier-border);
+  background: var(--background-primary-alt);
+}
+
+/* Active streaming state — animated border, cipher-text label */
+
+.engram-reasoning-details.engram-reasoning-streaming {
+  border-color: var(--interactive-accent);
+  animation: engram-thinking-pulse 2s ease-in-out infinite;
+}
+
+.engram-reasoning-details.engram-reasoning-streaming > .engram-reasoning-summary {
+  color: var(--interactive-accent);
+  background: color-mix(in srgb, var(--interactive-accent) 8%, var(--background-primary-alt));
+}
+
+.engram-reasoning-details.engram-reasoning-streaming .engram-reasoning-content {
+  border-top-color: var(--interactive-accent);
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+@keyframes engram-thinking-pulse {
+  0%, 100% { border-color: var(--interactive-accent); opacity: 1; }
+  50%       { border-color: var(--interactive-accent); opacity: 0.7; }
+}
+
 .engram-message-header {
   display: flex;
   align-items: center;
@@ -189,6 +256,214 @@
   border: none;
   border-radius: var(--radius-s);
   cursor: pointer;
+}
+
+/* ─── Settings: accordion sections ───────────────────────────────────────── */
+
+.engram-section-details,
+.engram-provider-details {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+
+.engram-section-details {
+  margin-bottom: 12px;
+}
+
+.engram-section-summary,
+.engram-provider-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+  background: var(--background-secondary);
+  font-weight: 600;
+  font-size: var(--font-ui-small);
+  color: var(--text-normal);
+  transition: background 0.1s ease;
+}
+
+.engram-section-summary::-webkit-details-marker,
+.engram-provider-summary::-webkit-details-marker {
+  display: none;
+}
+
+.engram-section-summary::marker,
+.engram-provider-summary::marker {
+  display: none;
+}
+
+/* Chevron — rotates 90° when open */
+.engram-section-summary::before,
+.engram-provider-summary::before {
+  content: '▶';
+  font-size: 9px;
+  display: inline-block;
+  width: 14px;
+  text-align: center;
+  flex-shrink: 0;
+  color: var(--text-muted);
+  transition: transform 0.15s ease;
+}
+
+details[open] > .engram-section-summary::before,
+details[open] > .engram-provider-summary::before {
+  transform: rotate(90deg);
+}
+
+.engram-section-summary:hover,
+.engram-provider-summary:hover {
+  background: var(--background-modifier-hover);
+}
+
+.engram-section-summary-name,
+.engram-provider-summary-name {
+  flex: 1;
+}
+
+.engram-provider-active-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: var(--radius-s);
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.engram-section-count {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: var(--radius-s);
+  background: var(--background-modifier-border);
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.engram-section-inner,
+.engram-provider-inner {
+  padding: 8px 14px 14px;
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+/* Nested provider accordions inside a section get tighter spacing */
+.engram-section-inner .engram-provider-details {
+  margin-bottom: 6px;
+}
+
+.engram-section-inner .engram-provider-details:last-child {
+  margin-bottom: 0;
+}
+
+/* ─── Chat: per-conversation parameters panel ─────────────────────────────── */
+
+.engram-params-details {
+  margin: 6px 0;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  overflow: hidden;
+}
+
+.engram-params-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+  background: var(--background-secondary);
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  font-weight: 500;
+  transition: background 0.1s ease;
+}
+
+.engram-params-summary::-webkit-details-marker {
+  display: none;
+}
+
+.engram-params-summary::marker {
+  display: none;
+}
+
+.engram-params-summary::before {
+  content: '▶';
+  font-size: 8px;
+  display: inline-block;
+  width: 10px;
+  text-align: center;
+  flex-shrink: 0;
+  transition: transform 0.15s ease;
+}
+
+details[open] > .engram-params-summary::before {
+  transform: rotate(90deg);
+}
+
+.engram-params-summary:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.engram-params-grid {
+  padding: 10px 12px;
+  border-top: 1px solid var(--background-modifier-border);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.engram-params-label {
+  display: block;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  font-weight: 500;
+  margin-bottom: 3px;
+}
+
+.engram-params-textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 50px;
+  font-family: inherit;
+  font-size: var(--font-ui-smaller);
+}
+
+.engram-params-row {
+  display: flex;
+  gap: 12px;
+}
+
+.engram-params-field {
+  flex: 1;
+  min-width: 0;
+}
+
+.engram-params-input {
+  width: 100%;
+  font-size: var(--font-ui-smaller);
+}
+
+/* ─── Chat: input footer ──────────────────────────────────────────────────── */
+
+.engram-input-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.engram-model-select {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--font-ui-smaller);
 }
 
 /* ─── Memory manager view ─────────────────────────────────────────────────── */

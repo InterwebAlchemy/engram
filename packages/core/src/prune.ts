@@ -40,10 +40,12 @@ export function pruneMessages(
 ): ChatMessage[] {
   const {
     maxTokens,
-    maxMessages,
     systemPrompt,
     correctionFactor = 1.0,
   } = options;
+
+  // 0 is treated as "no limit" — undefined and 0 both mean unlimited.
+  const maxMessages = options.maxMessages || undefined;
 
   const estimator = new ContextBuilder(correctionFactor);
 
@@ -90,6 +92,18 @@ export function pruneMessages(
     included.push(msg);
     tokensUsed += tokens;
     nonCoreCount++;
+  }
+
+  // ─── Always include the most recent message ───────────────────────────────
+  // Regardless of budget or caps, the latest non-forgotten message (the user's
+  // current turn) must always be present — sending nothing to the provider
+  // makes no sense.
+
+  const lastNonForgotten = [...messages]
+    .reverse()
+    .find((m) => m.memoryState !== MemoryState.Forgotten);
+  if (lastNonForgotten && !included.includes(lastNonForgotten)) {
+    included.push(lastNonForgotten);
   }
 
   // ─── Restore chronological order ────────────────────────────────────────

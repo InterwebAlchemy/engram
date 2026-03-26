@@ -110,8 +110,15 @@ export class AnthropicAdapter implements ProviderAdapter {
           try {
             const event = JSON.parse(payload);
             if (event.type === 'content_block_delta') {
-              const text = event.delta?.text ?? '';
-              if (text) yield { content: text, done: false };
+              const deltaType = event.delta?.type;
+              if (deltaType === 'thinking_delta') {
+                const thinking = event.delta?.thinking ?? '';
+                if (thinking) yield { content: '', reasoning: thinking, done: false };
+              } else {
+                // text_delta or legacy shape
+                const text = event.delta?.text ?? '';
+                if (text) yield { content: text, done: false };
+              }
             } else if (event.type === 'message_stop') {
               yield { content: '', done: true };
               return;
@@ -167,14 +174,20 @@ export class AnthropicAdapter implements ProviderAdapter {
       }
     }
 
+    const maxTokens = config.maxTokens ?? 16000;
+    // budget_tokens must be less than max_tokens; cap at 10 000 to be conservative
+    const budgetTokens = Math.min(10000, Math.floor(maxTokens * 0.8));
+
     const body: Record<string, unknown> = {
       model: config.model,
       messages: conversationMessages,
-      max_tokens: config.maxTokens ?? 4096,
+      max_tokens: maxTokens,
       stream,
+      thinking: { type: 'enabled', budget_tokens: budgetTokens },
+      // temperature must be 1 (or omitted) when extended thinking is enabled
+      temperature: 1,
     };
     if (systemParts.length > 0) body.system = systemParts.join('\n\n');
-    if (config.temperature !== undefined) body.temperature = config.temperature;
     if (config.topP !== undefined) body.top_p = config.topP;
     return body;
   }

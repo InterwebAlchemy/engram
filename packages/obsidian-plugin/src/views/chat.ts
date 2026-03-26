@@ -7,7 +7,27 @@ import {
 import type { Message, ChatMessage } from '@interwebalchemy/engram-core';
 import type EngramPlugin from '../main';
 import type { StreamChunk, CompletionConfig } from '../providers/types';
+import { Ciph3rTextAnimator } from '../utils/ciph3r';
 import { CHAT_VIEW_TYPE, KNOWN_MODELS } from '../constants';
+
+/** Extract content from inline `<think>` or `<thinking>` blocks in model output. */
+function parseThinkContent(raw: string): { content: string; reasoning: string } {
+  const openRe = /^[\s\S]*?<think(?:ing)?>[ \t]*/i;
+  const openMatch = raw.match(openRe);
+  if (!openMatch) return { content: raw, reasoning: '' };
+
+  const afterOpen = raw.slice(openMatch[0].length);
+  const closeMatch = afterOpen.match(/^([\s\S]*?)<\/think(?:ing)?>[ \t]*/i);
+  if (!closeMatch) {
+    // Tag not yet closed — treat everything after open tag as reasoning, no content yet
+    return { content: '', reasoning: afterOpen };
+  }
+
+  return {
+    content: afterOpen.slice(closeMatch[0].length).trimStart(),
+    reasoning: closeMatch[1].trim(),
+  };
+}
 
 export class EngramChatView extends ItemView {
   private plugin: EngramPlugin;
@@ -330,6 +350,14 @@ export class EngramChatView extends ItemView {
     });
     badge.addEventListener('click', () => this.cycleMemoryState(index));
 
+    const reasoning = msg.metadata?.reasoning as string | undefined;
+    if (reasoning) {
+      const details = bubble.createEl('details', { cls: 'engram-reasoning-details' });
+      details.createEl('summary', { cls: 'engram-reasoning-summary', text: 'Reasoning' });
+      const reasoningContent = details.createDiv({ cls: 'engram-reasoning-content' });
+      MarkdownRenderer.render(this.app, reasoning, reasoningContent, '', this.plugin);
+    }
+
     const content = bubble.createDiv({ cls: 'engram-message-content' });
     MarkdownRenderer.render(this.app, msg.content, content, '', this.plugin);
   }
@@ -387,7 +415,34 @@ export class EngramChatView extends ItemView {
       ? parseInt(this.convMaxTokens, 10)
       : settings.maxTokens ?? undefined;
 
-    const systemPrompt = this.convSystemPrompt.trim() || settings.defaultPreamble || undefined;
+    const basePrompt = this.convSystemPrompt.trim() || settings.defaultPreamble || '';
+
+    // ── Load vault memory context ─────────────────────────────────────────
+    let memoryBlock = '';
+    try {
+      const sections = await this.plugin.memoryManager.getContext(
+        text,
+        { max: (maxTokens ?? 8192) * 3 },
+      );
+      if (sections.length > 0) {
+        sections.sort((a, b) => b.priority - a.priority);
+        memoryBlock = sections
+          .map((s) => {
+            // Humanise the label: 'soul-document' → 'Soul', 'memory:.../facts/user-name.md' → 'user-name'
+            const label = s.label === 'soul-document'
+              ? 'Soul'
+              : s.label.replace(/^memory:.*[\\/]/, '').replace(/\.md$/, '');
+            return `### ${label}\n\n${s.content.trim()}`;
+          })
+          .join('\n\n---\n\n');
+      }
+    } catch {
+      // Memory context is best-effort — never block the completion
+    }
+
+    const systemPrompt = memoryBlock
+      ? (basePrompt ? `${basePrompt}\n\n## Memories\n\n${memoryBlock}` : `## Memories\n\n${memoryBlock}`)
+      : (basePrompt || undefined);
 
     const chatMessages = this.plugin.conversation.toChatMessages({
       maxMessages: settings.maxMemoryCount,
@@ -404,6 +459,9 @@ export class EngramChatView extends ItemView {
     this.abortController = new AbortController();
 
     let accumulated = '';
+    let accumulatedReasoning = '';
+    let contentStarted = false;
+
     const streamingBubble = this.messagesContainer.createDiv({
       cls: 'engram-message engram-message-assistant engram-message-streaming',
     });
@@ -411,6 +469,19 @@ export class EngramChatView extends ItemView {
       cls: 'engram-message-role',
       text: `Assistant [${selectedModel}]`,
     });
+
+    // Thinking indicator — shown while waiting/reasoning, may become the persisted reasoning block
+    const thinkingDetails = streamingBubble.createEl('details', {
+      cls: 'engram-reasoning-details engram-reasoning-streaming',
+      attr: { open: '' },
+    });
+    const thinkingSummary = thinkingDetails.createEl('summary', { cls: 'engram-reasoning-summary' });
+    const thinkingLabel = thinkingSummary.createSpan({ text: 'Thinking...' });
+    const thinkingBody = thinkingDetails.createDiv({ cls: 'engram-reasoning-content' });
+
+    const animator = new Ciph3rTextAnimator(thinkingLabel, 'Thinking...');
+    animator.start();
+
     const streamingContent = streamingBubble.createDiv({ cls: 'engram-message-content' });
 
     try {
@@ -420,22 +491,60 @@ export class EngramChatView extends ItemView {
         this.abortController.signal,
       )) {
         if (chunk.done) break;
-        accumulated += chunk.content;
-        streamingContent.empty();
-        MarkdownRenderer.render(this.app, accumulated, streamingContent, '', this.plugin);
-        this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
+
+        if (chunk.reasoning) {
+          accumulatedReasoning += chunk.reasoning;
+          thinkingBody.empty();
+          MarkdownRenderer.render(this.app, accumulatedReasoning, thinkingBody, '', this.plugin);
+          this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
+        }
+
+        if (chunk.content) {
+          accumulated += chunk.content;
+          if (!contentStarted) {
+            contentStarted = true;
+            animator.stop();
+            thinkingDetails.removeAttribute('open');
+            thinkingDetails.classList.remove('engram-reasoning-streaming');
+          }
+          streamingContent.empty();
+          MarkdownRenderer.render(this.app, accumulated, streamingContent, '', this.plugin);
+          this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
+        }
+      }
+
+      animator.stop();
+      thinkingDetails.classList.remove('engram-reasoning-streaming');
+
+      // Fall back to parsing inline <think>/<thinking> tags if no structured reasoning
+      let finalContent = accumulated;
+      let finalReasoning = accumulatedReasoning;
+      if (!finalReasoning) {
+        const parsed = parseThinkContent(accumulated);
+        finalContent = parsed.content || accumulated;
+        finalReasoning = parsed.reasoning;
+        if (finalReasoning) {
+          thinkingBody.empty();
+          MarkdownRenderer.render(this.app, finalReasoning, thinkingBody, '', this.plugin);
+        }
+      }
+
+      if (!finalReasoning) {
+        thinkingDetails.remove();
       }
 
       const assistantMsg: Message = {
         role: 'assistant',
-        content: accumulated,
+        content: finalContent,
         timestamp: new Date(),
         provider: provider.id,
         model: selectedModel,
         memoryState: MemoryState.Default,
+        metadata: finalReasoning ? { reasoning: finalReasoning } : undefined,
       };
       this.plugin.conversation.addMessage(assistantMsg);
     } catch (err) {
+      animator.stop();
       if ((err as Error).name !== 'AbortError') {
         this.appendSystemMessage(`Error: ${(err as Error).message}`);
       }

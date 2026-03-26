@@ -100,9 +100,11 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
           }
           try {
             const parsed = JSON.parse(payload);
-            const delta = parsed.choices?.[0]?.delta?.content ?? '';
-            if (delta) {
-              yield { content: delta, done: false };
+            const d = parsed.choices?.[0]?.delta ?? {};
+            const content: string = d.content ?? '';
+            const reasoning: string = d.reasoning_content ?? d.reasoning ?? '';
+            if (content || reasoning) {
+              yield { content, reasoning: reasoning || undefined, done: false };
             }
           } catch {
             // Skip malformed SSE chunks

@@ -17,6 +17,9 @@ export class EngramSettingTab extends PluginSettingTab {
     containerEl.createEl('h2', { text: 'Providers' });
 
     const allProviderIds = Object.keys(this.plugin.settings.providers);
+    const customIds = allProviderIds.filter(
+      (id) => !(BUILTIN_PROVIDER_IDS as readonly string[]).includes(id),
+    );
 
     new Setting(containerEl)
       .setName('Active provider / model')
@@ -58,20 +61,23 @@ export class EngramSettingTab extends PluginSettingTab {
 
     // ─── Custom OpenAI-compatible providers ───────────────────────────────
 
-    containerEl.createEl('h3', { text: 'Custom providers' });
-    containerEl.createEl('p', {
+    const customSection = containerEl.createEl('details', { cls: 'engram-section-details' });
+    const customSummary = customSection.createEl('summary', { cls: 'engram-section-summary' });
+    customSummary.createSpan({ cls: 'engram-section-summary-name', text: 'Custom providers' });
+    if (customIds.length > 0) {
+      customSummary.createSpan({ cls: 'engram-section-count', text: String(customIds.length) });
+    }
+    const customInner = customSection.createDiv({ cls: 'engram-section-inner' });
+    customInner.createEl('p', {
       text: 'Add any OpenAI-compatible endpoint — Ollama, vLLM, custom deployments, etc.',
       cls: 'setting-item-description',
     });
 
     // "Add" form always anchored immediately below the heading
-    this.renderAddProviderForm(containerEl);
+    this.renderAddProviderForm(customInner);
 
-    const customIds = allProviderIds.filter(
-      (id) => !(BUILTIN_PROVIDER_IDS as readonly string[]).includes(id),
-    );
     for (const id of customIds) {
-      this.renderProviderSection(containerEl, id, true);
+      this.renderProviderSection(customInner, id, true);
     }
 
     // ─── Memory ───────────────────────────────────────────────────────────
@@ -81,7 +87,7 @@ export class EngramSettingTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName('Max memory count')
       .setDesc(
-        'Maximum non-core messages to include in context. Core memories are always included.',
+        'Maximum non-core messages to include in context. 0 = unlimited. Core messages are always included.',
       )
       .addSlider((slider) =>
         slider

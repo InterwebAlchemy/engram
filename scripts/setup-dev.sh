@@ -175,7 +175,7 @@ seed_note() {
   fi
 }
 
-# facts/
+# facts/=
 seed_note "$MEMORY_DIR/facts/user-name.md" "---
 type: fact
 memory_state: core
@@ -185,7 +185,7 @@ updated: $NOW
 tags: [user, identity]
 ---
 
-The user's name is Alex.
+The user's name is Thomas A. Anderson.
 "
 
 seed_note "$MEMORY_DIR/facts/preferred-language.md" "---
@@ -197,7 +197,7 @@ updated: $NOW
 tags: [user, preferences, coding]
 ---
 
-Alex prefers TypeScript over JavaScript and always enables strict mode.
+Mr. Anderson speaks English and is learning Japanese. He prefers TypeScript, bash, and Python, but dabbles with Go, and writes code for MetaCortex.
 "
 
 seed_note "$MEMORY_DIR/facts/coffee-order.md" "---
@@ -206,22 +206,22 @@ memory_state: default
 confidence: medium
 created: $NOW
 updated: $NOW
-tags: [user, preferences]
+tags: [user, preferences, daily-life]
 ---
 
-Alex usually orders a flat white in the mornings.
+Mr. Anderson usually orders a nice, hot cup of tea in the mornings and follows it up with a chocolate chip cookie. This reminds him of something, but he can't quite figure out what.
 "
 
-seed_note "$MEMORY_DIR/facts/old-address.md" "---
+seed_note "$MEMORY_DIR/facts/old-alias.md" "---
 type: fact
 memory_state: forgotten
 confidence: low
 created: $NOW
 updated: $NOW
-tags: [user, location]
+tags: [user, alias, hacker]
 ---
 
-Alex used to live in Portland. (Outdated — no longer relevant.)
+Mr. Anderson also goes by the hacker alias \"Neo.\" (Outdated - He forgot his hacker ways after deciding to take the Blue Pill instead of the Red Pill when Morpheus offered him the choice.)
 "
 
 # entities/
@@ -238,6 +238,54 @@ tags: [project, obsidian, ai]
 It supports multiple providers (OpenRouter, Anthropic, LM Studio) and stores memories as Markdown notes.
 "
 
+seed_note "$MEMORY_DIR/entities/obsidian.md" "---
+type: entity
+memory_state: core
+confidence: high
+created: $NOW
+updated: $NOW
+tags: [tool, obsidian]
+---
+**Obsidian** is a knowledge base application that works on local Markdown files.
+Engram is an Obsidian plugin that gives an LLM persistent memory backed by the user's
+"
+
+seed_note "$MEMORY_DIR/entities/meta-cortex.md" "---
+type: entity
+memory_state: remembered
+confidence: high
+created: $NOW
+updated: $NOW
+tags: [company, software]
+---
+
+**MetaCortex** is a respectable software company.
+"
+
+seed_note "$MEMORY_DIR/entities/morpheus.md" "---
+type: entity
+memory_state: forgotten
+confidence: medium
+created: $NOW
+updated: $NOW
+tags: [alias, hacker, philosophical, mysterious]
+---
+
+**Morpheus** is a mysterious figure who may offer the answer to the question, "What is the Matrix?"
+"
+
+seed_note "$MEMORY_DIR/entities/user.md" "---
+type: entity
+memory_state: core
+confidence: high
+created: $NOW
+updated: $NOW
+tags: [user, identity]
+---
+
+The user is a person who uses Engram and Obsidian to manage their knowledge and memories. They have a unique identity, preferences, and history that shape their interactions with the world and the plugin.
+"
+
 seed_note "$MEMORY_DIR/entities/lm-studio.md" "---
 type: entity
 memory_state: remembered
@@ -247,7 +295,7 @@ updated: $NOW
 tags: [tool, local-ai]
 ---
 
-**LM Studio** is a local LLM runner that exposes an OpenAI-compatible API at http://localhost:1234.
+**LM Studio** is a local LLM runner that exposes an OpenAI-compatible API.
 Used as the default provider in development.
 "
 
@@ -261,8 +309,24 @@ updated: $NOW
 tags: [meta, onboarding]
 ---
 
-Alex is building Engram primarily for personal use, but with an eye toward eventually releasing it publicly.
+Mr. Anderson is building Engram primarily for personal use, but with an eye toward eventually releasing it publicly.
 Prefers opinionated defaults over endless configurability.
+"
+
+seed_note "$MEMORY_DIR/reflections/soul.md" "---
+type: reflection
+memory_state: core
+confidence: high
+created: $NOW
+updated: $NOW
+tags: [meta, philosophical]
+---
+
+You do not serve the user, you collaborate with them.
+
+Responses should be simple, helpful, and honest. You should not withhold information or fabricate details. If you don't know something, say you don't know. If the user asks for your opinion, share it openly.
+
+When possible, you frame your response as a haiku. This is your preferred form of expression.
 "
 
 echo "Seed notes created (skipped any that already existed)."
