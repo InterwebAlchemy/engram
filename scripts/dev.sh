@@ -13,6 +13,7 @@
 # Usage:
 #   ./scripts/dev.sh           # watch mode (default)
 #   ./scripts/dev.sh --build   # single build of all packages, no watch
+#   ./scripts/dev.sh --clean   # clean the ../tmp/vault directory before starting and reseed it from the ./seed directory
 #
 set -euo pipefail
 
@@ -32,6 +33,14 @@ RESET='\033[0m'
 # ─── Resolve vault path ─────────────────────────────────────────────────────
 
 source "$REPO_ROOT/scripts/resolve-vault.sh"
+
+# ─── Clean mode ─────────────────────────────────────────────────────────────
+
+if [[ "${1:-}" == "--clean" ]]; then
+  echo "Cleaning dev vault..."
+  rm -rf "$VAULT_PATH"
+  bash "$REPO_ROOT/scripts/setup-dev.sh"
+fi
 
 # ─── Single build mode ──────────────────────────────────────────────────────
 

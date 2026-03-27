@@ -11,7 +11,8 @@
     "clean": "npm run clean --workspaces --if-present",
     "setup": "bash scripts/setup-dev.sh",
     "dev": "bash scripts/dev.sh",
-    "dev:build": "bash scripts/dev.sh --build"
+    "dev:build": "bash scripts/dev.sh --build",
+    "dev:clean": "bash scripts/dev.sh --clean"
   },
   "license": "GPL-3.0-only",
   "devDependencies": {
