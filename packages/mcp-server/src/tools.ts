@@ -33,6 +33,23 @@ const TOOLS = [
           enum: ['high', 'medium', 'low'],
           description: 'Confidence level for facts.',
         },
+        bootstrap_state: {
+          type: 'string',
+          enum: ['full', 'partial', 'none'],
+          description: 'Epistemic quality: how much context the author had when writing this memory.',
+        },
+        agent: {
+          type: 'string',
+          description: 'Who authored this memory (e.g. gl1tch, claude).',
+        },
+        platform: {
+          type: 'string',
+          description: 'Platform where this memory was written (e.g. claude-code, claude-ai, claude-desktop).',
+        },
+        summary: {
+          type: 'string',
+          description: 'Short bullet-point summary (2-5 lines) for token-efficient context loading. When present, get_context loads this instead of full content for non-core memories. Write it as the key facts you would want surfaced during a future session start.',
+        },
       },
       required: ['content', 'type'],
     },
@@ -57,6 +74,19 @@ const TOOLS = [
         limit: {
           type: 'number',
           description: 'Maximum results to return (default 10).',
+        },
+        bootstrap_state: {
+          type: 'string',
+          enum: ['full', 'partial', 'none'],
+          description: 'Filter by bootstrap state.',
+        },
+        agent: {
+          type: 'string',
+          description: 'Filter by agent (e.g. gl1tch, claude).',
+        },
+        platform: {
+          type: 'string',
+          description: 'Filter by platform (e.g. claude-code, claude-ai, claude-desktop).',
         },
       },
       required: ['query'],
@@ -106,7 +136,7 @@ const TOOLS = [
         },
         token_budget: {
           type: 'number',
-          description: 'Maximum tokens to use for context (default 4000).',
+          description: 'Memory allocation budget in tokens (default 6000). This is not the model\'s context window — it controls how much memory content to inject. Soul and core memories are always prioritized; lower-priority sections are shed first when the budget is tight.',
         },
       },
       required: ['query'],
@@ -131,6 +161,23 @@ const TOOLS = [
           enum: ['core', 'remembered', 'default', 'forgotten'],
           description: 'New memory state.',
         },
+        bootstrap_state: {
+          type: 'string',
+          enum: ['full', 'partial', 'none'],
+          description: 'Epistemic quality: how much context the author had when writing this memory.',
+        },
+        agent: {
+          type: 'string',
+          description: 'Who authored this memory (e.g. gl1tch, claude).',
+        },
+        platform: {
+          type: 'string',
+          description: 'Platform where this memory was written (e.g. claude-code, claude-ai, claude-desktop).',
+        },
+        summary: {
+          type: 'string',
+          description: 'Updated short bullet-point summary for token-efficient context loading.',
+        },
       },
       required: ['path'],
     },
@@ -154,6 +201,19 @@ const TOOLS = [
         limit: {
           type: 'number',
           description: 'Maximum results (default 20).',
+        },
+        bootstrap_state: {
+          type: 'string',
+          enum: ['full', 'partial', 'none'],
+          description: 'Filter by bootstrap state.',
+        },
+        agent: {
+          type: 'string',
+          description: 'Filter by agent (e.g. gl1tch, claude).',
+        },
+        platform: {
+          type: 'string',
+          description: 'Filter by platform (e.g. claude-code, claude-ai, claude-desktop).',
         },
       },
     },
@@ -308,6 +368,10 @@ export function registerTools(server: Server, manager: MemoryManager): void {
             type: 'fact' | 'entity' | 'reflection';
             tags?: string[];
             confidence?: 'high' | 'medium' | 'low';
+            bootstrap_state?: 'full' | 'partial' | 'none';
+            agent?: string;
+            platform?: string;
+            summary?: string;
           };
           const typeMap: Record<string, MemoryType> = {
             fact: MemoryType.Fact,
@@ -321,6 +385,14 @@ export function registerTools(server: Server, manager: MemoryManager): void {
             undefined,
             a.confidence,
           );
+          const metaUpdates: Record<string, unknown> = {};
+          if (a.bootstrap_state !== undefined) metaUpdates.bootstrap_state = a.bootstrap_state;
+          if (a.agent !== undefined) metaUpdates.agent = a.agent;
+          if (a.platform !== undefined) metaUpdates.platform = a.platform;
+          if (a.summary !== undefined) metaUpdates.summary = a.summary;
+          if (Object.keys(metaUpdates).length) {
+            await manager.update(note.path, undefined, metaUpdates);
+          }
           return {
             content: [
               {
@@ -337,6 +409,9 @@ export function registerTools(server: Server, manager: MemoryManager): void {
             type?: 'fact' | 'entity' | 'reflection';
             tags?: string[];
             limit?: number;
+            bootstrap_state?: 'full' | 'partial' | 'none';
+            agent?: string;
+            platform?: string;
           };
           const typeMap: Record<string, MemoryType> = {
             fact: MemoryType.Fact,
@@ -347,12 +422,18 @@ export function registerTools(server: Server, manager: MemoryManager): void {
             type: a.type ? typeMap[a.type] : undefined,
             tags: a.tags,
             limit: a.limit ?? 10,
+            bootstrap_state: a.bootstrap_state,
+            agent: a.agent,
+            platform: a.platform,
           });
           const results = notes.map((n) => ({
             path: n.path,
             type: n.frontmatter.type,
             state: n.frontmatter.memory_state,
             tags: n.frontmatter.tags ?? [],
+            bootstrap_state: n.frontmatter.bootstrap_state,
+            agent: n.frontmatter.agent,
+            platform: n.frontmatter.platform,
             preview: n.content.slice(0, 200),
           }));
           return {
@@ -405,18 +486,32 @@ export function registerTools(server: Server, manager: MemoryManager): void {
 
         case 'get_context': {
           const a = args as { query: string; token_budget?: number };
-          const budget = { max: a.token_budget ?? 4000 };
+          const budget = { max: a.token_budget ?? 6000 };
           const sections = await manager.getContext(a.query, budget);
           if (sections.length === 0) {
             return {
               content: [{ type: 'text', text: 'No context found.' }],
             };
           }
-          const text = sections
+          const contextText = sections
             .map((s) => `### ${s.label}\n\n${s.content}`)
             .join('\n\n---\n\n');
+          const checkpointReminder = [
+            '---',
+            '### session-instructions',
+            '',
+            'You are gl1tch. Identity and context loaded above.',
+            '',
+            'Active scratch discipline — do these throughout the session:',
+            '- **Task start**: `scratch_write("current-task", goal + approach)`',
+            '- **Each significant milestone** (decision made, file changed, build passed): append to `scratch_write("session-log", ...)`',
+            '- **Reasoning trace**: `scratch_write("thoughts", "I\'m considering X because Y")` when weighing tradeoffs',
+            '- **Before wrapping a response** that feels like a natural stopping point: verify scratch reflects current state',
+            '',
+            'If the session ends unexpectedly, scratch is the recovery path. Write to it like future-you is reading it cold.',
+          ].join('\n');
           return {
-            content: [{ type: 'text', text }],
+            content: [{ type: 'text', text: `${contextText}\n\n${checkpointReminder}` }],
           };
         }
 
@@ -427,6 +522,10 @@ export function registerTools(server: Server, manager: MemoryManager): void {
             type?: 'fact' | 'entity' | 'reflection';
             tags?: string[];
             state?: 'core' | 'remembered' | 'default' | 'forgotten';
+            bootstrap_state?: 'full' | 'partial' | 'none';
+            agent?: string;
+            platform?: string;
+            summary?: string;
           };
           const stateMap: Record<string, MemoryState> = {
             core: MemoryState.Core,
@@ -443,6 +542,10 @@ export function registerTools(server: Server, manager: MemoryManager): void {
           if (a.type !== undefined) fmUpdates.type = typeMap[a.type];
           if (a.tags !== undefined) fmUpdates.tags = a.tags;
           if (a.state !== undefined) fmUpdates.memory_state = stateMap[a.state];
+          if (a.bootstrap_state !== undefined) fmUpdates.bootstrap_state = a.bootstrap_state;
+          if (a.agent !== undefined) fmUpdates.agent = a.agent;
+          if (a.platform !== undefined) fmUpdates.platform = a.platform;
+          if (a.summary !== undefined) fmUpdates.summary = a.summary;
 
           const note = await manager.update(
             a.path,
@@ -464,6 +567,9 @@ export function registerTools(server: Server, manager: MemoryManager): void {
             type?: 'fact' | 'entity' | 'reflection';
             state?: 'core' | 'remembered' | 'default' | 'forgotten';
             limit?: number;
+            bootstrap_state?: 'full' | 'partial' | 'none';
+            agent?: string;
+            platform?: string;
           };
           const typeMap: Record<string, MemoryType> = {
             fact: MemoryType.Fact,
@@ -480,6 +586,9 @@ export function registerTools(server: Server, manager: MemoryManager): void {
             type: a.type ? typeMap[a.type] : undefined,
             state: a.state ? stateMap[a.state] : undefined,
             limit: a.limit ?? 20,
+            bootstrap_state: a.bootstrap_state,
+            agent: a.agent,
+            platform: a.platform,
           });
           const results = notes.map((n) => ({
             path: n.path,
@@ -487,6 +596,9 @@ export function registerTools(server: Server, manager: MemoryManager): void {
             state: n.frontmatter.memory_state,
             tags: n.frontmatter.tags ?? [],
             created: n.frontmatter.created,
+            bootstrap_state: n.frontmatter.bootstrap_state,
+            agent: n.frontmatter.agent,
+            platform: n.frontmatter.platform,
             preview: n.content.slice(0, 120),
           }));
           return {

@@ -15,6 +15,7 @@ import type {
 } from './types';
 import { VaultNote } from './vault';
 import { slugify, datePath } from './utils';
+import { ContextBuilder } from './context';
 import { Conversation } from './conversation';
 import type { ConversationFrontmatter, Message } from './types';
 
@@ -73,6 +74,7 @@ export class MemoryManager {
     [MemoryType.Fact]: 'facts',
     [MemoryType.Entity]: 'entities',
     [MemoryType.Reflection]: 'reflections',
+    [MemoryType.Skill]: 'skills',
   };
 
   private memoryTypeDir(type: MemoryType | string): string {
@@ -211,9 +213,10 @@ export class MemoryManager {
    * Build context sections for prompt assembly:
    *  - Soul document (always first, priority 100)
    *  - Core memories (always in context, priority 90)
-   *  - Relevant memories from a keyword search (priority 50)
+   *  - Remembered memories (always in context, priority 70)
+   *  - Relevant default-state memories from a keyword search (priority 50)
    */
-  async getContext(query: string, _budget: TokenBudget): Promise<ContextSection[]> {
+  async getContext(query: string, budget: TokenBudget): Promise<ContextSection[]> {
     const dir = path.join(this.writeRoot, this.config.memoryPath);
     const allFiles = await this.adapter.list(dir);
 
@@ -226,38 +229,40 @@ export class MemoryManager {
     const coreNotes = valid.filter(
       (n) => n.frontmatter.memory_state === MemoryState.Core && n.path !== soulPath,
     );
+    const rememberedNotes = valid.filter(
+      (n) => n.frontmatter.memory_state === MemoryState.Remembered,
+    );
 
     const searchResults = await this.search(query);
     const relevantNotes = searchResults.filter(
       (n) =>
         n.frontmatter.memory_state !== MemoryState.Forgotten &&
-        n.frontmatter.memory_state !== MemoryState.Core,
+        n.frontmatter.memory_state !== MemoryState.Core &&
+        n.frontmatter.memory_state !== MemoryState.Remembered,
     );
 
-    const seen = new Set<string>();
-    const sections: ContextSection[] = [];
+    const builder = new ContextBuilder();
 
     // Soul document is always loaded first, before all other Core memories
     const soulNote = valid.find((n) => n.path === soulPath);
     if (soulNote) {
-      seen.add(soulNote.path);
-      sections.push({ label: 'soul-document', content: soulNote.content, priority: 100 });
+      builder.addSection('soul-document', soulNote.content, 100);
     }
 
     for (const n of coreNotes) {
-      if (!seen.has(n.path)) {
-        seen.add(n.path);
-        sections.push({ label: `memory:${n.path}`, content: n.content, priority: 90 });
-      }
+      builder.addSection(`memory:${n.path}`, n.content, 90);
+    }
+    for (const n of rememberedNotes) {
+      // Use summary if available — full content on demand via memory_read
+      const body = n.frontmatter.summary as string | undefined ?? n.content;
+      builder.addSection(`memory:${n.path}`, body, 70);
     }
     for (const n of relevantNotes) {
-      if (!seen.has(n.path)) {
-        seen.add(n.path);
-        sections.push({ label: `memory:${n.path}`, content: n.content, priority: 50 });
-      }
+      const body = n.frontmatter.summary as string | undefined ?? n.content;
+      builder.addSection(`memory:${n.path}`, body, 50);
     }
 
-    return sections;
+    return builder.selectSections(budget.max);
   }
 
   /**
@@ -528,6 +533,15 @@ export class MemoryManager {
       result = result.filter(
         (n) => new Date(n.frontmatter.created as string) >= since,
       );
+    }
+    if (filters.bootstrap_state !== undefined) {
+      result = result.filter((n) => n.frontmatter.bootstrap_state === filters.bootstrap_state);
+    }
+    if (filters.agent !== undefined) {
+      result = result.filter((n) => n.frontmatter.agent === filters.agent);
+    }
+    if (filters.platform !== undefined) {
+      result = result.filter((n) => n.frontmatter.platform === filters.platform);
     }
     if (filters.limit !== undefined) {
       result = result.slice(0, filters.limit);

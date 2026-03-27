@@ -48,13 +48,10 @@ export class ContextBuilder {
   }
 
   /**
-   * Build the final prompt string, dropping lowest-priority sections first
-   * until the result fits within maxTokens.
-   *
-   * Sections are assembled in descending priority order (most important first),
-   * which is conventional for system-prompt construction.
+   * Select sections that fit within maxTokens, dropping lowest-priority first.
+   * Returns sections in descending priority order (most important first).
    */
-  build(maxTokens: number): string {
+  selectSections(maxTokens: number): ContextSection[] {
     const sorted = [...this.sections].sort((a, b) => b.priority - a.priority);
 
     const included: SectionEntry[] = [];
@@ -68,7 +65,20 @@ export class ContextBuilder {
       // Low-priority sections that don't fit are silently dropped
     }
 
-    return included.map((s) => s.content).join('\n\n');
+    return included.map(({ label, content, priority }) => ({ label, content, priority }));
+  }
+
+  /**
+   * Build the final prompt string, dropping lowest-priority sections first
+   * until the result fits within maxTokens.
+   *
+   * Sections are assembled in descending priority order (most important first),
+   * which is conventional for system-prompt construction.
+   */
+  build(maxTokens: number): string {
+    return this.selectSections(maxTokens)
+      .map((s) => s.content)
+      .join('\n\n');
   }
 
   /** Total estimated tokens for currently-held sections. */

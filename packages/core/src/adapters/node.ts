@@ -35,15 +35,37 @@ export class NodeAdapter implements FileSystemAdapter {
     const dir = directory ?? '.';
     const files = await this.walkDir(dir);
     const results: SearchResult[] = [];
-    const pattern = new RegExp(escapeRegex(query), 'gi');
+
+    // Tokenize: split on whitespace and punctuation, drop stop words and short tokens
+    const STOP_WORDS = new Set([
+      'the', 'and', 'for', 'with', 'this', 'that', 'are', 'was', 'were',
+      'has', 'have', 'had', 'not', 'but', 'from', 'they', 'their', 'what',
+      'when', 'which', 'who', 'how', 'its', 'our', 'you', 'your', 'can',
+      'will', 'all', 'also', 'into', 'more', 'than', 'just',
+    ]);
+    const tokens = query
+      .toLowerCase()
+      .split(/[\s,;:.!?()\[\]{}"']+/)
+      .map((t) => t.trim())
+      .filter((t) => t.length > 2 && !STOP_WORDS.has(t));
+
+    // Fall back to literal match if no usable tokens
+    const patterns =
+      tokens.length > 0
+        ? tokens.map((t) => new RegExp(escapeRegex(t), 'gi'))
+        : [new RegExp(escapeRegex(query), 'gi')];
 
     await Promise.all(
       files.map(async (filePath) => {
         try {
           const content = await this.read(filePath);
-          const matches = content.match(pattern);
-          if (matches) {
-            results.push({ path: filePath, content, score: matches.length });
+          let score = 0;
+          for (const pattern of patterns) {
+            const matches = content.match(pattern);
+            if (matches) score += matches.length;
+          }
+          if (score > 0) {
+            results.push({ path: filePath, content, score });
           }
         } catch {
           // skip unreadable files
