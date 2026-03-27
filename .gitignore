@@ -9,3 +9,5 @@ dist/
 tmp/
 packages/obsidian-plugin/main.js
 .claude/settings.local.json
+.claude/notes/
+.mcp.json

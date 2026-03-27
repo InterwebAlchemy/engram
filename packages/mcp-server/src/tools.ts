@@ -2,6 +2,8 @@ import type { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
+  ListResourcesRequestSchema,
+  ReadResourceRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import { MemoryManager, MemoryType, MemoryState } from '@interwebalchemy/engram-core';
 
@@ -72,13 +74,57 @@ const TOOLS = [
     },
   },
   {
+    name: 'soul_set',
+    description: 'Write (or overwrite) the Soul document — the persistent self-model for this agent. Always stored at memory/reflections/soul.md with type=reflection and memory_state=core.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        content: { type: 'string', description: 'Full Soul document content.' },
+      },
+      required: ['content'],
+    },
+  },
+  {
+    name: 'soul_get',
+    description: 'Read the current Soul document. Returns null if none exists yet.',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+    },
+  },
+  {
+    name: 'get_context',
+    description:
+      'Load the full agent context for the current session: Soul document, core memories, and memories relevant to the given query. ' +
+      'Call this at the start of a session to restore identity and relevant history.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description: 'Describe the current task or session focus. Used to surface relevant memories.',
+        },
+        token_budget: {
+          type: 'number',
+          description: 'Maximum tokens to use for context (default 4000).',
+        },
+      },
+      required: ['query'],
+    },
+  },
+  {
     name: 'memory_update',
-    description: 'Update an existing memory note\'s content, tags, or memory state.',
+    description: 'Update an existing memory note\'s content, type, tags, or memory state.',
     inputSchema: {
       type: 'object',
       properties: {
         path: { type: 'string', description: 'Path to the memory note.' },
         content: { type: 'string', description: 'New content (replaces existing).' },
+        type: {
+          type: 'string',
+          enum: ['fact', 'entity', 'reflection'],
+          description: 'New memory type.',
+        },
         tags: { type: 'array', items: { type: 'string' }, description: 'New tag list.' },
         state: {
           type: 'string',
@@ -332,10 +378,53 @@ export function registerTools(server: Server, manager: MemoryManager): void {
           };
         }
 
+        case 'soul_get': {
+          const soul = await manager.getSoulDocument();
+          return {
+            content: [
+              {
+                type: 'text',
+                text: soul ? soul.serialize() : 'No Soul document found.',
+              },
+            ],
+          };
+        }
+
+        case 'soul_set': {
+          const a = args as { content: string };
+          const soul = await manager.setSoulDocument(a.content);
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `Soul document written to: ${soul.path}`,
+              },
+            ],
+          };
+        }
+
+        case 'get_context': {
+          const a = args as { query: string; token_budget?: number };
+          const budget = { max: a.token_budget ?? 4000 };
+          const sections = await manager.getContext(a.query, budget);
+          if (sections.length === 0) {
+            return {
+              content: [{ type: 'text', text: 'No context found.' }],
+            };
+          }
+          const text = sections
+            .map((s) => `### ${s.label}\n\n${s.content}`)
+            .join('\n\n---\n\n');
+          return {
+            content: [{ type: 'text', text }],
+          };
+        }
+
         case 'memory_update': {
           const a = args as {
             path: string;
             content?: string;
+            type?: 'fact' | 'entity' | 'reflection';
             tags?: string[];
             state?: 'core' | 'remembered' | 'default' | 'forgotten';
           };
@@ -345,7 +434,13 @@ export function registerTools(server: Server, manager: MemoryManager): void {
             default: MemoryState.Default,
             forgotten: MemoryState.Forgotten,
           };
+          const typeMap: Record<string, MemoryType> = {
+            fact: MemoryType.Fact,
+            entity: MemoryType.Entity,
+            reflection: MemoryType.Reflection,
+          };
           const fmUpdates: Record<string, unknown> = {};
+          if (a.type !== undefined) fmUpdates.type = typeMap[a.type];
           if (a.tags !== undefined) fmUpdates.tags = a.tags;
           if (a.state !== undefined) fmUpdates.memory_state = stateMap[a.state];
 
@@ -520,5 +615,43 @@ export function registerTools(server: Server, manager: MemoryManager): void {
         isError: true,
       };
     }
+  });
+
+  // ─── Resources ───────────────────────────────────────────────────────────────
+
+  server.setRequestHandler(ListResourcesRequestSchema, async () => {
+    const soul = await manager.getSoulDocument();
+    return {
+      resources: soul
+        ? [
+            {
+              uri: 'engram://soul',
+              name: 'Soul Document',
+              description: 'Persistent identity and self-model for this agent. Read at session start.',
+              mimeType: 'text/markdown',
+            },
+          ]
+        : [],
+    };
+  });
+
+  server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
+    const { uri } = request.params;
+    if (uri === 'engram://soul') {
+      const soul = await manager.getSoulDocument();
+      if (!soul) {
+        throw new Error('Soul document not found.');
+      }
+      return {
+        contents: [
+          {
+            uri,
+            mimeType: 'text/markdown',
+            text: soul.content,
+          },
+        ],
+      };
+    }
+    throw new Error(`Unknown resource: ${uri}`);
   });
 }

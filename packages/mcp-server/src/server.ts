@@ -28,7 +28,7 @@ export async function startServer(cfg: ServerConfig): Promise<void> {
 
   const server = new Server(
     { name: 'engram', version: '0.1.0' },
-    { capabilities: { tools: {} } },
+    { capabilities: { tools: {}, resources: {} } },
   );
 
   registerTools(server, manager);

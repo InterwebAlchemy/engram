@@ -52,8 +52,32 @@ export class MemoryManager {
 
   // ─── Path helpers ─────────────────────────────────────────────────────────
 
+  /**
+   * Normalize a user-provided path:
+   * - Absolute paths are returned as-is.
+   * - Relative paths are resolved against the write root.
+   * - `.md` is appended if no extension is present.
+   */
+  private normalizePath(filePath: string): string {
+    const resolved = path.isAbsolute(filePath)
+      ? filePath
+      : path.resolve(this.writeRoot, filePath);
+    return path.extname(resolved) ? resolved : `${resolved}.md`;
+  }
+
+  /**
+   * Map MemoryType enum values to their vault directory names.
+   * Human-readable types use plural directory names to match the vault structure.
+   */
+  private static readonly TYPE_DIRS: Partial<Record<string, string>> = {
+    [MemoryType.Fact]: 'facts',
+    [MemoryType.Entity]: 'entities',
+    [MemoryType.Reflection]: 'reflections',
+  };
+
   private memoryTypeDir(type: MemoryType | string): string {
-    return path.join(this.writeRoot, this.config.memoryPath, type);
+    const dirName = MemoryManager.TYPE_DIRS[type] ?? type;
+    return path.join(this.writeRoot, this.config.memoryPath, dirName);
   }
 
   private conversationDir(dateStr?: string): string {
@@ -128,7 +152,7 @@ export class MemoryManager {
    * Read a specific note. Path must be within configured read roots.
    */
   async read(filePath: string): Promise<VaultNote> {
-    const target = path.resolve(filePath);
+    const target = this.normalizePath(filePath);
     const allowed = this.readRoots.some(
       (root) => target === root || target.startsWith(root + path.sep),
     );
@@ -139,7 +163,7 @@ export class MemoryManager {
       );
     }
 
-    return VaultNote.read(this.adapter, filePath);
+    return VaultNote.read(this.adapter, target);
   }
 
   /**
@@ -150,9 +174,10 @@ export class MemoryManager {
     content?: string,
     frontmatterUpdates?: Partial<NoteFrontmatter>,
   ): Promise<VaultNote> {
-    this.assertWriteAllowed(filePath);
+    const target = this.normalizePath(filePath);
+    this.assertWriteAllowed(target);
 
-    const note = await VaultNote.read(this.adapter, filePath);
+    const note = await VaultNote.read(this.adapter, target);
 
     if (content !== undefined) {
       note.content = content;
