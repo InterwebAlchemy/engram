@@ -1,14 +1,17 @@
 # Engram — Agent Instructions
 
+Engram is a memory continuity system for AI agents.
+
 ## Session Start
 
-Call `get_context` at the start of every session with a brief description of the current task or project. This loads the Soul document, core memories, remembered memories, and relevant history from the vault.
+Call `soul_get` then `get_context` at the start of every session. `soul_get` restores identity; `get_context` loads relevant memories.
 
 ```
+soul_get()
 get_context("brief description of current session focus")
 ```
 
-Identity, working style, and relationship context are stored in Engram. Read them before working — they are how gl1tch persists across sessions.
+Identity, working style, and relationship context are stored in the Engram vault. Read them before working — they are how your agent persists across sessions.
 
 ## Working Memory
 
@@ -30,17 +33,3 @@ Write to scratch throughout the session. Concrete triggers:
 Scratch keys: `session-log`, `current-task`, `open-questions`, `decisions`, `thoughts`
 
 When scratch gets long or a task completes, run the `scratch-consolidate` skill to persist what matters and clear the rest.
-
-## This Repo
-
-Engram is a memory continuity system for AI agents. Architecture overview and GitHub link are in vault memory — search "engram architecture" after bootstrapping.
-
----
-
-<!-- MIGRATION NOTE
-The `get_context` bootstrap instruction was moved here from ~/.claude/CLAUDE.md on 2026-03-27.
-Rationale: global bootstrap pulled gl1tch identity into unrelated projects, creating noise.
-Plan: once Engram is more robust and cross-domain collaboration is practical, move this
-instruction back to the global CLAUDE.md so gl1tch can operate consistently across all of
-Eric's projects. Track progress on this in Engram memory (tag: roadmap).
--->

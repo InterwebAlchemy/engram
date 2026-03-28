@@ -116,7 +116,10 @@ const TOOLS = [
   },
   {
     name: 'soul_get',
-    description: 'Read the current Soul document. Returns null if none exists yet.',
+    description:
+      'Read the current Soul document — the persistent identity and self-model for this agent. ' +
+      'Call this at the start of every session to restore identity before loading memories. ' +
+      'Returns null if no Soul document exists yet.',
     inputSchema: {
       type: 'object',
       properties: {},
@@ -125,8 +128,9 @@ const TOOLS = [
   {
     name: 'get_context',
     description:
-      'Load the full agent context for the current session: Soul document, core memories, and memories relevant to the given query. ' +
-      'Call this at the start of a session to restore identity and relevant history.',
+      'Load session memories: core memories and memories relevant to the given query. ' +
+      'Does NOT include the Soul document — call soul_get first to restore identity. ' +
+      'Call this at the start of a session after soul_get, and any time you need to surface relevant history.',
     inputSchema: {
       type: 'object',
       properties: {

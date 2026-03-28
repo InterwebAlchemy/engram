@@ -8,6 +8,7 @@ dist/
 .dev-settings.json
 tmp/
 packages/obsidian-plugin/main.js
+.claude/**/*.local.*
 .claude/settings.local.json
 .claude/notes/
 .mcp.json

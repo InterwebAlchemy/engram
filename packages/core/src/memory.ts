@@ -211,10 +211,13 @@ export class MemoryManager {
 
   /**
    * Build context sections for prompt assembly:
-   *  - Soul document (always first, priority 100)
    *  - Core memories (always in context, priority 90)
    *  - Remembered memories (always in context, priority 70)
    *  - Relevant default-state memories from a keyword search (priority 50)
+   *
+   * The Soul document is intentionally excluded — load it separately via
+   * getSoulDocument() / soul_get so harnesses that inject it at the
+   * system-prompt level don't receive a duplicate copy here.
    */
   async getContext(query: string, budget: TokenBudget): Promise<ContextSection[]> {
     const dir = path.join(this.writeRoot, this.config.memoryPath);
@@ -242,12 +245,6 @@ export class MemoryManager {
     );
 
     const builder = new ContextBuilder();
-
-    // Soul document is always loaded first, before all other Core memories
-    const soulNote = valid.find((n) => n.path === soulPath);
-    if (soulNote) {
-      builder.addSection('soul-document', soulNote.content, 100);
-    }
 
     for (const n of coreNotes) {
       builder.addSection(`memory:${n.path}`, n.content, 90);
