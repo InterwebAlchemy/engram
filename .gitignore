@@ -8,7 +8,16 @@ dist/
 .dev-settings.json
 tmp/
 packages/obsidian-plugin/main.js
-.claude/**/*.local.*
-.claude/settings.local.json
+
+# the temporary anchor CLAUDE.md
+#used to load the Engram during development of the Engram system
+CLAUDE.local.md
+
+# Development notes and todos
 .claude/notes/
+
+# configuring the Engram MCP server for working with the Engram MCP client
 .mcp.json
+
+# local CLAUDE settings
+.claude/**/*.local.*

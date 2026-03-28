@@ -13,9 +13,9 @@
   "providers": {
     "local": {
       "baseUrl": "http://localhost:1234",
-      "defaultModel": "lmstudio-community/Llama-3.2-3B-Instruct-GGUF",
-      "enabledModels": ["lmstudio-community/Llama-3.2-3B-Instruct-GGUF"],
-      "customModels": ["lmstudio-community/Llama-3.2-3B-Instruct-GGUF"]
+      "defaultModel": "qwen/qwen3-4b-thinking-2507",
+      "enabledModels": ["zai-org/glm-4.7-flash", "qwen/qwen3-4b-thinking-2507"],
+      "customModels": ["zai-org/glm-4.7-flash", "qwen/qwen3-4b-thinking-2507"]
     }
   },
 

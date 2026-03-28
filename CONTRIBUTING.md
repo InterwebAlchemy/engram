@@ -1,6 +1,6 @@
 # Contributing to Engram
 
-Thanks for your interest in contributing. This guide covers how to get set up, what to expect from the codebase, and how to submit changes.
+This guide covers how to get set up, what to expect from the codebase, and how to submit changes.
 
 ## Getting started
 
@@ -27,6 +27,16 @@ cp .env.example .env
 npm run setup
 npm run dev
 ```
+
+The `dev` script watches for changes and rebuilds.
+
+The `dev:clean` script will reset the temporary vault to the initial seed state from the `scripts/seed` directory.
+
+### Temporary Development Vault
+
+The `setup` script scaffolds the vault structure and symlinks build artifacts into a temporary Obsidian Vault you can test at `./tmp/vault`. This Vault has the Engram plugin and the [Hot Reload](https://github.com/pjeby/hot-reload) plugin installed.
+
+If you want to maintain any settings, like local models across temporary vault generations, you can copy the `example.dev-settings.json` to `.dev-settings.json` and it will be merged into the Engram plugin settings in your temporary developer Vaul.
 
 ## Project structure
 
@@ -58,7 +68,3 @@ Run `npm run test` before submitting. If your change affects the MCP tool surfac
 ## A note on dogfooding
 
 Engram is developed using Engram — the project uses its own memory continuity system during development. If you're contributing and want to use Claude Code, see [`CLAUDE.md`](CLAUDE.md) for contributor context. If you want to set up your own Engram agent, see [`templates/`](templates/).
-
-## License
-
-GPL-3.0-only. Contributions are accepted under the same license.
