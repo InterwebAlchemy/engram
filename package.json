@@ -12,7 +12,10 @@
     "setup": "bash scripts/setup-dev.sh",
     "dev": "bash scripts/dev.sh",
     "dev:build": "bash scripts/dev.sh --build",
-    "dev:clean": "bash scripts/dev.sh --clean"
+    "dev:clean": "bash scripts/dev.sh --clean",
+    "snapshot": "bash scripts/snapshot.sh create",
+    "snapshot:list": "bash scripts/snapshot.sh list",
+    "snapshot:restore": "bash scripts/snapshot.sh restore"
   },
   "license": "GPL-3.0-only",
   "devDependencies": {

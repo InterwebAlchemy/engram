@@ -13,13 +13,18 @@ Engram is a monorepo for an agent memory continuity system. This file provides c
 ## Common commands
 
 ```bash
-npm run build       # Build all packages
-npm run test        # Run all tests
-npm run lint        # Lint all packages
-npm run clean       # Remove build artifacts
-npm run setup       # Set up the dev vault (runs scripts/setup-dev.sh)
-npm run dev         # Start dev mode with a local vault
+npm run build             # Build all packages
+npm run test              # Run all tests
+npm run lint              # Lint all packages
+npm run clean             # Remove build artifacts
+npm run setup             # Set up the dev vault (runs scripts/setup-dev.sh)
+npm run dev               # Start dev mode with a local vault
+npm run snapshot          # Snapshot current engram/ to .snapshots/
+npm run snapshot:list     # List available snapshots
+npm run snapshot:restore  # Restore a snapshot (auto-saves current state first)
 ```
+
+> **Before any vault-risky operation** (setup, schema changes, tests that write memories, dev:clean), run `npm run snapshot` first.
 
 ## Dev environment
 

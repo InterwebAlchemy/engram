@@ -164,11 +164,19 @@ elif [ "$(grep -E '^ENGRAM_VAULT_PATH=' "$REPO_ROOT/.env" | cut -d= -f2-)" = "" 
 fi
 
 # ─── Seed dev vault with sample notes ─────────────────────────────────────
-# Copies scripts/seed/ into the vault, skipping any files that already exist.
+# Only runs when:
+#   - VAULT_PATH is the default tmp/vault (safe to overwrite), OR
+#   - ENGRAM_SEED_VAULT=true is set explicitly in .env
+# Never seeds a user-configured vault by default.
 
 SEED_DIR="$REPO_ROOT/scripts/seed"
-cp -rn "$SEED_DIR/." "$VAULT_PATH/"
-echo "Seed notes copied (existing files skipped)."
+
+if [ "$VAULT_PATH" = "$DEFAULT_VAULT_PATH" ] || [ "${ENGRAM_SEED_VAULT:-false}" = "true" ]; then
+  cp -rn "$SEED_DIR/." "$VAULT_PATH/"
+  echo "Seed notes copied (existing files skipped)."
+else
+  echo "Skipping seed — vault is user-configured. Set ENGRAM_SEED_VAULT=true to force."
+fi
 
 # ─── Ensure mcp.sh is executable ─────────────────────────────────────────
 

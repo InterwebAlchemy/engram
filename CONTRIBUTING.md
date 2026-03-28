@@ -32,6 +32,8 @@ The `dev` script watches for changes and rebuilds.
 
 The `dev:clean` script will reset the temporary vault to the initial seed state from the `scripts/seed` directory.
 
+> **Note:** `setup` and `dev` will never seed a user-configured vault (one set via `ENGRAM_VAULT_PATH` in `.env`). Seeding only runs against the default `./tmp/vault`. To opt in explicitly, set `ENGRAM_SEED_VAULT=true` in `.env`.
+
 ### Temporary Development Vault
 
 The `setup` script scaffolds the vault structure and symlinks build artifacts into a temporary Obsidian Vault you can test at `./tmp/vault`. This Vault has the Engram plugin and the [Hot Reload](https://github.com/pjeby/hot-reload) plugin installed.
@@ -49,6 +51,24 @@ engram/
   templates/       # Setup templates for new Engram users
   scripts/         # Dev and build utilities
 ```
+
+### Vault Snapshots
+
+If you point `ENGRAM_VAULT_PATH` at a real vault (not `./tmp/vault`), take a snapshot before any work that could write to or restructure the vault:
+
+```bash
+npm run snapshot          # create a timestamped snapshot of engram/
+npm run snapshot:list     # list available snapshots
+npm run snapshot:restore  # restore a snapshot (auto-saves current state first)
+```
+
+Snapshots are stored in `.snapshots/` at the repo root (gitignored). Restoring always creates a safety snapshot of the current state before overwriting, so a bad restore is always undoable.
+
+**Take a snapshot before:**
+- Running `npm run setup` or `npm run dev` for the first time against a new vault path
+- Schema migrations or changes to memory file structure
+- Any test that writes to the vault
+- Destructive operations like `dev:clean`
 
 ## Making changes
 

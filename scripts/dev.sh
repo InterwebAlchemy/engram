@@ -13,7 +13,7 @@
 # Usage:
 #   ./scripts/dev.sh           # watch mode (default)
 #   ./scripts/dev.sh --build   # single build of all packages, no watch
-#   ./scripts/dev.sh --clean   # clean the ../tmp/vault directory before starting and reseed it from the ./seed directory
+#   ./scripts/dev.sh --clean   # wipe VAULT_PATH and re-run setup (only seeds if vault is tmp/vault or ENGRAM_SEED_VAULT=true)
 #
 set -euo pipefail
 
