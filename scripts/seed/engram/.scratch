@@ -1,0 +1,7 @@
+[demo-session-001 | 2026-03-24T09:00:00.000Z] Session start. Investigating memory leak in MetaCortex data ingest pipeline. Will check connection pool lifecycle and compare Node versions between staging and local.
+[demo-session-001 | 2026-03-24T09:15:00.000Z] Considering heap snapshot approach because application-layer logging isn't showing the leak — need lower-level view.
+[demo-session-001 | 2026-03-24T09:42:00.000Z] Confirmed: staging runs Node v18.19, local runs v22.x. Known GC behavior differences in this range. Narrowing to pool release timing.
+[demo-session-001 | 2026-03-24T10:05:00.000Z] [COMPACTED] Investigated MetaCortex heap leak: Node version mismatch (v18 staging vs v22 local) likely root cause. Next: controlled repro on v18 and heap snapshot before/after batch run.
+[demo-session-002 | 2026-03-25T14:00:00.000Z] Session start. Resuming heap leak investigation. Running controlled repro on Node v18.19 in local Docker container.
+[demo-session-002 | 2026-03-25T14:30:00.000Z] Repro confirmed on v18. Heap grows ~38MB per 1000 jobs. Pool release callback not firing on error paths — connection held open.
+[demo-session-002 | 2026-03-25T15:10:00.000Z] Fix applied: wrapped pool.release() in finally block. Heap stable after 5000 jobs in staging. Promoting finding to memory.

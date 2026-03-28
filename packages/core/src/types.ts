@@ -119,7 +119,7 @@ export interface MemoryConfig {
   memoryPath: string;
   conversationsPath: string;
   workingPath: string;
-  scratchPath: string;
+  scratchFile: string;
   archivePath: string;
   readPaths: string[];
   tokenCorrections: Record<string, number>;
@@ -136,7 +136,7 @@ export function defaultMemoryConfig(
     memoryPath: 'memory',
     conversationsPath: 'conversations',
     workingPath: 'working',
-    scratchPath: 'scratch',
+    scratchFile: '.scratch',
     archivePath: 'archive',
     readPaths: [],
     tokenCorrections: {},
@@ -167,6 +167,32 @@ export interface PruneOptions {
   systemPrompt?: string;
   /** Token estimator correction factor (default 1.0). */
   correctionFactor?: number;
+}
+
+// ─── Scratch ─────────────────────────────────────────────────────────────────
+
+export interface ScratchEntry {
+  sessionId: string;
+  timestamp: string; // ISO 8601
+  content: string;
+}
+
+export interface ScratchReadOptions {
+  /** Filter entries to a specific session. */
+  sessionId?: string;
+  /** Return only the N most recent entries (after filtering). Default: 50. */
+  limit?: number;
+  /** Return only entries at or after this ISO timestamp. */
+  since?: string;
+}
+
+export interface ScratchCompactOptions {
+  /** Session whose entries to compact. */
+  sessionId: string;
+  /** Only compact entries older than this many milliseconds. */
+  thresholdMs: number;
+  /** Agent-synthesized replacement content for the compacted entries. */
+  compactedContent: string;
 }
 
 // ─── Search ───────────────────────────────────────────────────────────────────

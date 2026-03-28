@@ -39,7 +39,7 @@ mkdir -p "$VAULT_PATH/.obsidian/plugins/engram"
 # so the plugin has somewhere to write immediately
 for dir in engram/memory/facts engram/memory/entities engram/memory/reflections \
            engram/memory/skill engram/conversations/2026-03-20 engram/working \
-           engram/scratch engram/archive engram/templates \
+           engram/archive engram/templates \
            "Daily Notes" "Journal"; do
   mkdir -p "$VAULT_PATH/$dir"
 done

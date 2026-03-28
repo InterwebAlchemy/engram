@@ -12,6 +12,9 @@ import type {
   TokenBudget,
   NoteFrontmatter,
   Confidence,
+  ScratchEntry,
+  ScratchReadOptions,
+  ScratchCompactOptions,
 } from './types';
 import { VaultNote } from './vault';
 import { slugify, datePath } from './utils';
@@ -89,10 +92,6 @@ export class MemoryManager {
 
   private workingDir(): string {
     return path.join(this.writeRoot, this.config.workingPath);
-  }
-
-  private scratchDir(): string {
-    return path.join(this.writeRoot, this.config.scratchPath);
   }
 
   private archiveDir(): string {
@@ -347,65 +346,116 @@ export class MemoryManager {
 
   // ─── Scratch operations ───────────────────────────────────────────────────
 
-  /**
-   * Write (or overwrite) a scratch note by key.
-   * Scratch notes live at engram/scratch/{key}.md and are never injected
-   * into context — they exist solely as an assistant workspace.
-   */
-  async writeScratch(key: string, content: string): Promise<VaultNote> {
-    const dir = this.scratchDir();
-    const filePath = path.join(dir, `${key}.md`);
+  private get scratchFilePath(): string {
+    return path.join(this.writeRoot, this.config.scratchFile);
+  }
 
-    this.assertWriteAllowed(filePath);
-    await this.adapter.mkdir(dir);
-
-    const existing = await VaultNote.read(this.adapter, filePath).catch(() => null);
-    const now = new Date().toISOString();
-
-    const frontmatter: NoteFrontmatter = {
-      type: MemoryType.Scratch,
-      created: existing?.frontmatter.created ?? now,
-      updated: now,
-      memory_state: MemoryState.Forgotten,
-    };
-
-    return VaultNote.create(this.adapter, filePath, frontmatter, content);
+  private parseScratchLog(raw: string): ScratchEntry[] {
+    const entryPattern = /^\[([^\]]+) \| ([^\]]+)\] (.+)$/;
+    return raw
+      .split('\n')
+      .map((line) => {
+        const match = line.match(entryPattern);
+        if (!match) return null;
+        return { sessionId: match[1], timestamp: match[2], content: match[3] };
+      })
+      .filter((e): e is ScratchEntry => e !== null);
   }
 
   /**
-   * Read a scratch note by key. Returns null if not found.
+   * Append an entry to the shared scratch log.
+   * Each entry is prefixed with the session ID and an ISO timestamp.
+   * Newlines in content are collapsed to keep entries single-line.
    */
-  async readScratch(key: string): Promise<VaultNote | null> {
-    const filePath = path.join(this.scratchDir(), `${key}.md`);
-    return VaultNote.read(this.adapter, filePath).catch(() => null);
+  async appendScratch(sessionId: string, content: string): Promise<void> {
+    const logPath = this.scratchFilePath;
+    this.assertWriteAllowed(logPath);
+
+    const timestamp = new Date().toISOString();
+    const line = `[${sessionId} | ${timestamp}] ${content.replace(/\n+/g, ' | ')}`;
+
+    const existing = await this.adapter.read(logPath).catch(() => '');
+    const newContent = existing.trim() ? `${existing.trimEnd()}\n${line}` : line;
+    await this.adapter.write(logPath, newContent);
   }
 
   /**
-   * List all current scratch keys (filenames without extension).
+   * Read scratch log entries, with optional filtering and pagination.
+   * Returns entries sorted oldest-first. Applies limit after filtering.
    */
-  async listScratch(): Promise<string[]> {
-    const dir = this.scratchDir();
-    const files = await this.adapter.list(dir).catch(() => [] as string[]);
-    return files.map((f) => path.basename(f, '.md'));
+  async readScratch(options: ScratchReadOptions = {}): Promise<ScratchEntry[]> {
+    const raw = await this.adapter.read(this.scratchFilePath).catch(() => '');
+    if (!raw.trim()) return [];
+
+    let entries = this.parseScratchLog(raw);
+
+    if (options.sessionId) {
+      entries = entries.filter((e) => e.sessionId === options.sessionId);
+    }
+    if (options.since) {
+      const sinceTs = new Date(options.since).getTime();
+      entries = entries.filter((e) => new Date(e.timestamp).getTime() >= sinceTs);
+    }
+
+    // Sort descending to apply limit, then restore ascending for readability
+    entries.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    const limit = options.limit ?? 50;
+    entries = entries.slice(0, limit);
+    entries.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+    return entries;
   }
 
   /**
-   * Hard-delete scratch notes. If a key is provided, only that note is deleted.
-   * If no key is provided, all scratch notes are deleted.
+   * Compact scratch entries for a session. Finds entries for the given session
+   * older than thresholdMs, removes them, and inserts a single replacement entry
+   * containing the agent-provided synthesized content.
+   */
+  async compactScratch(options: ScratchCompactOptions): Promise<void> {
+    const logPath = this.scratchFilePath;
+    this.assertWriteAllowed(logPath);
+
+    const raw = await this.adapter.read(logPath).catch(() => '');
+    if (!raw.trim()) return;
+
+    const lines = raw.split('\n');
+    const entryPattern = /^\[([^\]]+) \| ([^\]]+)\] (.+)$/;
+    const cutoff = Date.now() - options.thresholdMs;
+
+    const toRemove = new Set<number>();
+    let firstIdx = -1;
+
+    lines.forEach((line, idx) => {
+      const match = line.match(entryPattern);
+      if (!match || match[1] !== options.sessionId) return;
+      if (new Date(match[2]).getTime() > cutoff) return;
+      toRemove.add(idx);
+      if (firstIdx === -1) firstIdx = idx;
+    });
+
+    if (toRemove.size < 2) return; // Nothing worth compacting
+
+    const compactLine = `[${options.sessionId} | ${new Date().toISOString()}] [COMPACTED] ${options.compactedContent.replace(/\n+/g, ' | ')}`;
+
+    const newLines = lines
+      .map((line, idx) => {
+        if (idx === firstIdx) return compactLine;
+        if (toRemove.has(idx)) return null;
+        return line;
+      })
+      .filter((line): line is string => line !== null);
+
+    await this.adapter.write(logPath, newLines.join('\n'));
+  }
+
+  /**
+   * Hard-delete the scratch log.
    * Scratch is explicitly ephemeral — deletion is permanent with no archiving.
    */
-  async clearScratch(key?: string): Promise<void> {
-    const dir = this.scratchDir();
-    const targets = key
-      ? [path.join(dir, `${key}.md`)]
-      : (await this.adapter.list(dir).catch(() => [] as string[]));
-
-    await Promise.all(
-      targets.map(async (filePath) => {
-        this.assertWriteAllowed(filePath);
-        await this.adapter.delete(filePath);
-      }),
-    );
+  async clearScratch(): Promise<void> {
+    const logPath = this.scratchFilePath;
+    this.assertWriteAllowed(logPath);
+    await this.adapter.delete(logPath).catch(() => undefined);
   }
 
   /**

@@ -15,21 +15,20 @@ Identity, working style, and relationship context are stored in the Engram vault
 
 ## Working Memory
 
-After `get_context`, check for a working scratch note from the previous session:
+After `get_context`, read the scratch log to surface continuity from prior sessions:
 
 ```
-scratch_list → if session-log exists, scratch_read("session-log")
+scratch_read()              → full shared log
+scratch_read(SESSION_ID)    → your own entries only
 ```
 
-This surfaces any follow-up tasks or continuity notes left by the previous session. Scratch is pull-not-push — it won't appear in `get_context` automatically.
+Scratch is pull-not-push — it won't appear in `get_context` automatically.
 
-Write to scratch throughout the session. Concrete triggers:
+Write to scratch throughout the session using `scratch_append`. Concrete triggers:
 
-- **Task start** → `scratch_write("current-task", goal + approach)` before doing anything
-- **Each milestone** (decision made, file changed, build passed) → append to `session-log`
-- **Weighing tradeoffs** → `scratch_write("thoughts", "I'm considering X because Y")`
+- **Task start** → append goal and approach before doing anything
+- **Each milestone** (decision made, file changed, build passed) → append a note
+- **Weighing tradeoffs** → append "Considering X because Y"
 - **Natural stopping point** → verify scratch reflects current state before responding
 
-Scratch keys: `session-log`, `current-task`, `open-questions`, `decisions`, `thoughts`
-
-When scratch gets long or a task completes, run the `scratch-consolidate` skill to persist what matters and clear the rest.
+At session close-out, run `scratch_compact(SESSION_ID, synthesized_summary)` to collapse your entries into one, then promote key insights to memory with `memory_store`.

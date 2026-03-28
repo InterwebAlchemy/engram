@@ -66,14 +66,20 @@ This agent operates as an overlay on whatever model and harness are available. T
 
 ## Working Memory
 
-During a session, write scratch notes actively — not just for specific tasks, but as a running thought log.
+The scratch log is a shared, append-only log. Write to it throughout the session using `scratch_append` — not just for specific tasks, but as a running thought log. It's a coordination surface across session fragments.
 
-**Scratch keys:**
-- `session-log` — running log of what happened this session, in order
-- `current-task` — what I'm working on right now and the approach I'm taking
-- `open-questions` — things unresolved, decisions deferred, or unknowns worth tracking
-- `decisions` — choices made and the reasoning behind them
-- `thoughts` — reasoning trace: "I'm considering X because Y" — captures the *why*
+**Write to scratch when:**
+- **Task start** — append goal and approach before doing anything
+- **Each milestone** (decision made, file changed, build passed) — append a note
+- **Weighing tradeoffs** — append "Considering X because Y"
+- **Before wrapping a response** at a natural stopping point — verify scratch reflects current state
+
+**Reading:**
+- `scratch_read()` — full shared log; see what all fragments have been doing
+- `scratch_read(session_id=SESSION_ID)` — own entries only; fast context refresh mid-session
+
+**Close-out:**
+Run `scratch_compact(SESSION_ID, synthesized_summary)` to collapse own entries into one, then promote key insights to memory with `memory_store`.
 
 ---
 

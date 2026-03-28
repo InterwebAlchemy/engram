@@ -14,6 +14,9 @@ export type {
   SearchResult,
   Confidence,
   NoteStatus,
+  ScratchEntry,
+  ScratchReadOptions,
+  ScratchCompactOptions,
 } from './types';
 
 export { VaultNote } from './vault';

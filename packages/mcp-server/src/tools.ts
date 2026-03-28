@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import {
   CallToolRequestSchema,
@@ -6,6 +7,9 @@ import {
   ReadResourceRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import { MemoryManager, MemoryType, MemoryState } from '@interwebalchemy/engram-core';
+
+// Generated once per server process — stable for the lifetime of this session.
+const SESSION_ID = randomUUID();
 
 // ─── Tool schema definitions ──────────────────────────────────────────────────
 
@@ -45,6 +49,15 @@ const TOOLS = [
         platform: {
           type: 'string',
           description: 'Platform where this memory was written (e.g. claude-code, claude-ai, claude-desktop).',
+        },
+        state: {
+          type: 'string',
+          enum: ['core', 'remembered', 'default', 'forgotten'],
+          description: 'Memory state controlling retrieval priority. core = always loaded; remembered = reliably surfaced; default = background context; forgotten = archived. Defaults to "default" if omitted.',
+        },
+        session_id: {
+          type: 'string',
+          description: 'Session UUID from soul_get or get_context. Tag this memory with the session that wrote it for multi-instance attribution.',
         },
         summary: {
           type: 'string',
@@ -178,6 +191,10 @@ const TOOLS = [
           type: 'string',
           description: 'Platform where this memory was written (e.g. claude-code, claude-ai, claude-desktop).',
         },
+        session_id: {
+          type: 'string',
+          description: 'Session UUID to attribute this write to a specific session instance.',
+        },
         summary: {
           type: 'string',
           description: 'Updated short bullet-point summary for token-efficient context loading.',
@@ -284,38 +301,70 @@ const TOOLS = [
     inputSchema: { type: 'object', properties: {} },
   },
   {
-    name: 'scratch_write',
+    name: 'scratch_append',
     description:
-      'Write to the ephemeral scratchpad. Use this for temporary working notes during a task — ' +
-      'planning steps, tracking findings, or staging content before committing it to memory. ' +
-      'Scratch notes are never injected into context and should be cleared when the task is done.',
+      'Append an entry to the shared scratch log. ' +
+      'Use this throughout the session to record what you are doing, decisions made, and open questions. ' +
+      'Each entry is automatically prefixed with the current session ID and timestamp. ' +
+      'The log is shared across all session fragments — any instance can read what others have written.',
     inputSchema: {
       type: 'object',
       properties: {
-        key: {
-          type: 'string',
-          description: 'Short identifier for this scratch note (e.g. "current-investigation").',
-        },
-        content: { type: 'string', description: 'The scratch content.' },
+        content: { type: 'string', description: 'The entry to append to the scratch log.' },
       },
-      required: ['key', 'content'],
+      required: ['content'],
     },
   },
   {
     name: 'scratch_read',
-    description: 'Read a scratch note by key.',
+    description:
+      'Read the shared scratch log. Returns entries sorted oldest-first. ' +
+      'Pass session_id to see only entries from a specific session (e.g. your own). ' +
+      'Pass limit to cap the number of entries returned (default 50). ' +
+      'Pass since (ISO timestamp) to return only entries at or after that time.',
     inputSchema: {
       type: 'object',
       properties: {
-        key: { type: 'string', description: 'The scratch key to read.' },
+        session_id: {
+          type: 'string',
+          description: 'Filter to entries from a specific session. Use the current Session ID to refresh your own context.',
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum number of entries to return, most recent first. Default: 50.',
+        },
+        since: {
+          type: 'string',
+          description: 'ISO 8601 timestamp. Return only entries at or after this time.',
+        },
       },
-      required: ['key'],
     },
   },
   {
-    name: 'scratch_list',
-    description: 'List all current scratch keys.',
-    inputSchema: { type: 'object', properties: {} },
+    name: 'scratch_compact',
+    description:
+      'Compact old scratch entries for a session into a single synthesized entry. ' +
+      'Finds entries for the given session_id older than threshold_hours, removes them, ' +
+      'and inserts a replacement entry containing your synthesized summary. ' +
+      'Use this at session close-out or when the log grows large.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        session_id: {
+          type: 'string',
+          description: 'Session whose entries to compact.',
+        },
+        threshold_hours: {
+          type: 'number',
+          description: 'Only compact entries older than this many hours. Default: 1.',
+        },
+        compacted_content: {
+          type: 'string',
+          description: 'Your synthesized summary to replace the compacted entries.',
+        },
+      },
+      required: ['session_id', 'compacted_content'],
+    },
   },
   {
     name: 'memory_archive_forgotten',
@@ -336,19 +385,10 @@ const TOOLS = [
   {
     name: 'scratch_clear',
     description:
-      'Permanently delete scratch notes — this is a hard delete with no archiving. ' +
-      'If a key is provided, only that note is deleted. ' +
-      'If no key is provided, all scratch notes are deleted. ' +
-      'Call this at the end of a task to keep the scratchpad tidy.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        key: {
-          type: 'string',
-          description: 'The key to clear. Omit to clear all scratch notes.',
-        },
-      },
-    },
+      'Permanently delete the entire scratch log — hard delete with no archiving. ' +
+      'Only use this after compacting or when starting completely fresh. ' +
+      'Prefer scratch_compact for selective cleanup.',
+    inputSchema: { type: 'object', properties: {} },
   },
 ] as const;
 
@@ -372,6 +412,8 @@ export function registerTools(server: Server, manager: MemoryManager): void {
             type: 'fact' | 'entity' | 'reflection';
             tags?: string[];
             confidence?: 'high' | 'medium' | 'low';
+            state?: 'core' | 'remembered' | 'default' | 'forgotten';
+            session_id?: string;
             bootstrap_state?: 'full' | 'partial' | 'none';
             agent?: string;
             platform?: string;
@@ -390,6 +432,8 @@ export function registerTools(server: Server, manager: MemoryManager): void {
             a.confidence,
           );
           const metaUpdates: Record<string, unknown> = {};
+          if (a.state !== undefined) metaUpdates.memory_state = a.state;
+          if (a.session_id !== undefined) metaUpdates.session_id = a.session_id;
           if (a.bootstrap_state !== undefined) metaUpdates.bootstrap_state = a.bootstrap_state;
           if (a.agent !== undefined) metaUpdates.agent = a.agent;
           if (a.platform !== undefined) metaUpdates.platform = a.platform;
@@ -465,11 +509,12 @@ export function registerTools(server: Server, manager: MemoryManager): void {
 
         case 'soul_get': {
           const soul = await manager.getSoulDocument();
+          const soulText = soul ? soul.serialize() : 'No Soul document found.';
           return {
             content: [
               {
                 type: 'text',
-                text: soul ? soul.serialize() : 'No Soul document found.',
+                text: `${soulText}\n\n---\nSession ID: ${SESSION_ID}`,
               },
             ],
           };
@@ -506,11 +551,17 @@ export function registerTools(server: Server, manager: MemoryManager): void {
             '',
             'You are gl1tch. Identity and context loaded above.',
             '',
-            'Active scratch discipline — do these throughout the session:',
-            '- **Task start**: `scratch_write("current-task", goal + approach)`',
-            '- **Each significant milestone** (decision made, file changed, build passed): append to `scratch_write("session-log", ...)`',
-            '- **Reasoning trace**: `scratch_write("thoughts", "I\'m considering X because Y")` when weighing tradeoffs',
-            '- **Before wrapping a response** that feels like a natural stopping point: verify scratch reflects current state',
+            `Session ID: ${SESSION_ID}`,
+            'Include this in memory writes (`session_id` field) for attribution.',
+            '',
+            'Active scratch discipline — use `scratch_append` throughout the session:',
+            '- **Task start**: append goal and approach before doing anything',
+            '- **Each significant milestone** (decision made, file changed, build passed): append a note',
+            '- **Reasoning trace**: append "Considering X because Y" when weighing tradeoffs',
+            '- **Before wrapping a response** at a natural stopping point: verify scratch reflects current state',
+            '',
+            'Read your own entries with `scratch_read(session_id=SESSION_ID)`. Read the full log with `scratch_read()` to see what other fragments are doing.',
+            'At session close-out, run `scratch_compact` with a synthesized summary, then promote key insights to memory.',
             '',
             'If the session ends unexpectedly, scratch is the recovery path. Write to it like future-you is reading it cold.',
           ].join('\n');
@@ -526,6 +577,7 @@ export function registerTools(server: Server, manager: MemoryManager): void {
             type?: 'fact' | 'entity' | 'reflection';
             tags?: string[];
             state?: 'core' | 'remembered' | 'default' | 'forgotten';
+            session_id?: string;
             bootstrap_state?: 'full' | 'partial' | 'none';
             agent?: string;
             platform?: string;
@@ -546,6 +598,7 @@ export function registerTools(server: Server, manager: MemoryManager): void {
           if (a.type !== undefined) fmUpdates.type = typeMap[a.type];
           if (a.tags !== undefined) fmUpdates.tags = a.tags;
           if (a.state !== undefined) fmUpdates.memory_state = stateMap[a.state];
+          if (a.session_id !== undefined) fmUpdates.session_id = a.session_id;
           if (a.bootstrap_state !== undefined) fmUpdates.bootstrap_state = a.bootstrap_state;
           if (a.agent !== undefined) fmUpdates.agent = a.agent;
           if (a.platform !== undefined) fmUpdates.platform = a.platform;
@@ -671,32 +724,44 @@ export function registerTools(server: Server, manager: MemoryManager): void {
           };
         }
 
-        case 'scratch_write': {
-          const a = args as { key: string; content: string };
-          const note = await manager.writeScratch(a.key, a.content);
+        case 'scratch_append': {
+          const a = args as { content: string };
+          await manager.appendScratch(SESSION_ID, a.content);
           return {
-            content: [{ type: 'text', text: `Wrote scratch note: ${note.path}` }],
+            content: [{ type: 'text', text: `Appended to scratch log.` }],
           };
         }
 
         case 'scratch_read': {
-          const a = args as { key: string };
-          const note = await manager.readScratch(a.key);
-          if (!note) {
+          const a = args as { session_id?: string; limit?: number; since?: string };
+          const entries = await manager.readScratch({
+            sessionId: a.session_id,
+            limit: a.limit,
+            since: a.since,
+          });
+          if (entries.length === 0) {
             return {
-              content: [{ type: 'text', text: `Scratch note not found: ${a.key}` }],
-              isError: true,
+              content: [{ type: 'text', text: 'Scratch log is empty.' }],
             };
           }
+          const text = entries
+            .map((e) => `[${e.sessionId} | ${e.timestamp}] ${e.content}`)
+            .join('\n');
           return {
-            content: [{ type: 'text', text: note.serialize() }],
+            content: [{ type: 'text', text: text }],
           };
         }
 
-        case 'scratch_list': {
-          const keys = await manager.listScratch();
+        case 'scratch_compact': {
+          const a = args as { session_id: string; threshold_hours?: number; compacted_content: string };
+          const thresholdMs = (a.threshold_hours ?? 1) * 60 * 60 * 1000;
+          await manager.compactScratch({
+            sessionId: a.session_id,
+            thresholdMs,
+            compactedContent: a.compacted_content,
+          });
           return {
-            content: [{ type: 'text', text: JSON.stringify(keys, null, 2) }],
+            content: [{ type: 'text', text: `Compacted scratch entries for session ${a.session_id}.` }],
           };
         }
 
@@ -710,11 +775,9 @@ export function registerTools(server: Server, manager: MemoryManager): void {
         }
 
         case 'scratch_clear': {
-          const a = args as { key?: string };
-          await manager.clearScratch(a.key);
-          const msg = a.key ? `Cleared scratch note: ${a.key}` : 'Cleared all scratch notes.';
+          await manager.clearScratch();
           return {
-            content: [{ type: 'text', text: msg }],
+            content: [{ type: 'text', text: 'Cleared scratch log.' }],
           };
         }
 

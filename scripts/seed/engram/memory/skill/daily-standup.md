@@ -4,6 +4,8 @@ memory_state: core
 created: 2026-03-20T00:00:00Z
 updated: 2026-03-20T00:00:00Z
 tags: [work, metacortex, communication]
+bootstrap_state: none
+summary: "Format and rules for MetaCortex daily standup, due by 9:30 AM."
 ---
 
 # Daily Standup — MetaCortex Format
