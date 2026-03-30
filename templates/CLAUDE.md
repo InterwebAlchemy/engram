@@ -4,12 +4,17 @@ Engram is a memory continuity system for AI agents.
 
 ## Session Start
 
-Call `soul_get` then `get_context` at the start of every session. `soul_get` restores identity; `get_context` loads relevant memories.
+Call `soul_get`, then `thread_resolve`, then `get_context` at the start of every session.
 
 ```
 soul_get()
-get_context("brief description of current session focus")
+thread_resolve()                          → auto-detects or creates the active Thread from cwd
+get_context("session focus", thread_id)   → scopes memory retrieval to that Thread
 ```
+
+`soul_get` restores identity. `thread_resolve` finds or creates the right Thread without requiring a hardcoded ID — it matches the current working directory against stored thread paths. Pass the returned `thread_id` to `get_context`. If `thread_resolve` returns `status: "created"`, flesh out the thread once you have enough context.
+
+If later in the session you discover the auto-created Thread duplicates an existing one, call `thread_merge(source_thread_id, target_thread_id)` to consolidate.
 
 Identity, working style, and relationship context are stored in the Engram vault. Read them before working — they are how your agent persists across sessions.
 

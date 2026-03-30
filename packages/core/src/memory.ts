@@ -406,6 +406,157 @@ export class MemoryManager {
     return notes.filter((n): n is VaultNote => n !== null);
   }
 
+  /**
+   * Resolve the active Thread from environment context.
+   *
+   * Matching: lists all threads with `paths` set and checks whether `cwd` is
+   * inside a thread's path (or vice versa) using prefix matching. Prefers
+   * active threads over paused/closed; breaks ties by longest matching path
+   * (most specific wins).
+   *
+   * If no match is found and `autoCreate` is true (default), creates a minimal
+   * thread named after `path.basename(cwd)` with `paths: [cwd]`.
+   *
+   * Returns the resolved thread ID, whether it was freshly created, and the
+   * full VaultNote.
+   */
+  async resolveThread(hints: {
+    cwd?: string;
+    autoCreate?: boolean;
+  }): Promise<{ threadId: string; created: boolean; thread: VaultNote }> {
+    const cwd = path.resolve(hints.cwd ?? process.cwd());
+    const autoCreate = hints.autoCreate ?? true;
+
+    const threads = await this.listThreads();
+
+    const statusRank = (status: unknown): number => {
+      if (status === ThreadStatus.Active) return 2;
+      if (status === ThreadStatus.Paused) return 1;
+      return 0;
+    };
+
+    let bestThread: VaultNote | null = null;
+    let bestScore = -1;
+    let bestStatusRank = -1;
+
+    for (const thread of threads) {
+      const paths = thread.frontmatter.paths as string[] | undefined;
+      if (!paths || paths.length === 0) continue;
+
+      for (const threadPath of paths) {
+        const resolved = path.resolve(threadPath);
+        const cwdInThread = cwd === resolved || cwd.startsWith(resolved + path.sep);
+        const threadInCwd = resolved === cwd || resolved.startsWith(cwd + path.sep);
+        if (!cwdInThread && !threadInCwd) continue;
+
+        // Score by the length of the more specific (longer) path — longer = tighter match.
+        const overlapScore = cwdInThread ? resolved.length : cwd.length;
+        const rank = statusRank(thread.frontmatter.status);
+
+        if (
+          bestThread === null ||
+          rank > bestStatusRank ||
+          (rank === bestStatusRank && overlapScore > bestScore)
+        ) {
+          bestThread = thread;
+          bestScore = overlapScore;
+          bestStatusRank = rank;
+        }
+      }
+    }
+
+    if (bestThread) {
+      return {
+        threadId: bestThread.frontmatter.thread_id as string,
+        created: false,
+        thread: bestThread,
+      };
+    }
+
+    if (!autoCreate) {
+      throw new Error(`No matching thread found for cwd: ${cwd}`);
+    }
+
+    // Auto-create a minimal thread from the directory name.
+    const threadId = slugify(path.basename(cwd));
+    const thread = await this.setThread(threadId, '', {
+      name: path.basename(cwd),
+      paths: [cwd],
+    });
+
+    return { threadId, created: true, thread };
+  }
+
+  /**
+   * Merge a source Thread into a target Thread.
+   *
+   * - Re-tags all memories with `thread: sourceId` to `thread: targetId`.
+   * - Unions `paths`, `goals`, and `related_threads` from source into target.
+   * - Closes the source thread with a body note pointing to the target.
+   *
+   * Returns the count of memories that were re-tagged.
+   */
+  async mergeThreads(
+    sourceId: string,
+    targetId: string,
+  ): Promise<{ retaggedCount: number }> {
+    const source = await this.getThread(sourceId);
+    if (!source) throw new Error(`Source thread not found: ${sourceId}`);
+    const target = await this.getThread(targetId);
+    if (!target) throw new Error(`Target thread not found: ${targetId}`);
+
+    // Re-tag all memories belonging to the source thread.
+    const sourceMemos = await this.list({ thread: sourceId });
+    await Promise.all(
+      sourceMemos.map((note) =>
+        this.update(note.path, undefined, { thread: targetId }),
+      ),
+    );
+
+    // Union metadata fields.
+    const sourcePaths = (source.frontmatter.paths as string[] | undefined) ?? [];
+    const targetPaths = (target.frontmatter.paths as string[] | undefined) ?? [];
+    const mergedPaths = [...new Set([...targetPaths, ...sourcePaths])];
+
+    const sourceGoals = (source.frontmatter.goals as string[] | undefined) ?? [];
+    const targetGoals = (target.frontmatter.goals as string[] | undefined) ?? [];
+    const mergedGoals = [...new Set([...targetGoals, ...sourceGoals])];
+
+    const sourceRelated = (source.frontmatter.related_threads as string[] | undefined) ?? [];
+    const targetRelated = (target.frontmatter.related_threads as string[] | undefined) ?? [];
+    const mergedRelated = [
+      ...new Set(
+        [...targetRelated, ...sourceRelated].filter(
+          (id) => id !== sourceId && id !== targetId,
+        ),
+      ),
+    ];
+
+    const targetDesc = (target.frontmatter.description as string | undefined) ?? '';
+    const sourceDesc = (source.frontmatter.description as string | undefined) ?? '';
+    const mergedDesc =
+      targetDesc && sourceDesc
+        ? `${targetDesc}\n\nMerged from ${sourceId}: ${sourceDesc}`
+        : targetDesc || sourceDesc || undefined;
+
+    await this.updateThread(targetId, undefined, {
+      paths: mergedPaths.length > 0 ? mergedPaths : undefined,
+      goals: mergedGoals.length > 0 ? mergedGoals : undefined,
+      related_threads: mergedRelated.length > 0 ? mergedRelated : undefined,
+      description: mergedDesc,
+    });
+
+    // Close the source thread.
+    const date = new Date().toISOString().slice(0, 10);
+    await this.updateThread(
+      sourceId,
+      `Merged into [[${targetId}]] on ${date}. All memories re-tagged to target thread.`,
+      { status: ThreadStatus.Closed },
+    );
+
+    return { retaggedCount: sourceMemos.length };
+  }
+
   // ─── Skill operations ─────────────────────────────────────────────────────
 
   /**

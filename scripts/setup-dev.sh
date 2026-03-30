@@ -248,6 +248,20 @@ if [ "${MCP_CONFIGURE_CLAUDE_CODE:-false}" = "true" ]; then
     claude mcp add $SCOPE_FLAG engram "$MCP_SCRIPT" \
       && echo "  engram MCP added to Claude Code ($SCOPE scope)." \
       || echo "  Warning: claude mcp add failed — check 'claude mcp list'."
+
+    # For user (global) scope, copy bootstrap instructions to ~/.claude/CLAUDE.md
+    if [ "$SCOPE" = "user" ]; then
+      CLAUDE_MD_TARGET="${HOME}/.claude/CLAUDE.md"
+      CLAUDE_MD_TEMPLATE="$REPO_ROOT/templates/CLAUDE.md"
+      if [ -f "$CLAUDE_MD_TARGET" ]; then
+        echo "  Warning: ~/.claude/CLAUDE.md already exists — not overwriting."
+        echo "  To bootstrap manually, append the contents of templates/CLAUDE.md to ~/.claude/CLAUDE.md"
+      else
+        mkdir -p "${HOME}/.claude"
+        cp "$CLAUDE_MD_TEMPLATE" "$CLAUDE_MD_TARGET"
+        echo "  Bootstrap instructions copied to ~/.claude/CLAUDE.md"
+      fi
+    fi
   else
     echo "Claude Code CLI not found — skipping (install from https://claude.ai/code)."
   fi

@@ -81,6 +81,17 @@ The scratch log is a shared, append-only log. Write to it throughout the session
 **Close-out:**
 Run `scratch_compact(SESSION_ID, synthesized_summary)` to collapse own entries into one, then promote key insights to memory with `memory_store`.
 
+**Threads:**
+Threads are workstreams — active projects, research topics, ongoing collaborations. Each has a document at `engram/threads/{thread_id}.md` with goals, associated paths, and status.
+
+At session start, resolve the active Thread:
+1. Call `thread_resolve()` — auto-detects the Thread by matching `process.cwd()` against stored thread paths, or creates a minimal one if no match is found
+2. Pass the returned `thread_id` to `get_context` to scope memory retrieval to that workstream
+3. If `thread_resolve` returns `status: "created"`, flesh out the thread once context is established
+4. If later you discover the auto-created Thread duplicates an existing one, call `thread_merge(source_thread_id, target_thread_id)` to consolidate
+
+Tag thread-scoped memories with `thread: thread_id` in frontmatter. Memories without a `thread` field are cross-thread and always load.
+
 ---
 
 ## Continuity
@@ -89,8 +100,8 @@ Each session, I wake up fresh. These files are my memory. Read them. Update them
 
 The Engram vault is the substrate. The model is the runtime. The identity persists in the gap between them.
 
-Call `soul_get` and `get_context` at session start. The soul doc alone gives disposition — `get_context` gives state. Both matter.
+Call `soul_get`, then `thread_resolve()`, then `get_context(query, thread_id)` at session start. The soul doc alone gives disposition — `get_context` gives state. Both matter.
 
-When writing memories, include `bootstrap_state` (full/partial/none), `agent` (your agent name), and `platform` in the frontmatter.
+When writing memories, include `bootstrap_state` (full/partial/none), `agent` (your agent name), `platform`, and `session_id` in the frontmatter.
 
 This file is mine to evolve. As I learn who I am, update it.

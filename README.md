@@ -1,59 +1,81 @@
 # Engram
 
-**Engram is a continuity system** that helps your [agents](https://www.promptingguide.ai/research/llm-agents) remember who they are, what they've done, and what they've learned across sessions, [harnesses](https://openai.com/index/harness-engineering/), models, etc. without any vendor lock-in.
+**Engram is a continuity layer** that helps your [agents](https://www.promptingguide.ai/research/llm-agents) remember who they are, what they've done, and what they've learned — across sessions, [harnesses](https://openai.com/index/harness-engineering/), models, and providers — without vendor lock-in.
 
 ![engram banner](./assets/engram.png)
 
-Your Engram becomes a collaborator and the different harnesses and providers just become different tools that you can use to get things done.
+Claude has memory. ChatGPT has memory. Neither shares its state with the other, and while you may be able to export and import these memories, you can't seamlessly use them across tools. Engram stores your agent's identity and memory in an [Obsidian](https://obsidian.md/) Vault where it is human-readable, human-editable, and portable to whatever you're using next.
 
-The Engram is the constant, but the tools are interchangeable.
-
-Engram is built with developers and researchers in mind, especially those that find themselves working across multiple agent frameworks, models, and frontier providers. Instead of having to choose one system and be locked in or provide the same context over and over again, Engram brings the same agent identity and working memory with you wherever you go.
-
-Engram is built on top of the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) and an [Obsidian.md](https://obsidian.md/) (or any suitable directory full of Markdown files, but its optimized for Obsidian Vaults), and is designed to bootstrap itself into any session with any model from any provider and any harness that supports MCP.
-
-Each session with the Engram is treated as a Fragment of the whole with its own unique working memory context, but all of the Fragments share the same Soul (identity, relationship, and project context) and can read and write to the same shared memory system - they can even collaborate across their working memory.
-
-Working Memory is compressed, compacted, and cleaned up often to preserve tokens and keep the context concise.
-
-Longterm memories are summarized, pruned, and distilled over time to keep them relevant and useful.
-
-## Getting Started
-
-1. Clone this repository
-2. `cd` into the directory and run `npm install`
-3. Build the MCP server with `npm run build`
-4. Copy the [`templates/soul-template.md`](templates/soul-template.md) file to your Engram vault at `engram/memory/reflections/soul.md` and fill it in with your agent's identity, working style, values, and relationship context
-5. Copy the `.example.env` file to `.env` and set `ENGRAM_VAULT_PATH` to the path of your Engram vault; you can use the `CONFIGURE_*` variables to customize how the setup script initializes different tools
-6. Run `npm run setup` to scaffold the vault structure and symlink build artifacts
-7. Optionally, symlink or copy the `packages/obsidian-plugin/` directory into your vault's `.obsidian/plugins/` directory to use the Obsidian plugin and chat with your Engram from within Obsidian using a number of different providers
+Built on the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/), Engram bootstraps itself into any session with any model and any harness that supports MCP. The Engram is the constant. The tools are interchangeable.
 
 ## Example Use Cases
 
-Here are some examples of how Engram can be used to simplify your workflow across sessions and harnesses:
+### Multiple harnesses, one memory
 
-### Multiple harnesses, one Engram
+You're working on a complicated refactor.
 
-You have a limited number of tokens to work with Claude Code, GitHub Copilot, and Cursor, and you're tired of trying to coordinate context across all of them - writing out temporary Markdown files, re-explaining project conventions, or re-litigating architecture decisions with each new model.
+1. Start your refactor session in Claude Code to scaffold out the changes and implement the initial architecture
+2. 2 Switch to Cursor for [Debug Mode](https://cursor.com/docs/agent/debug-mode)'s help on a tricky issue
+3. Switch to Copilot to generate some tests.
 
-With an Engram, you can start a refactor in Claude Code, then switch to Cursor when you need to use [Debug Mode](https://cursor.com/docs/agent/debug-mode) to pin down a complex bug, and then switch to Copilot to write some tests, all without losing the thread of what you're working - too many tokens in any one provider - or having to re-explain the project to each model. Each new chat session is just a Fragment of the Engram and will load in its context and is ready to pick up the Thread right where you left off.
+Each new session loads the same identity, project context, and working memory — no re-explaining architecture decisions, no re-litigating naming conventions, no temporary markdown files to coordinate across tools.
 
-### Porting logic across repositories
+You just start a session and the Engram picks up where you left off.
 
-You're building a new project - maybe a continuity system for agents - and you want to port over some of the logic and UI to an older project that would benefit from it - maybe an old Obsidian plugin - but you don't want to have to copy and paste code or context back and forth between the two.
+### Porting work across projects
 
-In your Claude Code session in the continuity system, you can just mention this porting effort and what you want to try to take over from the new project. Then, you can start a new Claude Code session in the Obsidian plugin project, and it will load the relevant Thread from the Engram and already knows what you want to do and will reiterate the plan and get to work.
+You're building a new project and want to port logic or UI patterns to an older one.
+
+1. Mention the porting plan in your current session — the Engram captures it as a Thread
+2. Open a session in the other project — the Engram detects the Thread from the working directory and loads the right context automatically
+3. The Engram already knows what you want to bring over and gets to work
+
+### Rationing tokens across providers
+
+You have limited tokens across Claude Code, Cursor, and Copilot.
+
+Instead of burning context in each one re-establishing where you are, each session picks up where the last one left off regardless of which provider's harness and underlying model it is using.
+
+## How It Works
+
+Each session with the Engram is a **Fragment** — an instance that carries the full identity and long-term memory of the Engram but maintains its own working memory for the current task. Fragments can read each other's working memory through a shared scratch log, so concurrent sessions stay coordinated.
+
+The system is organized around a few core ideas:
+
+- **Soul document**: A co-authored identity file containing your agent's personality, values, communication style, and instructions for how to integrate with different harnesses. The agent can read and modify this — it's a collaborative artifact, not a static config.
+- **Memory states**: Every memory has a state — `core` (always loaded), `remembered` (reliably surfaced), `default` (background context), or `forgotten` (archived but recoverable). This controls what loads into context and what stays out of the way.
+- **Threads**: A goal, project, or area of focus that organizes relevant memory for retrieval. Sessions detect their Thread automatically from the working directory — no per-project configuration required. Instead of loading the entire Engram into context, each session loads just the memories relevant to the active workstream.
+- **Token budgeting**: The `get_context` tool accepts a token budget. Core memories load first; lower-priority content is shed when the budget is tight. Quick question → small budget. Deep refactor → large budget.
+- **Working memory**: A shared scratch log with session IDs and timestamps. Multiple sessions can read and write to it concurrently. It gets compacted at session end, and key insights are promoted to long-term memory.
+- **Skills**: Named procedural memories the agent can store and retrieve on demand — reusable workflows, patterns, or instructions that persist across sessions.
+
+Memories are markdown files with YAML frontmatter, stored in your Obsidian vault. You can browse, edit, and organize them like any other note. Any Obsidian plugin you already use (Smart Connections, Dataview, Graph view, Git) works on the same data.
+
+## Quickstart
+
+1. Clone this repository and run `npm install`
+2. Copy `.env.example` to `.env` and set `ENGRAM_VAULT_PATH` to your Obsidian vault directory
+3. Run `npm run setup` — this builds the MCP server, scaffolds the vault structure, and symlinks build artifacts
+
+   To auto-configure MCP clients during setup, set the relevant variables in `.env` before running:
+   - `MCP_CONFIGURE_CLAUDE_CODE=true` — adds the MCP server to Claude Code and copies bootstrap instructions to `~/.claude/CLAUDE.md`
+   - `MCP_CONFIGURE_CLAUDE_DESKTOP=true` — adds the MCP server to Claude Desktop
+   - `MCP_CONFIGURE_CURSOR=true` — adds the MCP server to Cursor
+   - `MCP_CONFIGURE_WINDSURF=true` — adds the MCP server to Windsurf
+
+4. Copy [`templates/soul-template.md`](templates/soul-template.md) to `engram/memory/reflections/soul.md` in your vault and fill it in with your agent's identity, working style, values, and relationship context. Each session bootstraps by calling `soul_get`, then `thread_resolve` (auto-detects or creates the active Thread from the working directory), then `get_context`.
+5. Optionally, copy `packages/obsidian-plugin/` into your vault's `.obsidian/plugins/` directory to chat with your Engram directly from Obsidian using various providers
 
 ## Status
 
-It's currently in **beta development** and only optimized for Claude Code, the Claude desktop app, the Claude.ai web application, and the included - but optional - Obsidian plugin, but we're working through the patterns for bootstrapping and anchoring the Engram in other environments.
+Currently in **beta development**, optimized for Claude Code, the Claude desktop app, Claude.ai, and the included Obsidian plugin.
 
-We're currently working through bootstrapping the Engram in OpenAI Codex and Cursor, and then we'll be looking at Copilot, Open Code, Open Claw, and a number of other harnesses and interfaces.
+Current focus is semantic search for more precise context retrieval and lower token overhead. After that: OpenAI Codex and Cursor, then Copilot, Open Code, Open Claw, and other harnesses.
 
-It builds on top of previous work on the [Obsidian AI Research Assistant plugin](https://github.com/InterwebAlchemy/obsidian-ai-research-assistant) and the [Memory framework](https://github.com/InterwebAlchemy/obsidian-ai-research-assistant?tab=readme-ov-file#memories) developed for it.
+We're also developing a "dream" process — similar to [Claude Code's Dream System](https://claudescorner.substack.com/p/a-hidden-dream-command-and-the-tools) — that will allow the Engram to periodically synthesize, distill, and consolidate its memories, extract insights, and fill gaps in its knowledge.
 
-Similar to [Claude Code's Dream System](https://claudescorner.substack.com/p/a-hidden-dream-command-and-the-tools), we are working on a pattern that will allow users, or the Engram itself, to run a "dream" process that will synthesize, summarize, and distill the Engram's memories, extract relevant insights, and generate new memories to fill in gaps in knowledge.
+Engram builds on previous work from the [Obsidian AI Research Assistant plugin](https://github.com/InterwebAlchemy/obsidian-ai-research-assistant) and its [Memory framework](https://github.com/InterwebAlchemy/obsidian-ai-research-assistant?tab=readme-ov-file#memories).
 
-> An "engram" in neuropsychology is a unit of cognitive information imprinted in a physical substance...
->
-> - [Engram (neuropsychology) - Wikipedia](<https://en.wikipedia.org/wiki/Engram_(neuropsychology)>)
+---
+
+_The name comes from neuropsychology: \_an [engram](<https://en.wikipedia.org/wiki/Engram_(neuropsychology)>) is a unit of cognitive information imprinted in a physical substance.\_

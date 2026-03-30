@@ -496,6 +496,56 @@ const TOOLS = [
     description: 'List all Thread documents with their status, goals, and paths.',
     inputSchema: { type: 'object', properties: {} },
   },
+  {
+    name: 'thread_resolve',
+    description:
+      'Resolve the active Thread for this session from environment context (working directory). ' +
+      'Call this after soul_get instead of thread_get when no thread_id is known in advance. ' +
+      'Matches threads by comparing their stored paths against the current working directory. ' +
+      'If no match is found, auto-creates a minimal thread from the directory name (unless auto_create is false). ' +
+      'Returns the thread_id, whether it was freshly created, and the full thread document. ' +
+      'Pass the returned thread_id to get_context to scope memory retrieval.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        cwd: {
+          type: 'string',
+          description:
+            'Current working directory to match against thread paths. ' +
+            'Defaults to process.cwd() if omitted.',
+        },
+        auto_create: {
+          type: 'boolean',
+          description:
+            'If true (default), auto-create a minimal thread when no match is found. ' +
+            'Set to false to return an error instead of creating.',
+        },
+      },
+    },
+  },
+  {
+    name: 'thread_merge',
+    description:
+      'Merge a source Thread into a target Thread. ' +
+      'Use this when you discover an auto-created thread duplicates an existing one. ' +
+      'Re-tags all memories from the source thread to the target thread, ' +
+      'unions paths/goals/related_threads into the target, ' +
+      'and closes the source thread with a note pointing to the target.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        source_thread_id: {
+          type: 'string',
+          description: 'Thread to merge from (will be closed after merge).',
+        },
+        target_thread_id: {
+          type: 'string',
+          description: 'Thread to merge into (will absorb source metadata and memories).',
+        },
+      },
+      required: ['source_thread_id', 'target_thread_id'],
+    },
+  },
 ] as const;
 
 // ─── Tool registration ─────────────────────────────────────────────────────────
@@ -987,6 +1037,52 @@ export function registerTools(server: Server, manager: MemoryManager): void {
           }));
           return {
             content: [{ type: 'text', text: JSON.stringify(results, null, 2) }],
+          };
+        }
+
+        case 'thread_resolve': {
+          const a = args as { cwd?: string; auto_create?: boolean };
+          const result = await manager.resolveThread({
+            cwd: a.cwd,
+            autoCreate: a.auto_create,
+          });
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify(
+                  {
+                    thread_id: result.threadId,
+                    status: result.created ? 'created' : 'found',
+                    thread: result.thread.serialize(),
+                  },
+                  null,
+                  2,
+                ),
+              },
+            ],
+          };
+        }
+
+        case 'thread_merge': {
+          const a = args as { source_thread_id: string; target_thread_id: string };
+          const result = await manager.mergeThreads(a.source_thread_id, a.target_thread_id);
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify(
+                  {
+                    source_thread_id: a.source_thread_id,
+                    target_thread_id: a.target_thread_id,
+                    retagged_count: result.retaggedCount,
+                    source_status: 'closed',
+                  },
+                  null,
+                  2,
+                ),
+              },
+            ],
           };
         }
 
