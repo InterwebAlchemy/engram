@@ -1,4 +1,10 @@
+import * as os from 'os';
 import * as path from 'path';
+
+/** Expand a leading `~` to the current user's home directory. */
+function expandHome(p: string): string {
+  return p.startsWith('~') ? os.homedir() + p.slice(1) : p;
+}
 import type { FileSystemAdapter } from './adapters/types';
 import {
   MemoryState,
@@ -422,9 +428,10 @@ export class MemoryManager {
    */
   async resolveThread(hints: {
     cwd?: string;
+    gitRemote?: string;
     autoCreate?: boolean;
   }): Promise<{ threadId: string; created: boolean; thread: VaultNote }> {
-    const cwd = path.resolve(hints.cwd ?? process.cwd());
+    const cwd = path.resolve(expandHome(hints.cwd ?? process.cwd()));
     const autoCreate = hints.autoCreate ?? true;
 
     const threads = await this.listThreads();
@@ -440,27 +447,46 @@ export class MemoryManager {
     let bestStatusRank = -1;
 
     for (const thread of threads) {
+      const rank = statusRank(thread.frontmatter.status);
+
+      // Primary signal: path prefix match.
       const paths = thread.frontmatter.paths as string[] | undefined;
-      if (!paths || paths.length === 0) continue;
+      if (paths && paths.length > 0) {
+        for (const threadPath of paths) {
+          const resolved = path.resolve(expandHome(threadPath));
+          const cwdInThread = cwd === resolved || cwd.startsWith(resolved + path.sep);
+          const threadInCwd = resolved === cwd || resolved.startsWith(cwd + path.sep);
+          if (!cwdInThread && !threadInCwd) continue;
 
-      for (const threadPath of paths) {
-        const resolved = path.resolve(threadPath);
-        const cwdInThread = cwd === resolved || cwd.startsWith(resolved + path.sep);
-        const threadInCwd = resolved === cwd || resolved.startsWith(cwd + path.sep);
-        if (!cwdInThread && !threadInCwd) continue;
+          // Score by the length of the more specific (longer) path — longer = tighter match.
+          const overlapScore = cwdInThread ? resolved.length : cwd.length;
 
-        // Score by the length of the more specific (longer) path — longer = tighter match.
-        const overlapScore = cwdInThread ? resolved.length : cwd.length;
-        const rank = statusRank(thread.frontmatter.status);
+          if (
+            bestThread === null ||
+            rank > bestStatusRank ||
+            (rank === bestStatusRank && overlapScore > bestScore)
+          ) {
+            bestThread = thread;
+            bestScore = overlapScore;
+            bestStatusRank = rank;
+          }
+        }
+      }
 
-        if (
-          bestThread === null ||
-          rank > bestStatusRank ||
-          (rank === bestStatusRank && overlapScore > bestScore)
-        ) {
-          bestThread = thread;
-          bestScore = overlapScore;
-          bestStatusRank = rank;
+      // Secondary signal: git remote URL match (only promotes if no path match yet or same rank).
+      if (hints.gitRemote) {
+        const repos = thread.frontmatter.repositories as string[] | undefined;
+        if (repos && repos.some((r) => r === hints.gitRemote)) {
+          // Remote match scores lower than any path match (score = 0).
+          if (
+            bestThread === null ||
+            rank > bestStatusRank ||
+            (rank === bestStatusRank && bestScore < 0)
+          ) {
+            bestThread = thread;
+            bestScore = 0;
+            bestStatusRank = rank;
+          }
         }
       }
     }

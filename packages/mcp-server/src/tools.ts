@@ -502,6 +502,7 @@ const TOOLS = [
       'Resolve the active Thread for this session from environment context (working directory). ' +
       'Call this after soul_get instead of thread_get when no thread_id is known in advance. ' +
       'Matches threads by comparing their stored paths against the current working directory. ' +
+      'If no path match is found, falls back to matching the git_remote URL against thread repositories fields. ' +
       'If no match is found, auto-creates a minimal thread from the directory name (unless auto_create is false). ' +
       'Returns the thread_id, whether it was freshly created, and the full thread document. ' +
       'Pass the returned thread_id to get_context to scope memory retrieval.',
@@ -513,6 +514,13 @@ const TOOLS = [
           description:
             'Current working directory to match against thread paths. ' +
             'Defaults to process.cwd() if omitted.',
+        },
+        git_remote: {
+          type: 'string',
+          description:
+            'Git remote URL of the current repository (e.g. from `git remote get-url origin`). ' +
+            'Used as a secondary matching signal against the repositories field in thread documents. ' +
+            'Useful when paths are stale or the repo is cloned to a non-standard location.',
         },
         auto_create: {
           type: 'boolean',
@@ -1041,9 +1049,10 @@ export function registerTools(server: Server, manager: MemoryManager): void {
         }
 
         case 'thread_resolve': {
-          const a = args as { cwd?: string; auto_create?: boolean };
+          const a = args as { cwd?: string; git_remote?: string; auto_create?: boolean };
           const result = await manager.resolveThread({
             cwd: a.cwd,
+            gitRemote: a.git_remote,
             autoCreate: a.auto_create,
           });
           return {
