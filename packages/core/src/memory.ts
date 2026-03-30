@@ -3,6 +3,7 @@ import type { FileSystemAdapter } from './adapters/types';
 import {
   MemoryState,
   MemoryType,
+  ThreadStatus,
   SOUL_DOCUMENT_SLUG,
 } from './types';
 import type {
@@ -11,6 +12,8 @@ import type {
   ContextSection,
   TokenBudget,
   NoteFrontmatter,
+  ThreadFrontmatter,
+  ThreadFields,
   Confidence,
   ScratchEntry,
   ScratchReadOptions,
@@ -83,6 +86,14 @@ export class MemoryManager {
   private memoryTypeDir(type: MemoryType | string): string {
     const dirName = MemoryManager.TYPE_DIRS[type] ?? type;
     return path.join(this.writeRoot, this.config.memoryPath, dirName);
+  }
+
+  private threadDir(): string {
+    return path.join(this.writeRoot, this.config.threadsPath);
+  }
+
+  private threadPath(threadId: string): string {
+    return path.join(this.threadDir(), `${threadId}.md`);
   }
 
   private conversationDir(dateStr?: string): string {
@@ -218,7 +229,7 @@ export class MemoryManager {
    * getSoulDocument() / soul_get so harnesses that inject it at the
    * system-prompt level don't receive a duplicate copy here.
    */
-  async getContext(query: string, budget: TokenBudget): Promise<ContextSection[]> {
+  async getContext(query: string, budget: TokenBudget, threadId?: string): Promise<ContextSection[]> {
     const dir = path.join(this.writeRoot, this.config.memoryPath);
     const allFiles = await this.adapter.list(dir);
 
@@ -228,20 +239,33 @@ export class MemoryManager {
     const valid = allNotes.filter((n): n is VaultNote => n !== null);
 
     const soulPath = path.join(this.memoryTypeDir(MemoryType.Reflection), `${SOUL_DOCUMENT_SLUG}.md`);
+
+    // Core memories always load regardless of thread — core is core.
     const coreNotes = valid.filter(
       (n) => n.frontmatter.memory_state === MemoryState.Core && n.path !== soulPath,
     );
-    const rememberedNotes = valid.filter(
-      (n) => n.frontmatter.memory_state === MemoryState.Remembered,
-    );
 
+    // Remembered: load if unthreaded (cross-thread) or matching active thread.
+    // Exclude remembered memories tagged to a different thread.
+    const rememberedNotes = valid.filter((n) => {
+      if (n.frontmatter.memory_state !== MemoryState.Remembered) return false;
+      if (!threadId) return true;
+      const noteThread = n.frontmatter.thread as string | undefined;
+      return !noteThread || noteThread === threadId;
+    });
+
+    // Default: search-relevant, unthreaded or matching active thread.
     const searchResults = await this.search(query);
-    const relevantNotes = searchResults.filter(
-      (n) =>
-        n.frontmatter.memory_state !== MemoryState.Forgotten &&
-        n.frontmatter.memory_state !== MemoryState.Core &&
-        n.frontmatter.memory_state !== MemoryState.Remembered,
-    );
+    const relevantNotes = searchResults.filter((n) => {
+      if (
+        n.frontmatter.memory_state === MemoryState.Forgotten ||
+        n.frontmatter.memory_state === MemoryState.Core ||
+        n.frontmatter.memory_state === MemoryState.Remembered
+      ) return false;
+      if (!threadId) return true;
+      const noteThread = n.frontmatter.thread as string | undefined;
+      return !noteThread || noteThread === threadId;
+    });
 
     const builder = new ContextBuilder();
 
@@ -249,7 +273,6 @@ export class MemoryManager {
       builder.addSection(`memory:${n.path}`, n.content, 90);
     }
     for (const n of rememberedNotes) {
-      // Use summary if available — full content on demand via memory_read
       const body = n.frontmatter.summary as string | undefined ?? n.content;
       builder.addSection(`memory:${n.path}`, body, 70);
     }
@@ -293,6 +316,94 @@ export class MemoryManager {
     };
 
     return VaultNote.create(this.adapter, filePath, frontmatter, content);
+  }
+
+  // ─── Thread operations ────────────────────────────────────────────────────
+
+  /**
+   * Get a thread document by ID. Returns null if not found.
+   */
+  async getThread(threadId: string): Promise<VaultNote | null> {
+    return VaultNote.read(this.adapter, this.threadPath(threadId)).catch(() => null);
+  }
+
+  /**
+   * Create or overwrite a thread document.
+   * Stored at engram/threads/{threadId}.md.
+   */
+  async setThread(
+    threadId: string,
+    content: string,
+    fields: ThreadFields = {},
+  ): Promise<VaultNote> {
+    const dir = this.threadDir();
+    const filePath = this.threadPath(threadId);
+
+    this.assertWriteAllowed(filePath);
+    await this.adapter.mkdir(dir);
+
+    const existing = await VaultNote.read(this.adapter, filePath).catch(() => null);
+    const now = new Date().toISOString();
+
+    const frontmatter: ThreadFrontmatter = {
+      type: 'thread',
+      thread_id: threadId,
+      name: fields.name ?? threadId,
+      status: fields.status ?? ThreadStatus.Active,
+      created: existing?.frontmatter.created as string ?? now,
+      updated: now,
+      tags: fields.tags ?? [`engram/thread`, `engram/thread/${threadId}`],
+    };
+    if (fields.description !== undefined) frontmatter.description = fields.description;
+    if (fields.goals !== undefined) frontmatter.goals = fields.goals;
+    if (fields.paths !== undefined) frontmatter.paths = fields.paths;
+    if (fields.related_threads !== undefined) frontmatter.related_threads = fields.related_threads;
+
+    return VaultNote.create(this.adapter, filePath, frontmatter as unknown as NoteFrontmatter, content);
+  }
+
+  /**
+   * Update an existing thread document's content and/or frontmatter fields.
+   */
+  async updateThread(
+    threadId: string,
+    content?: string,
+    fields?: ThreadFields,
+  ): Promise<VaultNote> {
+    const filePath = this.threadPath(threadId);
+    this.assertWriteAllowed(filePath);
+
+    const note = await VaultNote.read(this.adapter, filePath);
+
+    if (content !== undefined) {
+      note.content = content;
+    }
+    if (fields) {
+      const updates: Record<string, unknown> = { updated: new Date().toISOString() };
+      if (fields.name !== undefined) updates.name = fields.name;
+      if (fields.description !== undefined) updates.description = fields.description;
+      if (fields.status !== undefined) updates.status = fields.status;
+      if (fields.goals !== undefined) updates.goals = fields.goals;
+      if (fields.paths !== undefined) updates.paths = fields.paths;
+      if (fields.related_threads !== undefined) updates.related_threads = fields.related_threads;
+      if (fields.tags !== undefined) updates.tags = fields.tags;
+      note.updateFrontmatter(updates as Partial<NoteFrontmatter>);
+    }
+
+    await note.save(this.adapter);
+    return note;
+  }
+
+  /**
+   * List all thread documents.
+   */
+  async listThreads(): Promise<VaultNote[]> {
+    const dir = this.threadDir();
+    const files = await this.adapter.list(dir).catch(() => [] as string[]);
+    const notes = await Promise.all(
+      files.map((f) => VaultNote.read(this.adapter, f).catch(() => null)),
+    );
+    return notes.filter((n): n is VaultNote => n !== null);
   }
 
   // ─── Skill operations ─────────────────────────────────────────────────────
@@ -589,6 +700,9 @@ export class MemoryManager {
     }
     if (filters.platform !== undefined) {
       result = result.filter((n) => n.frontmatter.platform === filters.platform);
+    }
+    if (filters.thread !== undefined) {
+      result = result.filter((n) => n.frontmatter.thread === filters.thread);
     }
     if (filters.limit !== undefined) {
       result = result.slice(0, filters.limit);

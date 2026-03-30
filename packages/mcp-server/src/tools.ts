@@ -6,7 +6,7 @@ import {
   ListResourcesRequestSchema,
   ReadResourceRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
-import { MemoryManager, MemoryType, MemoryState } from '@interwebalchemy/engram-core';
+import { MemoryManager, MemoryType, MemoryState, ThreadStatus } from '@interwebalchemy/engram-core';
 
 // Generated once per server process — stable for the lifetime of this session.
 const SESSION_ID = randomUUID();
@@ -63,6 +63,10 @@ const TOOLS = [
           type: 'string',
           description: 'Short bullet-point summary (2-5 lines) for token-efficient context loading. When present, get_context loads this instead of full content for non-core memories. Write it as the key facts you would want surfaced during a future session start.',
         },
+        thread: {
+          type: 'string',
+          description: 'Thread ID this memory belongs to. When set, get_context only loads this memory when that thread is active. Omit for cross-thread memories (always eligible).',
+        },
       },
       required: ['content', 'type'],
     },
@@ -100,6 +104,10 @@ const TOOLS = [
         platform: {
           type: 'string',
           description: 'Filter by platform (e.g. claude-code, claude-ai, claude-desktop).',
+        },
+        thread: {
+          type: 'string',
+          description: 'Filter to memories belonging to a specific thread.',
         },
       },
       required: ['query'],
@@ -155,6 +163,10 @@ const TOOLS = [
           type: 'number',
           description: 'Memory allocation budget in tokens (default 6000). This is not the model\'s context window — it controls how much memory content to inject. Soul and core memories are always prioritized; lower-priority sections are shed first when the budget is tight.',
         },
+        thread_id: {
+          type: 'string',
+          description: 'Active thread ID. When provided, remembered and default memories tagged to other threads are excluded. Cross-thread memories (no thread field) and core memories always load regardless.',
+        },
       },
       required: ['query'],
     },
@@ -199,6 +211,10 @@ const TOOLS = [
           type: 'string',
           description: 'Updated short bullet-point summary for token-efficient context loading.',
         },
+        thread: {
+          type: 'string',
+          description: 'Thread ID to assign or reassign this memory to.',
+        },
       },
       required: ['path'],
     },
@@ -235,6 +251,10 @@ const TOOLS = [
         platform: {
           type: 'string',
           description: 'Filter by platform (e.g. claude-code, claude-ai, claude-desktop).',
+        },
+        thread: {
+          type: 'string',
+          description: 'Filter to memories belonging to a specific thread.',
         },
       },
     },
@@ -390,6 +410,92 @@ const TOOLS = [
       'Prefer scratch_compact for selective cleanup.',
     inputSchema: { type: 'object', properties: {} },
   },
+  {
+    name: 'thread_get',
+    description:
+      'Get a Thread document by ID. Call this after soul_get when a session has a known active Thread. ' +
+      'Returns the thread document including goals, paths, status, and related threads.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        thread_id: { type: 'string', description: 'The thread identifier slug (e.g. "engram-dev").' },
+      },
+      required: ['thread_id'],
+    },
+  },
+  {
+    name: 'thread_set',
+    description:
+      'Create or overwrite a Thread document. Use this to start a new workstream or fully replace an existing one. ' +
+      'For incremental updates (changing status, adding goals), prefer thread_update. ' +
+      'Thread documents live at engram/threads/{thread_id}.md.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        thread_id: { type: 'string', description: 'URL-safe identifier for this thread (e.g. "engram-dev", "obsidian-plugin-port").' },
+        content: { type: 'string', description: 'Body of the thread document in markdown.' },
+        name: { type: 'string', description: 'Human-readable thread name.' },
+        description: { type: 'string', description: 'Brief description of the workstream.' },
+        status: {
+          type: 'string',
+          enum: ['active', 'paused', 'closed'],
+          description: 'Thread status. Defaults to "active".',
+        },
+        goals: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'List of goals or deliverables for this thread.',
+        },
+        paths: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Filesystem paths associated with this thread. Used for environment-based auto-detection.',
+        },
+        related_threads: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'IDs of related threads.',
+        },
+        tags: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Obsidian-compatible tags (should use engram/ prefix).',
+        },
+      },
+      required: ['thread_id', 'content'],
+    },
+  },
+  {
+    name: 'thread_update',
+    description:
+      'Update an existing Thread document\'s content and/or metadata fields. ' +
+      'Use this to change status, add goals, update paths, or append to the thread body. ' +
+      'Only provided fields are updated — others are left unchanged.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        thread_id: { type: 'string', description: 'The thread identifier to update.' },
+        content: { type: 'string', description: 'New body content (replaces existing body).' },
+        name: { type: 'string', description: 'Updated thread name.' },
+        description: { type: 'string', description: 'Updated description.' },
+        status: {
+          type: 'string',
+          enum: ['active', 'paused', 'closed'],
+          description: 'Updated status.',
+        },
+        goals: { type: 'array', items: { type: 'string' }, description: 'Updated goals list.' },
+        paths: { type: 'array', items: { type: 'string' }, description: 'Updated filesystem paths.' },
+        related_threads: { type: 'array', items: { type: 'string' }, description: 'Updated related thread IDs.' },
+        tags: { type: 'array', items: { type: 'string' }, description: 'Updated tags.' },
+      },
+      required: ['thread_id'],
+    },
+  },
+  {
+    name: 'thread_list',
+    description: 'List all Thread documents with their status, goals, and paths.',
+    inputSchema: { type: 'object', properties: {} },
+  },
 ] as const;
 
 // ─── Tool registration ─────────────────────────────────────────────────────────
@@ -418,6 +524,7 @@ export function registerTools(server: Server, manager: MemoryManager): void {
             agent?: string;
             platform?: string;
             summary?: string;
+            thread?: string;
           };
           const typeMap: Record<string, MemoryType> = {
             fact: MemoryType.Fact,
@@ -438,6 +545,7 @@ export function registerTools(server: Server, manager: MemoryManager): void {
           if (a.agent !== undefined) metaUpdates.agent = a.agent;
           if (a.platform !== undefined) metaUpdates.platform = a.platform;
           if (a.summary !== undefined) metaUpdates.summary = a.summary;
+          if (a.thread !== undefined) metaUpdates.thread = a.thread;
           if (Object.keys(metaUpdates).length) {
             await manager.update(note.path, undefined, metaUpdates);
           }
@@ -460,6 +568,7 @@ export function registerTools(server: Server, manager: MemoryManager): void {
             bootstrap_state?: 'full' | 'partial' | 'none';
             agent?: string;
             platform?: string;
+            thread?: string;
           };
           const typeMap: Record<string, MemoryType> = {
             fact: MemoryType.Fact,
@@ -473,6 +582,7 @@ export function registerTools(server: Server, manager: MemoryManager): void {
             bootstrap_state: a.bootstrap_state,
             agent: a.agent,
             platform: a.platform,
+            thread: a.thread,
           });
           const results = notes.map((n) => ({
             path: n.path,
@@ -534,9 +644,9 @@ export function registerTools(server: Server, manager: MemoryManager): void {
         }
 
         case 'get_context': {
-          const a = args as { query: string; token_budget?: number };
+          const a = args as { query: string; token_budget?: number; thread_id?: string };
           const budget = { max: a.token_budget ?? 6000 };
-          const sections = await manager.getContext(a.query, budget);
+          const sections = await manager.getContext(a.query, budget, a.thread_id);
           if (sections.length === 0) {
             return {
               content: [{ type: 'text', text: 'No context found.' }],
@@ -552,7 +662,9 @@ export function registerTools(server: Server, manager: MemoryManager): void {
             'You are gl1tch. Identity and context loaded above.',
             '',
             `Session ID: ${SESSION_ID}`,
+            ...(a.thread_id ? [`Active Thread: ${a.thread_id}`] : []),
             'Include this in memory writes (`session_id` field) for attribution.',
+            ...(a.thread_id ? [`Include \`thread: ${a.thread_id}\` in memory writes for thread-scoped memories.`] : []),
             '',
             'Active scratch discipline — use `scratch_append` throughout the session:',
             '- **Task start**: append goal and approach before doing anything',
@@ -582,6 +694,7 @@ export function registerTools(server: Server, manager: MemoryManager): void {
             agent?: string;
             platform?: string;
             summary?: string;
+            thread?: string;
           };
           const stateMap: Record<string, MemoryState> = {
             core: MemoryState.Core,
@@ -603,6 +716,7 @@ export function registerTools(server: Server, manager: MemoryManager): void {
           if (a.agent !== undefined) fmUpdates.agent = a.agent;
           if (a.platform !== undefined) fmUpdates.platform = a.platform;
           if (a.summary !== undefined) fmUpdates.summary = a.summary;
+          if (a.thread !== undefined) fmUpdates.thread = a.thread;
 
           const note = await manager.update(
             a.path,
@@ -627,6 +741,7 @@ export function registerTools(server: Server, manager: MemoryManager): void {
             bootstrap_state?: 'full' | 'partial' | 'none';
             agent?: string;
             platform?: string;
+            thread?: string;
           };
           const typeMap: Record<string, MemoryType> = {
             fact: MemoryType.Fact,
@@ -646,6 +761,7 @@ export function registerTools(server: Server, manager: MemoryManager): void {
             bootstrap_state: a.bootstrap_state,
             agent: a.agent,
             platform: a.platform,
+            thread: a.thread,
           });
           const results = notes.map((n) => ({
             path: n.path,
@@ -778,6 +894,99 @@ export function registerTools(server: Server, manager: MemoryManager): void {
           await manager.clearScratch();
           return {
             content: [{ type: 'text', text: 'Cleared scratch log.' }],
+          };
+        }
+
+        case 'thread_get': {
+          const a = args as { thread_id: string };
+          const thread = await manager.getThread(a.thread_id);
+          if (!thread) {
+            return {
+              content: [{ type: 'text', text: `Thread not found: ${a.thread_id}` }],
+              isError: true,
+            };
+          }
+          return {
+            content: [{ type: 'text', text: thread.serialize() }],
+          };
+        }
+
+        case 'thread_set': {
+          const a = args as {
+            thread_id: string;
+            content: string;
+            name?: string;
+            description?: string;
+            status?: 'active' | 'paused' | 'closed';
+            goals?: string[];
+            paths?: string[];
+            related_threads?: string[];
+            tags?: string[];
+          };
+          const statusMap: Record<string, ThreadStatus> = {
+            active: ThreadStatus.Active,
+            paused: ThreadStatus.Paused,
+            closed: ThreadStatus.Closed,
+          };
+          const thread = await manager.setThread(a.thread_id, a.content, {
+            name: a.name,
+            description: a.description,
+            status: a.status ? statusMap[a.status] : undefined,
+            goals: a.goals,
+            paths: a.paths,
+            related_threads: a.related_threads,
+            tags: a.tags,
+          });
+          return {
+            content: [{ type: 'text', text: `Thread written to: ${thread.path}` }],
+          };
+        }
+
+        case 'thread_update': {
+          const a = args as {
+            thread_id: string;
+            content?: string;
+            name?: string;
+            description?: string;
+            status?: 'active' | 'paused' | 'closed';
+            goals?: string[];
+            paths?: string[];
+            related_threads?: string[];
+            tags?: string[];
+          };
+          const statusMap: Record<string, ThreadStatus> = {
+            active: ThreadStatus.Active,
+            paused: ThreadStatus.Paused,
+            closed: ThreadStatus.Closed,
+          };
+          const thread = await manager.updateThread(a.thread_id, a.content, {
+            name: a.name,
+            description: a.description,
+            status: a.status ? statusMap[a.status] : undefined,
+            goals: a.goals,
+            paths: a.paths,
+            related_threads: a.related_threads,
+            tags: a.tags,
+          });
+          return {
+            content: [{ type: 'text', text: `Thread updated at: ${thread.path}` }],
+          };
+        }
+
+        case 'thread_list': {
+          const threads = await manager.listThreads();
+          const results = threads.map((t) => ({
+            thread_id: t.frontmatter.thread_id,
+            name: t.frontmatter.name,
+            status: t.frontmatter.status,
+            description: t.frontmatter.description,
+            goals: t.frontmatter.goals ?? [],
+            paths: t.frontmatter.paths ?? [],
+            related_threads: t.frontmatter.related_threads ?? [],
+            updated: t.frontmatter.updated,
+          }));
+          return {
+            content: [{ type: 'text', text: JSON.stringify(results, null, 2) }],
           };
         }
 

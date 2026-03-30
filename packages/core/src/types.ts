@@ -1,3 +1,38 @@
+// ─── Thread ───────────────────────────────────────────────────────────────────
+
+export enum ThreadStatus {
+  Active = 'active',
+  Paused = 'paused',
+  Closed = 'closed',
+}
+
+export interface ThreadFrontmatter {
+  type: 'thread';
+  thread_id: string;
+  name: string;
+  description?: string;
+  status: ThreadStatus;
+  goals?: string[];
+  /** Filesystem paths associated with this thread (used for environment-based auto-detection). */
+  paths?: string[];
+  related_threads?: string[];
+  created: string;   // ISO 8601
+  updated: string;   // ISO 8601
+  tags?: string[];
+  [key: string]: unknown;
+}
+
+/** Input shape for creating/updating a Thread — no index signature, all optional. */
+export interface ThreadFields {
+  name?: string;
+  description?: string;
+  status?: ThreadStatus;
+  goals?: string[];
+  paths?: string[];
+  related_threads?: string[];
+  tags?: string[];
+}
+
 // ─── Soul Document ────────────────────────────────────────────────────────────
 
 /**
@@ -71,6 +106,11 @@ export interface NoteFrontmatter {
    * full content regardless.
    */
   summary?: string;
+  /**
+   * Thread ID this memory belongs to. When set, get_context will only load this memory
+   * when the matching thread is active. Unset memories are cross-thread and always eligible.
+   */
+  thread?: string;
   [key: string]: unknown;
 }
 
@@ -117,6 +157,7 @@ export interface MemoryConfig {
   mode: 'integrated' | 'standalone';
   engramRoot: string;
   memoryPath: string;
+  threadsPath: string;
   conversationsPath: string;
   workingPath: string;
   scratchFile: string;
@@ -134,6 +175,7 @@ export function defaultMemoryConfig(
     mode,
     engramRoot: mode === 'integrated' ? 'engram' : '.',
     memoryPath: 'memory',
+    threadsPath: 'threads',
     conversationsPath: 'conversations',
     workingPath: 'working',
     scratchFile: '.scratch',
@@ -214,4 +256,6 @@ export interface MemoryFilters {
   bootstrap_state?: BootstrapState;
   agent?: string;
   platform?: string;
+  /** Filter to memories belonging to a specific thread (or unthreaded memories if omitted). */
+  thread?: string;
 }

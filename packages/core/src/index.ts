@@ -1,9 +1,11 @@
 // Public API for @interwebalchemy/engram-core
 
-export { MemoryState, MemoryType, defaultMemoryConfig, SOUL_DOCUMENT_SLUG } from './types';
+export { MemoryState, MemoryType, ThreadStatus, defaultMemoryConfig, SOUL_DOCUMENT_SLUG } from './types';
 export type {
   NoteFrontmatter,
   ConversationFrontmatter,
+  ThreadFrontmatter,
+  ThreadFields,
   Message,
   ChatMessage,
   TokenBudget,
