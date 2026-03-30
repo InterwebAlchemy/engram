@@ -18,6 +18,16 @@ Working Memory is compressed, compacted, and cleaned up often to preserve tokens
 
 Longterm memories are summarized, pruned, and distilled over time to keep them relevant and useful.
 
+## Getting Started
+
+1. Clone this repository
+2. `cd` into the directory and run `npm install`
+3. Build the MCP server with `npm run build`
+4. Copy the [`templates/soul-template.md`](templates/soul-template.md) file to your Engram vault at `engram/memory/reflections/soul.md` and fill it in with your agent's identity, working style, values, and relationship context
+5. Copy the `.example.env` file to `.env` and set `ENGRAM_VAULT_PATH` to the path of your Engram vault; you can use the `CONFIGURE_*` variables to customize how the setup script initializes different tools
+6. Run `npm run setup` to scaffold the vault structure and symlink build artifacts
+7. Optionally, symlink or copy the `packages/obsidian-plugin/` directory into your vault's `.obsidian/plugins/` directory to use the Obsidian plugin and chat with your Engram from within Obsidian using a number of different providers
+
 ## Example Use Cases
 
 Here are some examples of how Engram can be used to simplify your workflow across sessions and harnesses:

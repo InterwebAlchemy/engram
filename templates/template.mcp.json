@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "engram": {
+      "command": "path/to/engram/scripts/mcp.sh",
+      "args": ["--engram-root", "engram"]
+    }
+  }
+}
