@@ -6,10 +6,12 @@
  *   npx @interwebalchemy/engram-mcp --vault /path/to/vault [options]
  *
  * Options:
- *   --vault <path>          Path to Obsidian vault (required)
+ *   --vault <path>              Path to Obsidian vault (required)
  *   --mode  integrated|standalone   Vault mode (default: integrated)
- *   --engram-root <dir>     Engram subdirectory (default: engram)
- *   --read-paths <a,b,c>    Comma-separated dirs the assistant may read beyond engram root
+ *   --engram-root <dir>         Engram subdirectory (default: engram)
+ *   --read-paths <a,b,c>        Comma-separated dirs the assistant may read beyond engram root
+ *   --transport stdio|http      Transport mode (default: stdio)
+ *   --port <number>             HTTP port when --transport http (default: 3100)
  *
  * Claude Desktop config example:
  *   {
@@ -55,9 +57,11 @@ async function main(): Promise<void> {
   const readPaths = args['read-paths']
     ? args['read-paths'].split(',').map((p) => p.trim()).filter(Boolean)
     : [];
+  const transport = (args['transport'] as 'stdio' | 'http') ?? 'stdio';
+  const port = args['port'] ? parseInt(args['port'], 10) : undefined;
 
   try {
-    await startServer({ vaultPath, mode, engramRoot, readPaths });
+    await startServer({ vaultPath, mode, engramRoot, readPaths, transport, port });
   } catch (err) {
     process.stderr.write(`Fatal: ${err instanceof Error ? err.message : String(err)}\n`);
     process.exit(1);
