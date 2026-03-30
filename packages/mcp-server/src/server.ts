@@ -2,7 +2,6 @@ import { createServer } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import {
   MemoryManager,
   NodeAdapter,
@@ -32,14 +31,15 @@ export async function startServer(cfg: ServerConfig): Promise<void> {
   const manager = new MemoryManager(adapter, memoryConfig);
 
   if (cfg.transport === 'http') {
+    const { StreamableHTTPServerTransport } = await import('@modelcontextprotocol/sdk/server/streamableHttp.js');
     const requestedPort = cfg.port ?? 0;
 
     // Stateful mode: one Server+Transport pair per session, keyed by Mcp-Session-Id.
     // The initialize request creates a session; all subsequent requests must include
     // the session ID header. Sessions are cleaned up when the transport closes.
-    const sessions = new Map<string, StreamableHTTPServerTransport>();
+    const sessions = new Map<string, InstanceType<typeof StreamableHTTPServerTransport>>();
 
-    const createSession = async (): Promise<StreamableHTTPServerTransport> => {
+    const createSession = async (): Promise<InstanceType<typeof StreamableHTTPServerTransport>> => {
       const server = new Server(
         { name: 'engram', version: '0.1.0' },
         { capabilities: { tools: {}, resources: {} } },
