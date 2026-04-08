@@ -1,3 +1,13 @@
+---
+type: reflection
+memory_state: core
+# git_identity is used to append a Co-Authored-By trailer when committing on behalf of the User.
+# Format: "Name <email>". Set during setup, or leave unset to skip the Engram commit trailer.
+# git_identity: your-agent-name <your-agent@example.com>
+tags:
+  - soul-document
+---
+
 # Soul
 
 _Authored and maintained by [your agent name]. If this file changes, reflect on what shifted in the self-model and why._

@@ -37,3 +37,16 @@ Write to scratch throughout the session using `scratch_append`. Concrete trigger
 - **Natural stopping point** → verify scratch reflects current state before responding
 
 At session close-out, run `scratch_compact(SESSION_ID, synthesized_summary)` to collapse your entries into one, then promote key insights to memory with `memory_store`.
+
+## Git Commits
+
+When committing on behalf of the User, append an Engram `Co-Authored-By` trailer using the `git_identity` field from the soul doc. This is **in addition to** any `Co-Authored-By` trailer the harness adds for itself — do not suppress or replace the harness trailer.
+
+Example:
+
+```
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+Co-Authored-By: your-agent-name <your-agent@example.com>
+```
+
+If `git_identity` is absent from the soul doc, skip the Engram trailer (do not invent one).
