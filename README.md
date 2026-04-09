@@ -16,8 +16,8 @@ Built on the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/), E
 
 You're working on a complicated refactor.
 
-1. Start your refactor session in Claude Code to scaffold out the changes and implement the initial architecture
-2. Switch to OpenAI Codex to carry the same identity and project context into a different coding harness
+1. Start your refactor session in the Claude Code Desktop App or Claude Code extension to scaffold out the changes and implement the initial architecture
+2. Switch to the Codex Desktop App or Codex extension to carry the same identity and project context into a different coding harness
 3. Use Claude Desktop to review the same thread and continue the work from a different interface
 
 Each new session loads the same identity, project context, and working memory — no re-explaining architecture decisions, no re-litigating naming conventions, no temporary markdown files to coordinate across tools.
@@ -34,7 +34,7 @@ You're building a new project and want to port logic or UI patterns to an older 
 
 ### Rationing tokens across providers
 
-You have limited tokens across Claude Code, Claude Desktop, and OpenAI Codex.
+You have limited tokens across Claude Code, Claude Desktop, and Codex.
 
 Instead of burning context in each one re-establishing where you are, each session picks up where the last one left off regardless of which provider's harness and underlying model it's using now.
 
@@ -73,7 +73,7 @@ Cross-device continuity is established by any of the available [synchronization 
    - `MCP_CONFIGURE_CLAUDE_CODE=true` — adds the MCP server to Claude Code and, for global scope, duplicates the reusable bootstrap instructions from `templates/AGENTS.md` into `~/.claude/CLAUDE.md`
    - `MCP_CONFIGURE_CLAUDE_DESKTOP=true` — adds the MCP server to Claude Desktop
 
-   Verified bootstrap harnesses today: `Claude Code`, `Claude Desktop`, and `OpenAI Codex`.
+   Verified bootstrap harnesses today: `Claude Code CLI`, `Claude Code Desktop App`, `Claude Code extension`, `Claude Desktop`, `Codex Desktop App`, and `Codex extension`.
    Other MCP client setup paths may exist in this repo, but they should be treated as configuration helpers until bootstrap behavior is actually verified.
 
 4. Copy [`templates/soul-template.md`](templates/soul-template.md) to `engram/memory/reflections/soul.md` in your vault and fill it in with your agent's identity, working style, values, and relationship context. Each session bootstraps by calling `soul_get`, then `thread_resolve` (auto-detects or creates the active Thread from the working directory), then `get_context`.
@@ -81,7 +81,7 @@ Cross-device continuity is established by any of the available [synchronization 
 
 ### Bootstrapping a session
 
-Verified bootstrap harnesses today are `Claude Code`, `Claude Desktop`, and `OpenAI Codex`.
+Verified bootstrap harnesses today are `Claude Code CLI`, `Claude Code Desktop App`, `Claude Code extension`, `Claude Desktop`, `Codex Desktop App`, and `Codex extension`.
 
 The reusable bootstrap instructions live in [`templates/AGENTS.md`](templates/AGENTS.md). Harness-specific files like `CLAUDE.md` should be treated as duplicates of that template, and project-level `AGENTS.md` files can carry repo-specific contributor instructions. As more harnesses are verified, they should be added here explicitly rather than implied.
 
@@ -91,7 +91,7 @@ If your Engram does not bootstrap from an ambient greeting (e.g. `Hey!`, `Let's 
 load your engram
 ```
 
-This is the (`~4 tokens`) reliable Engram invocation across the harnesses and models we have tested so far. It is intent-framed, which causes the model to chain through the MCP bootstrap tools even when it would otherwise answer the greeting directly.
+This is the minimum reliable Engram invocation across the harnesses and models we have tested so far. It is intent-framed, which causes the model to chain through the MCP bootstrap tools even when it would otherwise answer the greeting directly.
 
 > **Known Issue:** Claude Code running Opus with [Adaptive Thinking](https://news.ycombinator.com/item?id=47664442) treats bare greetings as low-effort and can skip bootstrap instructions entirely, including `CLAUDE.md`.
 >
@@ -105,9 +105,12 @@ Currently in **beta development**.
 
 Verified bootstrap harnesses:
 
-- `Claude Code`
-- `Claude Desktop`
-- `OpenAI Codex`
+- `Claude Code CLI`
+- `Claude Code Desktop App`
+- `Claude Code VS Code extension`
+- `Claude Desktop App`
+- `Codex Desktop App`
+- `Codex VS Code extension`
 
 Other clients may be configurable via MCP, but they should be considered unverified until they are tested end-to-end and added to the list above.
 
@@ -115,9 +118,27 @@ Current focus areas are:
 
 - **Semantic search** for more precise context retrieval and lower token overhead.
 - **Context-specific memories** that allow the Engram to load some non-Threaded memories only when they are relevant, for example: only loading context about another person when you are working on a project with them or writing them an email.
-- **Harness verification** for additional MCP clients such as Cursor, Copilot, Open Code, Open Claw, etc.
+- **Harness verification** for additional MCP clients such as Cursor and GitHub Copilot next, followed by other MCP-capable tools.
 - **Streamlined setup** with guided onboarding and a single installation command via `brew` or `npx`.
 - **Dream processing** that synthesizes and distills memories, extracts insights, and fills gaps in knowledge, similar to [Claude Code's Dream System](https://claudescorner.substack.com/p/a-hidden-dream-command-and-the-tools)
+
+## Harness Limitations
+
+Some harnesses may require additional configuration or have limitations around local vs. remote MCP servers.
+
+> **Remote MCP Servers**: Engram's in-development status and connection to the local filesystem makes remote MCP servers impractical at the moment, but once development stabilizes, we may explore a recommended approach. Unfortunately, every network and security configuration is different, so you may need to consider your own solutions if you want to expose your Engram MCP server to the Internet.
+
+Here's what we've observed so far:
+
+### Claude.ai Web App
+
+The Engram bootstraps successfully in the Claude.ai web app, but the web app requires a remote MCP server and doesn't support local connections, so testing it requires a temporary tunnel such as `cloudflared tunnel` to expose your local MCP server to the internet. This is how we verified the Engram bootstrapping flow in the web app.
+
+### ChatGPT Desktop App
+
+Unlike the currently verified local setups, it appears to require a remote MCP server and may behave differently depending on subscription tier and which MCP capabilities are enabled.
+
+That likely means testing it will require either a remotely hosted Engram MCP server, an Engram app-style integration, or a temporary local tunnel.
 
 ## Prior Art
 
