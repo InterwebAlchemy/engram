@@ -16,6 +16,7 @@ This guide covers how to get set up, what to expect from the codebase, and how t
 git clone https://github.com/InterwebAlchemy/engram
 cd engram
 npm install
+npm run prepare
 npm run build
 ```
 
@@ -65,10 +66,27 @@ npm run snapshot:restore  # restore a snapshot (auto-saves current state first)
 Snapshots are stored in `.snapshots/` at the repo root (gitignored). Restoring always creates a safety snapshot of the current state before overwriting, so a bad restore is always undoable.
 
 **Take a snapshot before:**
+
 - Running `npm run setup` or `npm run dev` for the first time against a new vault path
 - Schema migrations or changes to memory file structure
 - Any test that writes to the vault
 - Destructive operations like `dev:clean`
+
+## Repo agent instructions
+
+This repo keeps contributor-facing agent instructions in [`AGENTS.md`](AGENTS.md). The Claude-specific in-repo file at [`.claude/CLAUDE.md`](/Users/ericallen/Development/_utils/engram/.claude/CLAUDE.md) is generated from that source with:
+
+```bash
+npm run sync:agents
+```
+
+To verify they still match without rewriting the file:
+
+```bash
+npm run sync:agents:check
+```
+
+Local commits are also protected by the Husky pre-commit hook in [`.husky/pre-commit`](/Users/ericallen/Development/_utils/engram/.husky/pre-commit). It blocks direct edits to `.claude/CLAUDE.md` and auto-regenerates the file when `AGENTS.md` is committed. `npm install` runs Husky's `prepare` script automatically, and `npm run setup` runs it again before the rest of the dev environment setup.
 
 ## Making changes
 
