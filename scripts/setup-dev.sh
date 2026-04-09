@@ -187,18 +187,23 @@ chmod +x "$REPO_ROOT/scripts/mcp.sh"
 
 MCP_SCRIPT="$REPO_ROOT/scripts/mcp.sh"
 
-# Helper: merge { "mcpServers": { "engram": { "command": "..." } } } into a JSON file.
+# Helper: merge an engram MCP server entry into a JSON config file.
+# Usage: configure_mcp_json <config_file> <command> [top_level_key]
+# top_level_key defaults to "mcpServers" (Claude Desktop, Cursor, Copilot CLI).
+# VS Code uses "servers" instead.
 configure_mcp_json() {
   local config_file="$1"
   local cmd="$2"
+  local key="${3:-mcpServers}"
   mkdir -p "$(dirname "$config_file")"
   node -e "
 const fs = require('fs');
 const file = '$config_file';
+const key = '$key';
 let cfg = {};
 try { cfg = JSON.parse(fs.readFileSync(file, 'utf8')); } catch {}
-cfg.mcpServers = cfg.mcpServers || {};
-cfg.mcpServers.engram = { command: '$cmd' };
+cfg[key] = cfg[key] || {};
+cfg[key].engram = { command: '$cmd', args: [] };
 fs.writeFileSync(file, JSON.stringify(cfg, null, 2) + '\n');
 console.log('  Configured engram MCP → ' + file);
 "
@@ -320,6 +325,52 @@ if [ "${MCP_CONFIGURE_CURSOR:-false}" = "true" ]; then
       echo ""
       echo "  ─── End bootstrap text ────────────────────────────────────"
     fi
+  else
+    echo "  Warning: templates/AGENTS.md not found — skipping bootstrap instructions."
+  fi
+fi
+
+# ── VS Code ────────────────────────────────────────────────────────────────
+# Registers the MCP server at the user level in VS Code so it's available to
+# any agent running inside VS Code (Copilot, Claude Code extension, etc.).
+
+if [ "${MCP_CONFIGURE_VSCODE:-false}" = "true" ]; then
+  echo "Configuring VS Code..."
+
+  if [[ "$OSTYPE" == "darwin"* ]]; then
+    VSCODE_USER_DIR="$HOME/Library/Application Support/Code/User"
+  else
+    VSCODE_USER_DIR="$HOME/.config/Code/User"
+  fi
+
+  # VS Code uses { "servers": { ... } }, not { "mcpServers": { ... } }
+  configure_mcp_json "$VSCODE_USER_DIR/mcp.json" "$MCP_SCRIPT" "servers"
+fi
+
+# ── GitHub Copilot CLI ─────────────────────────────────────────────────────
+
+if [ "${MCP_CONFIGURE_COPILOT:-false}" = "true" ]; then
+  echo "Configuring GitHub Copilot..."
+
+  # MCP server for the CLI (uses mcpServers key like Claude Desktop/Cursor)
+  configure_mcp_json "$HOME/.copilot/mcp-config.json" "$MCP_SCRIPT"
+
+  # Bootstrap instructions — ~/.copilot/instructions/ is read by both
+  # Copilot CLI and Copilot in VS Code as user-level instructions.
+  AGENTS_MD_TEMPLATE="$REPO_ROOT/templates/AGENTS.md"
+  COPILOT_INSTRUCTIONS_DIR="$HOME/.copilot/instructions"
+  COPILOT_INSTRUCTIONS_FILE="$COPILOT_INSTRUCTIONS_DIR/engram.instructions.md"
+
+  if [ -f "$AGENTS_MD_TEMPLATE" ]; then
+    mkdir -p "$COPILOT_INSTRUCTIONS_DIR"
+
+    # Wrap in .instructions.md format with frontmatter
+    {
+      printf -- '---\napplyTo: "**"\ndescription: "Engram memory continuity bootstrap — loads agent identity and context at session start"\n---\n\n'
+      cat "$AGENTS_MD_TEMPLATE"
+    } > "$COPILOT_INSTRUCTIONS_FILE"
+
+    echo "  Bootstrap instructions written to $COPILOT_INSTRUCTIONS_FILE"
   else
     echo "  Warning: templates/AGENTS.md not found — skipping bootstrap instructions."
   fi
