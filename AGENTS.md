@@ -1,5 +1,3 @@
-<!-- GENERATED FROM AGENTS.md. DO NOT EDIT .claude/CLAUDE.md DIRECTLY. -->
-
 # Engram — Contributor Instructions
 
 <!-- Source of truth for repo-level agent instructions.

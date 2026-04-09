@@ -9,7 +9,11 @@
     "test": "npm run test --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "clean": "npm run clean --workspaces --if-present",
-    "setup": "bash scripts/setup-dev.sh",
+    "prepare": "husky",
+    "setup:hooks": "husky",
+    "sync:agents": "node scripts/sync-agent-instructions.mjs",
+    "sync:agents:check": "node scripts/sync-agent-instructions.mjs --check",
+    "setup": "npm run prepare && bash scripts/setup-dev.sh",
     "dev": "bash scripts/dev.sh",
     "dev:build": "bash scripts/dev.sh --build",
     "dev:clean": "bash scripts/dev.sh --clean",
@@ -20,6 +24,7 @@
   },
   "license": "GPL-3.0-only",
   "devDependencies": {
+    "husky": "^9.1.7",
     "typescript": "^5.4.5"
   }
 }

@@ -60,7 +60,7 @@ Memories are markdown files with YAML frontmatter, stored in your Obsidian vault
 3. Run `npm run setup` — this builds the MCP server, scaffolds the vault structure, and symlinks build artifacts
 
    To auto-configure MCP clients during setup, set the relevant variables in `.env` before running:
-   - `MCP_CONFIGURE_CLAUDE_CODE=true` — adds the MCP server to Claude Code and copies bootstrap instructions to `~/.claude/CLAUDE.md`
+   - `MCP_CONFIGURE_CLAUDE_CODE=true` — adds the MCP server to Claude Code and duplicates the reusable bootstrap instructions from `templates/AGENTS.md` into `~/.claude/CLAUDE.md`
    - `MCP_CONFIGURE_CLAUDE_DESKTOP=true` — adds the MCP server to Claude Desktop
    - `MCP_CONFIGURE_CURSOR=true` — adds the MCP server to Cursor
    - `MCP_CONFIGURE_WINDSURF=true` — adds the MCP server to Windsurf
@@ -70,7 +70,7 @@ Memories are markdown files with YAML frontmatter, stored in your Obsidian vault
 
 ### Bootstrapping a session
 
-Most harnesses will load your Engram automatically when you start a session. The bootstrap instructions in `CLAUDE.md` (or the equivalent for your harness) chain `soul_get` → `thread_resolve` → `get_context` on the first turn.
+Most harnesses will load your Engram automatically when you start a session. The reusable bootstrap instructions live in [`templates/AGENTS.md`](templates/AGENTS.md). Harness-specific files like `CLAUDE.md` should be treated as duplicates of that template, and project-level `AGENTS.md` files can carry repo-specific contributor instructions.
 
 If your Engram does not bootstrap from an ambient greeting (e.g. `Hey!`, `Let's get to work`, etc.), use this invocation:
 
@@ -80,7 +80,7 @@ load your engram
 
 This is the minimum reliable Engram invocation across harnesses and models. It is intent-framed, which causes the model to chain through the MCP bootstrap tools even when it would otherwise answer the greeting directly.
 
-**Known case:** Claude Code running Opus with [Adaptive Thinking](https://news.ycombinator.com/item?id=47664442) treats bare greetings as low-effort and skips the bootstrap, and your `CLAUDE.md`, entirely. `load your engram` works. Setting `CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING=1` also works but is heavier-handed and may affect unrelated Claude Code behavior.
+**Known case:** Claude Code running Opus with [Adaptive Thinking](https://news.ycombinator.com/item?id=47664442) treats bare greetings as low-effort and can skip bootstrap instructions entirely, including `CLAUDE.md`. `load your engram` works. Setting `CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING=1` also works but is heavier-handed and may affect unrelated Claude Code behavior.
 
 ## Status
 
@@ -95,6 +95,22 @@ Current focus areas are:
 - **Dream processing** that synthesizes and distills memories, extracts insights, and fills gaps in knowledge, similar to [Claude Code's Dream System](https://claudescorner.substack.com/p/a-hidden-dream-command-and-the-tools)
 
 Engram builds on previous work from the [Obsidian AI Research Assistant plugin](https://github.com/InterwebAlchemy/obsidian-ai-research-assistant) and its [Memory framework](https://github.com/InterwebAlchemy/obsidian-ai-research-assistant?tab=readme-ov-file#memories).
+
+## Repo agent instructions
+
+This repo keeps contributor-facing agent instructions in [`AGENTS.md`](AGENTS.md). The Claude-specific in-repo file at [`.claude/CLAUDE.md`](/Users/ericallen/Development/_utils/engram/.claude/CLAUDE.md) is generated from that source with:
+
+```bash
+npm run sync:agents
+```
+
+To verify they still match without rewriting the file:
+
+```bash
+npm run sync:agents:check
+```
+
+Local commits are also protected by the Husky pre-commit hook in [`.husky/pre-commit`](/Users/ericallen/Development/_utils/engram/.husky/pre-commit). It blocks direct edits to `.claude/CLAUDE.md` and auto-regenerates the file when `AGENTS.md` is committed. `npm install` runs Husky's `prepare` script automatically, and `npm run setup` runs it again before the rest of the dev environment setup.
 
 ---
 

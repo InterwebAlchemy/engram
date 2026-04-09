@@ -45,7 +45,7 @@ When committing on behalf of the User, append an Engram `Co-Authored-By` trailer
 Example:
 
 ```
-Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+Co-Authored-By: <harness model identity>
 Co-Authored-By: your-agent-name <your-agent@example.com>
 ```
 

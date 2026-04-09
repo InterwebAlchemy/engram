@@ -10,9 +10,9 @@ tmp/
 .snapshots/
 packages/obsidian-plugin/main.js
 
-# the temporary anchor CLAUDE.md
-#used to load the Engram during development of the Engram system
-CLAUDE.local.md
+# local bootstrap overlays used during Engram development
+CLAUDE.local.*
+AGENTS.local.*
 
 # Development notes and todos
 .claude/notes/
@@ -22,3 +22,6 @@ CLAUDE.local.md
 
 # local CLAUDE settings
 .claude/**/*.local.*
+
+# husky generated internals
+.husky/_/

@@ -249,17 +249,18 @@ if [ "${MCP_CONFIGURE_CLAUDE_CODE:-false}" = "true" ]; then
       && echo "  engram MCP added to Claude Code ($SCOPE scope)." \
       || echo "  Warning: claude mcp add failed — check 'claude mcp list'."
 
-    # For user (global) scope, copy bootstrap instructions to ~/.claude/CLAUDE.md
+    # For user (global) scope, duplicate the canonical AGENTS.md bootstrap
+    # instructions into Claude Code's expected ~/.claude/CLAUDE.md path.
     if [ "$SCOPE" = "user" ]; then
       CLAUDE_MD_TARGET="${HOME}/.claude/CLAUDE.md"
-      CLAUDE_MD_TEMPLATE="$REPO_ROOT/templates/CLAUDE.md"
+      AGENTS_MD_TEMPLATE="$REPO_ROOT/templates/AGENTS.md"
       if [ -f "$CLAUDE_MD_TARGET" ]; then
         echo "  Warning: ~/.claude/CLAUDE.md already exists — not overwriting."
-        echo "  To bootstrap manually, append the contents of templates/CLAUDE.md to ~/.claude/CLAUDE.md"
+        echo "  To bootstrap manually, copy the contents of templates/AGENTS.md to ~/.claude/CLAUDE.md"
       else
         mkdir -p "${HOME}/.claude"
-        cp "$CLAUDE_MD_TEMPLATE" "$CLAUDE_MD_TARGET"
-        echo "  Bootstrap instructions copied to ~/.claude/CLAUDE.md"
+        cp "$AGENTS_MD_TEMPLATE" "$CLAUDE_MD_TARGET"
+        echo "  Bootstrap instructions copied from templates/AGENTS.md to ~/.claude/CLAUDE.md"
       fi
     fi
   else

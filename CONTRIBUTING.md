@@ -78,6 +78,8 @@ Snapshots are stored in `.snapshots/` at the repo root (gitignored). Restoring a
 
 Run `npm run test` before submitting. If your change affects the MCP tool surface (new params, new tools, changed descriptions), update the relevant template files in `templates/` if applicable.
 
+Husky keeps `AGENTS.md` and `.claude/CLAUDE.md` in sync automatically. `npm install` runs Husky's `prepare` script, `npm run setup` runs it again before the rest of setup, and `npm run setup:hooks` lets you re-install hooks manually. If you need to verify the generated file in CI or locally, use `npm run sync:agents:check`.
+
 ## Submitting changes
 
 1. Fork the repo and create a branch from `main`
@@ -87,4 +89,4 @@ Run `npm run test` before submitting. If your change affects the MCP tool surfac
 
 ## A note on dogfooding
 
-Engram is developed using Engram — the project uses its own memory continuity system during development. If you're contributing and want to use Claude Code, see [`CLAUDE.md`](CLAUDE.md) for contributor context. If you want to set up your own Engram agent, see [`templates/`](templates/).
+Engram is developed using Engram — the project uses its own memory continuity system during development. Repo-specific contributor context lives in [`AGENTS.md`](AGENTS.md). If you want the reusable Engram bootstrap for your own agent, use [`templates/AGENTS.md`](templates/AGENTS.md) and let `npm run setup` duplicate it into the Claude-specific path when needed. If you want to set up your own Engram agent, see [`templates/`](templates/).

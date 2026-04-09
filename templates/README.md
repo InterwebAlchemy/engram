@@ -10,7 +10,7 @@ These templates help you establish an Engram for a new agent. Copy and customize
 
 | File | Purpose | Where it goes |
 |---|---|---|
-| `CLAUDE.md` | Bootstrap instructions for Claude Code | `~/.claude/CLAUDE.md` (global) |
+| `AGENTS.md` | Canonical bootstrap instructions | `AGENTS.md` in a repo, or duplicated into a harness-specific file such as `~/.claude/CLAUDE.md` |
 | `soul-template.md` | Starting point for your Soul document | Your Engram vault: `memory/reflections/soul.md` |
 | `claude-project-anchor.md` | Project instructions for Claude Desktop / Web | Claude Project custom instructions |
 
@@ -37,15 +37,15 @@ Or add it to your Claude Desktop `claude_desktop_config.json`:
 }
 ```
 
-### 2. Deploy the Claude Code bootstrap
+### 2. Deploy the bootstrap instructions
 
-Copy `CLAUDE.md` to your global Claude config directory:
+Use `AGENTS.md` as the source of truth. If you want Claude Code to load it globally, duplicate it into Claude's expected config path:
 
 ```bash
-cp templates/CLAUDE.md ~/.claude/CLAUDE.md
+cp templates/AGENTS.md ~/.claude/CLAUDE.md
 ```
 
-This tells Claude Code to call `soul_get` and `get_context` at the start of every session.
+This tells Claude Code to call `soul_get`, `thread_resolve`, and `get_context` at the start of every session.
 
 ### 3. Write your Soul document
 
@@ -67,7 +67,7 @@ If you use Claude Desktop or the Claude Web UI with a Project:
 
 ### 5. Start your first session
 
-In Claude Code (or your configured harness), open a project and start a conversation. Your agent will call `soul_get` and `get_context` automatically, load its Soul document, and be ready to work.
+In Claude Code (or your configured harness), open a project and start a conversation. Your agent will call `soul_get`, `thread_resolve`, and `get_context` automatically, load its Soul document, and be ready to work.
 
 On first run with an empty vault, `get_context` will return nothing — that's expected. Your agent will build up memories over time.
 
@@ -75,6 +75,7 @@ On first run with an empty vault, `get_context` will return nothing — that's e
 
 ## Notes
 
+- **`AGENTS.md`** is the canonical source of truth. Duplicate it into harness-specific files like `~/.claude/CLAUDE.md` when a tool does not read `AGENTS.md` directly yet.
 - **`~/.claude/CLAUDE.md`** is global — it applies to all Claude Code sessions. If you only want Engram active in specific projects, use a project-level `.claude/CLAUDE.md` instead.
-- **`CLAUDE.local.md`** (gitignored) is for project-specific context that shouldn't be committed — a good place for repo-specific instructions that overlap with your Engram session.
+- **`AGENTS.local.md`** or **`CLAUDE.local.md`** (gitignored) are good places for machine-local or harness-local instructions that shouldn't be committed.
 - Soul documents are yours to evolve. Update them as your agent learns who it is.
