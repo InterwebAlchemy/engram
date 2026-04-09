@@ -272,7 +272,57 @@ fi
 
 if [ "${MCP_CONFIGURE_CURSOR:-false}" = "true" ]; then
   echo "Configuring Cursor..."
+
+  # Register MCP server in ~/.cursor/mcp.json (the file Cursor reads for user-level servers).
+  # Note: `cursor --add-mcp` writes to VS Code settings.json instead, which Cursor
+  # doesn't surface in its MCP UI — so we write the file directly.
   configure_mcp_json "$HOME/.cursor/mcp.json" "$MCP_SCRIPT"
+
+  # Bootstrap instructions — Cursor has no file-based global rules,
+  # so the user must paste them into Settings > General > Rules for AI.
+  AGENTS_MD_TEMPLATE="$REPO_ROOT/templates/AGENTS.md"
+
+  if [ -f "$AGENTS_MD_TEMPLATE" ]; then
+    COPIED_TO_CLIPBOARD=false
+
+    # Offer to copy to clipboard
+    if command -v pbcopy &>/dev/null; then
+      pbcopy < "$AGENTS_MD_TEMPLATE"
+      COPIED_TO_CLIPBOARD=true
+    elif command -v xclip &>/dev/null; then
+      xclip -selection clipboard < "$AGENTS_MD_TEMPLATE"
+      COPIED_TO_CLIPBOARD=true
+    elif command -v xsel &>/dev/null; then
+      xsel --clipboard < "$AGENTS_MD_TEMPLATE"
+      COPIED_TO_CLIPBOARD=true
+    fi
+
+    echo ""
+    if [ "$COPIED_TO_CLIPBOARD" = true ]; then
+      echo "  Bootstrap instructions copied to clipboard."
+    else
+      echo "  Could not copy to clipboard (no pbcopy/xclip/xsel found)."
+    fi
+    echo ""
+    echo "  Cursor does not support file-based global rules."
+    echo "  To add the bootstrap instructions:"
+    echo ""
+    echo "    1. Open Cursor Settings > General > Rules, Skills, Subagents"
+    echo "    2. Select 'User' from the dropdown"
+    echo "    3. Click 'New User Rule' (or '+ New > User Rule' if rules exist)"
+    echo "    4. Paste into the textarea"
+    echo "    5. Click Done"
+    echo ""
+
+    if [ "$COPIED_TO_CLIPBOARD" = false ]; then
+      echo "  ─── Bootstrap text (copy manually) ────────────────────────"
+      cat "$AGENTS_MD_TEMPLATE"
+      echo ""
+      echo "  ─── End bootstrap text ────────────────────────────────────"
+    fi
+  else
+    echo "  Warning: templates/AGENTS.md not found — skipping bootstrap instructions."
+  fi
 fi
 
 # ── Windsurf ────────────────────────────────────────────────────────────────
@@ -289,7 +339,7 @@ echo "Setup complete!"
 echo ""
 echo "  Vault:  $VAULT_PATH"
 echo "  Plugin: $DEST"
-echo "  Verified bootstrap harnesses: Claude Code Desktop App, Claude Code extension, Claude Desktop, Codex Desktop App, Codex extension"
+echo "  Verified bootstrap harnesses: Claude Code CLI, Claude Code Desktop App, Claude Code extension, Claude Desktop, Codex Desktop App, Codex extension, Cursor"
 echo ""
 echo "Next steps:"
 echo "  1. Open the vault in Obsidian (File → Open vault → Open folder as vault)"
@@ -300,7 +350,7 @@ echo "MCP server:"
 echo "  Command:  $MCP_SCRIPT"
 echo "  To auto-configure clients, set MCP_CONFIGURE_* vars in .env and re-run setup."
 echo "  Configured clients are not automatically verified bootstrap harnesses."
-echo "  Today we have verified bootstrap behavior with Claude Code Desktop App, Claude Code extension, Claude Desktop, Codex Desktop App, and Codex extension."
+echo "  Today we have verified bootstrap behavior with Claude Code CLI, Claude Code Desktop App, Claude Code extension, Claude Desktop, Codex Desktop App, Codex extension, and Cursor."
 echo "  Manual config uses the command above with --vault \"$VAULT_PATH\""
 
 if command -v obsidian &>/dev/null; then

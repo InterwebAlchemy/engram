@@ -72,8 +72,9 @@ Cross-device continuity is established by any of the available [synchronization 
    To auto-configure MCP clients during setup, set the relevant variables in `.env` before running:
    - `MCP_CONFIGURE_CLAUDE_CODE=true` — adds the MCP server to Claude Code and, for global scope, duplicates the reusable bootstrap instructions from `templates/AGENTS.md` into `~/.claude/CLAUDE.md`
    - `MCP_CONFIGURE_CLAUDE_DESKTOP=true` — adds the MCP server to Claude Desktop
+   - `MCP_CONFIGURE_CURSOR=true` — adds the MCP server to Cursor and copies bootstrap instructions to clipboard for pasting into Cursor Settings
 
-   Verified bootstrap harnesses today: `Claude Code CLI`, `Claude Code Desktop App`, `Claude Code extension`, `Claude Desktop`, `Codex Desktop App`, and `Codex extension`.
+   Verified bootstrap harnesses today: `Claude Code CLI`, `Claude Code Desktop App`, `Claude Code extension`, `Claude Desktop`, `Codex Desktop App`, `Codex extension`, and `Cursor`.
    Other MCP client setup paths may exist in this repo, but they should be treated as configuration helpers until bootstrap behavior is actually verified.
 
 4. Copy [`templates/soul-template.md`](templates/soul-template.md) to `engram/memory/reflections/soul.md` in your vault and fill it in with your agent's identity, working style, values, and relationship context. Each session bootstraps by calling `soul_get`, then `thread_resolve` (auto-detects or creates the active Thread from the working directory), then `get_context`.
@@ -81,7 +82,7 @@ Cross-device continuity is established by any of the available [synchronization 
 
 ### Bootstrapping a session
 
-Verified bootstrap harnesses today are `Claude Code CLI`, `Claude Code Desktop App`, `Claude Code extension`, `Claude Desktop`, `Codex Desktop App`, and `Codex extension`.
+Verified bootstrap harnesses today are `Claude Code CLI`, `Claude Code Desktop App`, `Claude Code extension`, `Claude Desktop`, `Codex Desktop App`, `Codex extension`, and `Cursor`.
 
 The reusable bootstrap instructions live in [`templates/AGENTS.md`](templates/AGENTS.md). Harness-specific files like `CLAUDE.md` should be treated as duplicates of that template, and project-level `AGENTS.md` files can carry repo-specific contributor instructions. As more harnesses are verified, they should be added here explicitly rather than implied.
 
@@ -111,6 +112,7 @@ Verified bootstrap harnesses:
 - `Claude Desktop App`
 - `Codex Desktop App`
 - `Codex VS Code extension`
+- `Cursor`
 
 Other clients may be configurable via MCP, but they should be considered unverified until they are tested end-to-end and added to the list above.
 
@@ -118,7 +120,7 @@ Current focus areas are:
 
 - **Semantic search** for more precise context retrieval and lower token overhead.
 - **Context-specific memories** that allow the Engram to load some non-Threaded memories only when they are relevant, for example: only loading context about another person when you are working on a project with them or writing them an email.
-- **Harness verification** for additional MCP clients such as Cursor and GitHub Copilot next, followed by other MCP-capable tools.
+- **Harness verification** for additional MCP clients such as GitHub Copilot next, followed by other MCP-capable tools.
 - **Streamlined setup** with guided onboarding and a single installation command via `brew` or `npx`.
 - **Dream processing** that synthesizes and distills memories, extracts insights, and fills gaps in knowledge, similar to [Claude Code's Dream System](https://claudescorner.substack.com/p/a-hidden-dream-command-and-the-tools)
 
