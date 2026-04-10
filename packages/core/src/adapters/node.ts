@@ -14,6 +14,32 @@ export class NodeAdapter implements FileSystemAdapter {
     await fs.writeFile(filePath, content, 'utf-8');
   }
 
+  async process(filePath: string, fn: (content: string) => string): Promise<string> {
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
+
+    let existing = '';
+    try {
+      existing = await fs.readFile(filePath, 'utf-8');
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+        throw error;
+      }
+    }
+
+    const nextContent = fn(existing);
+    const tempPath = `${filePath}.tmp-${process.pid}-${Date.now()}`;
+
+    try {
+      await fs.writeFile(tempPath, nextContent, 'utf-8');
+      await fs.rename(tempPath, filePath);
+    } catch (error) {
+      await fs.unlink(tempPath).catch(() => undefined);
+      throw error;
+    }
+
+    return nextContent;
+  }
+
   async delete(filePath: string): Promise<void> {
     await fs.unlink(filePath);
   }

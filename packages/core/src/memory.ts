@@ -31,6 +31,14 @@ import { ContextBuilder } from './context';
 import { Conversation } from './conversation';
 import type { ConversationFrontmatter, Message } from './types';
 
+type ProcessCapableAdapter = FileSystemAdapter & {
+  process(path: string, fn: (content: string) => string): Promise<string>;
+};
+
+function supportsProcess(adapter: FileSystemAdapter): adapter is ProcessCapableAdapter {
+  return typeof (adapter as ProcessCapableAdapter).process === 'function';
+}
+
 export class MemoryManager {
   /** Absolute path to the engram write root. */
   private readonly writeRoot: string;
@@ -644,6 +652,13 @@ export class MemoryManager {
     const timestamp = new Date().toISOString();
     const line = `[${sessionId} | ${timestamp}] ${content.replace(/\n+/g, ' | ')}`;
 
+    if (supportsProcess(this.adapter)) {
+      await this.adapter.process(logPath, (existing) =>
+        existing.trim() ? `${existing.trimEnd()}\n${line}` : line,
+      );
+      return;
+    }
+
     const existing = await this.adapter.read(logPath).catch(() => '');
     const newContent = existing.trim() ? `${existing.trimEnd()}\n${line}` : line;
     await this.adapter.write(logPath, newContent);
@@ -684,6 +699,43 @@ export class MemoryManager {
   async compactScratch(options: ScratchCompactOptions): Promise<void> {
     const logPath = this.scratchFilePath;
     this.assertWriteAllowed(logPath);
+
+    if (supportsProcess(this.adapter)) {
+      if (!(await this.adapter.exists(logPath))) return;
+
+      await this.adapter.process(logPath, (raw) => {
+        if (!raw.trim()) return raw;
+
+        const lines = raw.split('\n');
+        const entryPattern = /^\[([^\]]+) \| ([^\]]+)\] (.+)$/;
+        const cutoff = Date.now() - options.thresholdMs;
+
+        const toRemove = new Set<number>();
+        let firstIdx = -1;
+
+        lines.forEach((line, idx) => {
+          const match = line.match(entryPattern);
+          if (!match || match[1] !== options.sessionId) return;
+          if (new Date(match[2]).getTime() > cutoff) return;
+          toRemove.add(idx);
+          if (firstIdx === -1) firstIdx = idx;
+        });
+
+        if (toRemove.size < 2) return raw;
+
+        const compactLine = `[${options.sessionId} | ${new Date().toISOString()}] [COMPACTED] ${options.compactedContent.replace(/\n+/g, ' | ')}`;
+
+        return lines
+          .map((line, idx) => {
+            if (idx === firstIdx) return compactLine;
+            if (toRemove.has(idx)) return null;
+            return line;
+          })
+          .filter((line): line is string => line !== null)
+          .join('\n');
+      });
+      return;
+    }
 
     const raw = await this.adapter.read(logPath).catch(() => '');
     if (!raw.trim()) return;
