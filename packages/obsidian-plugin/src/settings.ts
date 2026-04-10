@@ -1,4 +1,4 @@
-import { App, PluginSettingTab, Setting } from 'obsidian';
+import { App, PluginSettingTab, SecretComponent, Setting } from 'obsidian';
 import type EngramPlugin from './main';
 import { DEFAULT_SETTINGS, KNOWN_MODELS, BUILTIN_PROVIDER_IDS } from './constants';
 import type { ProviderSettings } from './constants';
@@ -259,21 +259,15 @@ export class EngramSettingTab extends PluginSettingTab {
         );
     }
 
-    new Setting(inner)
+    const apiKeySetting = new Setting(inner)
       .setName('API Key')
-      .setDesc("Stored in Obsidian's SecretStorage (per-device, not synced).")
-      .addText((text) => {
-        text.inputEl.type = 'password';
-        text.inputEl.autocomplete = 'off';
-        this.plugin.getSecret(`${id}-api-key`).then((key) => {
-          if (key) text.setValue('••••••••');
-        });
-        text.onChange(async (value) => {
-          if (value && value !== '••••••••') {
-            await this.plugin.setSecret(`${id}-api-key`, value);
-          }
-        });
-        return text;
+      .setDesc("Stored in Obsidian's SecretStorage (per-device, not synced).");
+    new SecretComponent(this.app, apiKeySetting.controlEl)
+      .setValue(cfg.apiKeySecret ?? '')
+      .onChange(async (value) => {
+        cfg.apiKeySecret = value;
+        this.plugin.reinitializeProvider(id);
+        await this.plugin.saveSettings();
       });
 
     this.renderModelSection(inner, id);

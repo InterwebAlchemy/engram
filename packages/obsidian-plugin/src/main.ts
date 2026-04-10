@@ -152,28 +152,15 @@ export default class EngramPlugin extends Plugin {
   }
 
   async getProviderApiKey(providerId: string): Promise<string | undefined> {
-    return this.getSecret(`${providerId}-api-key`);
-  }
-
-  // ─── Secret storage ─────────────────────────────────────────────────────
-
-  async getSecret(key: string): Promise<string | undefined> {
+    const secretName = this.settings.providers[providerId]?.apiKeySecret;
+    if (!secretName) return undefined;
     try {
-      // SecretStorage available in Obsidian 1.11.4+
-      const storage = (this.app as unknown as { loadLocalStorage?: (key: string) => string | null }).loadLocalStorage;
-      if (storage) return storage(key) ?? undefined;
+      const value = await (this.app as unknown as {
+        secretStorage: { get(name: string): Promise<string | null> };
+      }).secretStorage.get(secretName);
+      return value ?? undefined;
     } catch {
-      // Fallback: not available on this platform
-    }
-    return undefined;
-  }
-
-  async setSecret(key: string, value: string): Promise<void> {
-    try {
-      const storage = (this.app as unknown as { saveLocalStorage?: (key: string, value: string) => void }).saveLocalStorage;
-      if (storage) storage(key, value);
-    } catch {
-      // SecretStorage not available
+      return undefined;
     }
   }
 

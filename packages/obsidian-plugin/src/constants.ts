@@ -75,6 +75,8 @@ export interface ProviderSettings {
   name: string;
   baseUrl?: string;
   defaultModel: string;
+  /** Secret name in Obsidian SecretStorage that holds this provider's API key. */
+  apiKeySecret?: string;
   /** Model IDs currently shown in the model picker (subset of known + custom). */
   enabledModels: string[];
   /** User-added model IDs beyond the bundled catalog. */
@@ -90,7 +92,7 @@ export const DEFAULT_SETTINGS = {
     openrouter: {
       id: 'openrouter',
       name: 'OpenRouter',
-      baseUrl: 'https://openrouter.ai/api/v1',
+      baseUrl: 'https://openrouter.ai/api',
       defaultModel: 'openrouter/auto',
       enabledModels: KNOWN_MODELS.openrouter.map((m) => m.id),
       customModels: [] as string[],
