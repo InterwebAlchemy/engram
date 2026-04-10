@@ -484,6 +484,14 @@ export class EngramDreamsView extends ItemView {
       const gitIdentity = soul?.frontmatter.git_identity as string | undefined;
       const agentName = gitIdentity?.split('<')[0]?.trim() || undefined;
 
+      // Snapshot before any mutations — protects scratch from preCleanup and dream start
+      const snapshot = await this.createSnapshotManager().create({
+        vaultPath: this.plugin.getVaultBasePath(),
+        engramRoot: this.plugin.settings.engramRoot,
+        label: 'Dreams pre-run snapshot',
+        reason: 'obsidian-dreams-run',
+      });
+
       // Deterministic pre-cleanup
       const analyzer = new DreamsAnalyzer(this.plugin.memoryManager);
       await analyzer.preCleanup();
@@ -511,14 +519,6 @@ export class EngramDreamsView extends ItemView {
 
       this.latestPlan = plan;
       this.report = plan.report;
-
-      // Snapshot before applying
-      const snapshot = await this.createSnapshotManager().create({
-        vaultPath: this.plugin.getVaultBasePath(),
-        engramRoot: this.plugin.settings.engramRoot,
-        label: 'Dreams pre-run snapshot',
-        reason: 'obsidian-dreams-run',
-      });
 
       // Apply actions
       if (plan.actions.length > 0) {
