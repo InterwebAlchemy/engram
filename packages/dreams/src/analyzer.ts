@@ -289,7 +289,10 @@ export class DreamsAnalyzer {
   }
 
   private getTags(note: VaultNote): string[] {
-    return ((note.frontmatter.tags as string[] | undefined) ?? []).filter(Boolean);
+    const raw = note.frontmatter.tags;
+    if (Array.isArray(raw)) return raw.filter(Boolean);
+    if (typeof raw === 'string') return [raw];
+    return [];
   }
 
   private getTokenSet(note: VaultNote, cache: Map<string, Set<string>>): Set<string> {
