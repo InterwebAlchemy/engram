@@ -54,7 +54,18 @@ export class ObsidianAdapter implements FileSystemAdapter {
     if (existing instanceof TFile) {
       await this.app.vault.modify(existing, content);
     } else {
-      await this.app.vault.create(vaultPath, content);
+      try {
+        await this.app.vault.create(vaultPath, content);
+      } catch {
+        // File may exist on disk but not yet in Obsidian's index — retry as modify
+        const retryFile = this.app.vault.getAbstractFileByPath(vaultPath);
+        if (retryFile instanceof TFile) {
+          await this.app.vault.modify(retryFile, content);
+        } else {
+          // Use the raw adapter as a last resort
+          await this.app.vault.adapter.write(vaultPath, content);
+        }
+      }
     }
   }
 
@@ -133,7 +144,11 @@ export class ObsidianAdapter implements FileSystemAdapter {
       current = current ? `${current}/${part}` : part;
       const existing = this.app.vault.getAbstractFileByPath(current);
       if (!existing) {
-        await this.app.vault.createFolder(current);
+        try {
+          await this.app.vault.createFolder(current);
+        } catch {
+          // Folder may already exist on disk but not yet indexed by Obsidian
+        }
       }
     }
   }
