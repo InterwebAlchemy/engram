@@ -36,7 +36,11 @@ You're building a new project and want to port logic or UI patterns to an older 
 
 You have limited tokens across Claude Code, Claude Desktop, and Codex.
 
-Instead of burning context in each one re-establishing where you are, each session picks up where the last one left off regardless of which provider's harness and underlying model it's using now.
+![ran into Claude Code session limit and picked up in Codex without losing any context](./assets/request-limit-model-swap.png)
+
+Instead of wasting time in each one re-establishing where you are, each session picks up where the last one left off regardless of which provider's harness and underlying model it's using now.
+
+Hit your session limits and just swap harnesses without missing a beat.
 
 ## How It Works
 
