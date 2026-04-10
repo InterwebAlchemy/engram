@@ -368,7 +368,7 @@ export function parseDreamsResponse(rawResponse: string): ParsedDreamsResponse {
   const trimmed = rawResponse.trim();
   const fenceMatch = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
   const candidate = fenceMatch?.[1] ?? extractJSONBody(trimmed);
-  const parsed = JSON.parse(candidate) as unknown;
+  const parsed = tryParseJSON(candidate);
 
   // New format: { actions: [...], dream: "..." }
   if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && 'actions' in parsed) {
@@ -388,6 +388,44 @@ export function parseDreamsResponse(rawResponse: string): ParsedDreamsResponse {
   }
 
   throw new Error('Dreams provider response was not a recognized format.');
+}
+
+/**
+ * Attempt JSON.parse, and if it fails due to truncation, try to salvage
+ * by extracting the actions array from the partial response.
+ */
+function tryParseJSON(candidate: string): unknown {
+  try {
+    return JSON.parse(candidate);
+  } catch {
+    // Response was likely truncated mid-JSON. Try to extract the actions array.
+    const actionsMatch = candidate.match(/"actions"\s*:\s*\[/);
+    if (!actionsMatch) throw new Error('Dreams response is not valid JSON and could not be repaired.');
+
+    const arrStart = actionsMatch.index! + actionsMatch[0].length - 1;
+    // Walk through the string to find complete action objects
+    let depth = 0;
+    let lastCompleteElement = -1;
+    for (let i = arrStart; i < candidate.length; i++) {
+      const ch = candidate[i];
+      if (ch === '{') depth++;
+      else if (ch === '}') {
+        depth--;
+        if (depth === 0) lastCompleteElement = i;
+      }
+    }
+
+    if (lastCompleteElement === -1) {
+      throw new Error('Dreams response is not valid JSON and could not be repaired.');
+    }
+
+    const repairedArray = candidate.slice(arrStart, lastCompleteElement + 1) + ']';
+    const actions = JSON.parse(repairedArray);
+
+    // Try to extract the dream field if it came before the truncation
+    const dreamMatch = candidate.match(/"dream"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+    return { actions, dream: dreamMatch?.[1] };
+  }
 }
 
 function extractJSONBody(text: string): string {

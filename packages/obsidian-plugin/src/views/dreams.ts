@@ -499,7 +499,7 @@ export class EngramDreamsView extends ItemView {
           const result = await provider.complete(messages as ChatMessage[], {
             model: selection.modelId,
             temperature: 0,
-            maxTokens: 4000,
+            maxTokens: 16000,
           });
           return {
             content: result.content.trim(),
