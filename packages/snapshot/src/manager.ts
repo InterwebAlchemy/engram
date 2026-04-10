@@ -38,7 +38,7 @@ export class SnapshotManager {
     const snapshotEngramPath = path.join(snapshotDir, engramRoot);
 
     await fs.mkdir(snapshotDir, { recursive: true });
-    await fs.cp(engramPath, snapshotEngramPath, { recursive: true, errorOnExist: true });
+    await fs.cp(engramPath, snapshotEngramPath, { recursive: true });
 
     const manifest: SnapshotManifest = {
       version: 1,
