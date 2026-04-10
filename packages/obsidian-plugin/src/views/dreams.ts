@@ -13,13 +13,12 @@ import {
   summarizeDreamsUsage,
 } from '../../../dreams/src/history';
 import {
-  buildDryRunExecution,
-  describeAction,
   executeDreamsActions,
   planDreams,
+  writeDreamStartEntry,
+  writeDreamScratchEntry,
 } from '../../../dreams/src/runner';
 import type {
-  DreamsAction,
   DreamsRunHistory,
   DreamsExecutionResult,
   DreamsPlanResult,
@@ -27,6 +26,8 @@ import type {
 } from '../../../dreams/src/types';
 import { SnapshotManager } from '../../../snapshot/src/manager';
 import type { SnapshotRecord } from '../../../snapshot/src/types';
+import { Ciph3rTextAnimator } from '../utils/ciph3r';
+import { DreamCanvas } from '../utils/dream-canvas';
 
 interface ModelOption {
   providerId: string;
@@ -45,11 +46,12 @@ export class EngramDreamsView extends ItemView {
   private latestExecution: DreamsExecutionResult | null = null;
   private latestRunSnapshot: SnapshotRecord | null = null;
   private loading = false;
-  private planning = false;
-  private applying = false;
+  private dreaming = false;
   private error: string | null = null;
   private selectedProviderId = '';
   private selectedModelId = '';
+  private dreamCanvas: DreamCanvas | null = null;
+  private dreamAnimator: Ciph3rTextAnimator | null = null;
 
   constructor(leaf: WorkspaceLeaf, plugin: EngramPlugin) {
     super(leaf);
@@ -78,7 +80,7 @@ export class EngramDreamsView extends ItemView {
   }
 
   async onClose(): Promise<void> {
-    // Nothing to clean up.
+    this.cleanupDreamOverlay();
   }
 
   async refresh(): Promise<void> {
@@ -113,7 +115,13 @@ export class EngramDreamsView extends ItemView {
   }
 
   private render(): void {
+    this.cleanupDreamOverlay();
     this.container.empty();
+
+    if (this.dreaming) {
+      this.renderDreamingOverlay();
+      return;
+    }
 
     const toolbar = this.container.createDiv({ cls: 'engram-dreams-toolbar' });
     this.renderToolbar(toolbar);
@@ -145,9 +153,33 @@ export class EngramDreamsView extends ItemView {
 
     this.renderSummary(this.container, this.report, this.snapshots);
     this.renderUsageHistory(this.container);
-    this.renderPlanResults(this.container);
+    this.renderDreamResults(this.container);
     this.renderFindings(this.container, this.report);
     this.renderSnapshots(this.container, this.snapshots);
+  }
+
+  private renderDreamingOverlay(): void {
+    const overlay = this.container.createDiv({ cls: 'engram-dreams-overlay' });
+
+    const canvas = overlay.createEl('canvas', { cls: 'engram-dreams-overlay-canvas' });
+    this.dreamCanvas = new DreamCanvas(canvas);
+    this.dreamCanvas.start();
+
+    const center = overlay.createDiv({ cls: 'engram-dreams-overlay-center' });
+    const label = center.createSpan({ cls: 'engram-dreams-overlay-text', text: 'Dreaming...' });
+    this.dreamAnimator = new Ciph3rTextAnimator(label, 'Dreaming...');
+    this.dreamAnimator.start();
+  }
+
+  private cleanupDreamOverlay(): void {
+    if (this.dreamCanvas) {
+      this.dreamCanvas.stop();
+      this.dreamCanvas = null;
+    }
+    if (this.dreamAnimator) {
+      this.dreamAnimator.stop();
+      this.dreamAnimator = null;
+    }
   }
 
   private renderToolbar(parent: HTMLElement): void {
@@ -181,10 +213,10 @@ export class EngramDreamsView extends ItemView {
   private renderControls(parent: HTMLElement): void {
     const section = parent.createDiv({ cls: 'engram-dreams-controls' });
     const copy = section.createDiv({ cls: 'engram-dreams-controls-copy' });
-    copy.createEl('h4', { text: 'Run Dreams' });
+    copy.createEl('h4', { text: 'Dream' });
     copy.createDiv({
       cls: 'engram-dreams-section-description',
-      text: 'Generate a cleanup plan with a model you trust, then apply that plan with a safety snapshot.',
+      text: 'Analyze vault health and apply cleanup actions automatically. A snapshot is created before any changes.',
     });
 
     const options = this.getModelOptions();
@@ -217,25 +249,13 @@ export class EngramDreamsView extends ItemView {
       });
     }
 
-    const planButton = form.createEl('button', {
+    const dreamButton = form.createEl('button', {
       cls: 'mod-cta',
-      text: this.planning ? 'Planning...' : 'Plan dreams',
+      text: 'Dream',
     });
-    planButton.disabled = this.planning || this.applying || options.length === 0;
-    planButton.addEventListener('click', () => {
-      void this.handlePlanDreams();
-    });
-
-    const applyButton = form.createEl('button', {
-      text: this.applying ? 'Applying...' : 'Apply current plan',
-    });
-    applyButton.disabled =
-      this.planning ||
-      this.applying ||
-      !this.latestPlan ||
-      this.latestPlan.actions.length === 0;
-    applyButton.addEventListener('click', () => {
-      void this.handleApplyDreams();
+    dreamButton.disabled = options.length === 0;
+    dreamButton.addEventListener('click', () => {
+      void this.handleDream();
     });
   }
 
@@ -309,77 +329,40 @@ export class EngramDreamsView extends ItemView {
     }
   }
 
-  private renderPlanResults(parent: HTMLElement): void {
+  private renderDreamResults(parent: HTMLElement): void {
     if (!this.latestPlan) return;
 
     const section = parent.createDiv({ cls: 'engram-dreams-section' });
-    section.createEl('h4', { text: 'Latest Dreams plan' });
+    section.createEl('h4', { text: 'Latest Dream' });
     section.createDiv({
       cls: 'engram-dreams-section-description',
       text: this.formatLatestPlanMeta(),
     });
 
-    const dryRun = buildDryRunExecution(this.latestPlan.actions);
-    const summary = section.createDiv({ cls: 'engram-dreams-plan-summary' });
-    summary.createDiv({
-      cls: 'engram-dreams-stat-description',
-      text: `${this.latestPlan.actions.length} proposed actions · ${this.latestPlan.reviewNotes.length} review notes supplied to the model`,
+    const applied = this.latestExecution?.applied ?? 0;
+    const skipped = this.latestExecution?.skipped ?? 0;
+    const snapshotLabel = this.latestRunSnapshot ? ` · snapshot ${this.latestRunSnapshot.id}` : '';
+    section.createDiv({
+      cls: 'engram-dreams-plan-summary engram-dreams-stat-description',
+      text: `${applied} applied · ${skipped} skipped${snapshotLabel}`,
     });
 
-    const actionsList = section.createDiv({ cls: 'engram-dreams-action-list' });
-    if (this.latestPlan.actions.length === 0) {
-      actionsList.createDiv({
-        cls: 'engram-dreams-empty',
-        text: 'The model proposed no actions.',
-      });
-    } else {
-      for (const action of this.latestPlan.actions) {
-        this.renderActionCard(actionsList, action);
+    if (this.latestExecution && this.latestExecution.details.length > 0) {
+      const executionList = section.createEl('ul', { cls: 'engram-dreams-list' });
+      for (const detail of this.latestExecution.details) {
+        executionList.createEl('li', { text: detail });
       }
     }
 
     const detailsSection = section.createDiv({ cls: 'engram-dreams-plan-details' });
-    const preview = detailsSection.createEl('details');
-    preview.createEl('summary', { text: 'Dry-run execution preview' });
-    const previewList = preview.createEl('ul', { cls: 'engram-dreams-list' });
-    for (const detail of dryRun.details) {
-      previewList.createEl('li', { text: detail });
-    }
-
     const rawOutput = detailsSection.createEl('details');
     rawOutput.createEl('summary', { text: 'Raw model output' });
     rawOutput.createEl('pre', {
       cls: 'engram-dreams-raw-output',
       text: this.latestPlan.rawResponse,
     });
-
-    if (this.latestExecution) {
-      const execution = section.createDiv({ cls: 'engram-dreams-execution' });
-      execution.createEl('h5', { text: 'Latest execution' });
-      execution.createDiv({
-        cls: 'engram-dreams-section-description',
-        text: `${this.latestExecution.applied} applied · ${this.latestExecution.skipped} skipped${this.latestRunSnapshot ? ` · snapshot ${this.latestRunSnapshot.id}` : ''}`,
-      });
-
-      const executionList = execution.createEl('ul', { cls: 'engram-dreams-list' });
-      for (const detail of this.latestExecution.details) {
-        executionList.createEl('li', { text: detail });
-      }
-    }
   }
 
-  private renderActionCard(parent: HTMLElement, action: DreamsAction): void {
-    const card = parent.createDiv({ cls: 'engram-dreams-action-card' });
-    card.createDiv({
-      cls: 'engram-dreams-action-title',
-      text: describeAction(action),
-    });
-    const reason = 'reason' in action ? action.reason : 'No reason provided.';
-    card.createDiv({
-      cls: 'engram-dreams-section-description',
-      text: reason,
-    });
-  }
 
   private renderFindings(parent: HTMLElement, report: DreamsReport): void {
     const sections = parent.createDiv({ cls: 'engram-dreams-sections' });
@@ -476,15 +459,16 @@ export class EngramDreamsView extends ItemView {
     }
   }
 
-  private async handlePlanDreams(): Promise<void> {
+  private async handleDream(): Promise<void> {
     const selection = this.getSelectedOption();
     if (!selection) {
       new Notice('No Dreams model is configured yet. Enable one in Settings first.');
       return;
     }
 
-    this.planning = true;
+    this.dreaming = true;
     this.error = null;
+    this.latestPlan = null;
     this.latestExecution = null;
     this.latestRunSnapshot = null;
     this.render();
@@ -495,7 +479,19 @@ export class EngramDreamsView extends ItemView {
         throw new Error(`Could not create provider adapter for ${selection.providerName}.`);
       }
 
+      // Resolve agent name from soul doc for prompt context
+      const soul = await this.plugin.memoryManager.getSoulDocument();
+      const gitIdentity = soul?.frontmatter.git_identity as string | undefined;
+      const agentName = gitIdentity?.split('<')[0]?.trim() || undefined;
+
+      // Deterministic pre-cleanup
       const analyzer = new DreamsAnalyzer(this.plugin.memoryManager);
+      await analyzer.preCleanup();
+
+      // Dream start marker — an unmatched start without end signals an interrupted dream
+      await writeDreamStartEntry(this.plugin.memoryManager);
+
+      // Plan
       const plan = await planDreams(
         this.plugin.memoryManager,
         () => analyzer.analyze(),
@@ -510,10 +506,41 @@ export class EngramDreamsView extends ItemView {
             usage: result.usage,
           };
         },
+        { agentName },
       );
 
       this.latestPlan = plan;
       this.report = plan.report;
+
+      // Snapshot before applying
+      const snapshot = await this.createSnapshotManager().create({
+        vaultPath: this.plugin.getVaultBasePath(),
+        engramRoot: this.plugin.settings.engramRoot,
+        label: 'Dreams pre-run snapshot',
+        reason: 'obsidian-dreams-run',
+      });
+
+      // Apply actions
+      if (plan.actions.length > 0) {
+        const basePath = this.plugin.getVaultBasePath();
+        const config = {
+          ...defaultMemoryConfig(basePath, this.plugin.settings.vaultMode),
+          engramRoot: this.plugin.settings.engramRoot,
+          readPaths: this.plugin.settings.readPaths,
+        };
+
+        this.latestExecution = await executeDreamsActions(
+          plan.actions,
+          this.plugin.memoryManager,
+          this.plugin.fileAdapter,
+          config.basePath,
+          config.engramRoot,
+          config.archivePath,
+        );
+        this.latestRunSnapshot = snapshot;
+      }
+
+      // Record history
       this.runHistory = await appendDreamsRunHistory(
         this.plugin.fileAdapter,
         this.plugin.getVaultBasePath(),
@@ -527,7 +554,9 @@ export class EngramDreamsView extends ItemView {
           usage: plan.usage,
           actionCount: plan.actions.length,
           reviewNoteCount: plan.reviewNotes.length,
-          executionMode: 'plan',
+          executionMode: 'apply',
+          appliedActions: this.latestExecution?.applied,
+          skippedActions: this.latestExecution?.skipped,
           reportSummary: {
             memoryCount: plan.report.stateDistribution.total,
             rememberedCount: plan.report.stateDistribution.counts.remembered ?? 0,
@@ -540,70 +569,27 @@ export class EngramDreamsView extends ItemView {
           },
         },
       );
+
+      // Leave a trace in scratch for the next fragment
+      if (this.latestExecution) {
+        await writeDreamScratchEntry(
+          this.plugin.memoryManager,
+          this.latestExecution,
+          plan.actions,
+          plan.report,
+          plan.dream,
+        );
+      }
+
       this.snapshots = await this.createSnapshotManager().list();
-      const usageLabel = plan.usage?.total_tokens ? ` ${plan.usage.total_tokens} tokens.` : '';
-      new Notice(`Dreams plan ready: ${plan.actions.length} actions proposed.${usageLabel}`);
+      const applied = this.latestExecution?.applied ?? 0;
+      const usageLabel = plan.usage?.total_tokens ? ` · ${plan.usage.total_tokens} tokens` : '';
+      new Notice(`Dream complete: ${applied} actions applied${usageLabel}`);
     } catch (error) {
       this.error = error instanceof Error ? error.message : String(error);
-      new Notice(`Dreams planning failed: ${this.error}`);
+      new Notice(`Dream failed: ${this.error}`);
     } finally {
-      this.planning = false;
-      this.render();
-    }
-  }
-
-  private async handleApplyDreams(): Promise<void> {
-    if (!this.latestPlan) {
-      new Notice('Plan Dreams first so there is something to apply.');
-      return;
-    }
-
-    if (this.latestPlan.actions.length === 0) {
-      new Notice('The current Dreams plan has no actions to apply.');
-      return;
-    }
-
-    const confirmed = window.confirm(
-      `Apply ${this.latestPlan.actions.length} Dreams actions to this vault? A rollback snapshot will be created first.`,
-    );
-    if (!confirmed) return;
-
-    this.applying = true;
-    this.error = null;
-    this.render();
-
-    try {
-      const snapshot = await this.createSnapshotManager().create({
-        vaultPath: this.plugin.getVaultBasePath(),
-        engramRoot: this.plugin.settings.engramRoot,
-        label: 'Dreams pre-run snapshot',
-        reason: 'obsidian-dreams-run',
-      });
-
-      const basePath = this.plugin.getVaultBasePath();
-      const config = {
-        ...defaultMemoryConfig(basePath, this.plugin.settings.vaultMode),
-        engramRoot: this.plugin.settings.engramRoot,
-        readPaths: this.plugin.settings.readPaths,
-      };
-
-      this.latestExecution = await executeDreamsActions(
-        this.latestPlan.actions,
-        this.plugin.memoryManager,
-        this.plugin.fileAdapter,
-        config.basePath,
-        config.engramRoot,
-        config.archivePath,
-      );
-      this.latestRunSnapshot = snapshot;
-
-      await this.refresh();
-      new Notice(`Dreams applied ${this.latestExecution.applied} actions. Snapshot: ${snapshot.id}`);
-    } catch (error) {
-      this.error = error instanceof Error ? error.message : String(error);
-      new Notice(`Dreams apply failed: ${this.error}`);
-    } finally {
-      this.applying = false;
+      this.dreaming = false;
       this.render();
     }
   }

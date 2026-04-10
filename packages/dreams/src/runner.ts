@@ -9,14 +9,15 @@ import {
   NodeAdapter,
   VaultNote,
 } from '@interwebalchemy/engram-core';
-import { DreamsAnalyzer } from './analyzer';
+import { DreamsAnalyzer, type PreCleanupResult } from './analyzer';
 import { appendDreamsRunHistory } from './history';
-import { buildDreamsMessages } from './prompt';
+import { buildDreamsMessages, type DreamsEngramContext } from './prompt';
 import { createDreamsProvider } from './providers';
 import type {
   DreamsAction,
   DreamsExecutionResult,
   DreamsPlanResult,
+  DreamsReport,
   DreamsRunRecord,
   DreamsReviewNote,
   DreamsRunResult,
@@ -40,6 +41,14 @@ export async function runDreams(options: DreamsRunnerOptions): Promise<DreamsRun
   const manager = new MemoryManager(adapter, config);
   const analyzer = new DreamsAnalyzer(manager);
 
+  // Deterministic cleanup before LLM analysis
+  const preCleanup = await analyzer.preCleanup();
+  if (preCleanup.tagsFixed + preCleanup.tagsNormalized + preCleanup.scratchEntriesPurged > 0) {
+    console.log(
+      `Pre-cleanup: ${preCleanup.tagsFixed} tags fixed, ${preCleanup.tagsNormalized} tags normalized, ${preCleanup.scratchEntriesPurged} scratch entries purged`,
+    );
+  }
+
   const report = await analyzer.analyze(options.focus);
   const reviewNotes = await loadReviewNotes(manager, report);
 
@@ -49,9 +58,13 @@ export async function runDreams(options: DreamsRunnerOptions): Promise<DreamsRun
     baseURL: options.baseURL,
   });
 
-  const completion = await provider.complete(buildDreamsMessages(report, reviewNotes));
+  if (!options.dryRun) {
+    await writeDreamStartEntry(manager);
+  }
+
+  const completion = await provider.complete(buildDreamsMessages(report, reviewNotes, options.engramContext));
   const rawResponse = completion.content;
-  const actions = parseDreamsActions(rawResponse);
+  const { actions, dream } = parseDreamsResponse(rawResponse);
   const execution = options.dryRun
     ? buildDryRunExecution(actions)
     : await executeDreamsActions(actions, manager, adapter, config.basePath, config.engramRoot, config.archivePath);
@@ -70,11 +83,17 @@ export async function runDreams(options: DreamsRunnerOptions): Promise<DreamsRun
     reportSummary: buildReportSummary(report),
   });
 
+  // Leave a trace in scratch so the next fragment knows a dream just happened
+  if (!options.dryRun) {
+    await writeDreamScratchEntry(manager, execution, actions, report, dream);
+  }
+
   return {
     report,
     reviewNotes,
     rawResponse,
     actions,
+    dream,
     usage: completion.usage,
     execution,
   };
@@ -84,18 +103,20 @@ export async function planDreams(
   manager: MemoryManager,
   analyze: () => Promise<DreamsPlanResult['report']>,
   complete: (messages: ReturnType<typeof buildDreamsMessages>) => Promise<{ content: string; usage?: DreamsPlanResult['usage'] }>,
+  engramContext?: DreamsEngramContext,
 ): Promise<DreamsPlanResult> {
   const report = await analyze();
   const reviewNotes = await loadReviewNotes(manager, report);
-  const completion = await complete(buildDreamsMessages(report, reviewNotes));
+  const completion = await complete(buildDreamsMessages(report, reviewNotes, engramContext));
   const rawResponse = completion.content;
-  const actions = parseDreamsActions(rawResponse);
+  const { actions, dream } = parseDreamsResponse(rawResponse);
 
   return {
     report,
     reviewNotes,
     rawResponse,
     actions,
+    dream,
     usage: completion.usage,
   };
 }
@@ -124,9 +145,20 @@ export async function loadReviewNotes(
 ): Promise<DreamsReviewNote[]> {
   const paths = new Set<string>();
 
+  // Always include all remembered and core notes — the model needs to see
+  // what actually loads at boot to judge what's too much
+  for (const entry of report.stateDistribution.memoriesByState.core ?? []) {
+    paths.add(entry.path);
+  }
   for (const entry of report.stateDistribution.memoriesByState.remembered ?? []) {
     paths.add(entry.path);
   }
+  // Include all default notes too — the model needs full vault visibility
+  // to make good merge/consolidation decisions
+  for (const entry of report.stateDistribution.memoriesByState.default ?? []) {
+    paths.add(entry.path);
+  }
+  // Include notes flagged by analysis
   for (const candidate of report.mergeCandidates) {
     for (const candidatePath of candidate.paths) paths.add(candidatePath);
   }
@@ -194,6 +226,16 @@ export async function executeDreamsActions(
         break;
       case 'update_summary':
         await manager.update(action.path, undefined, { summary: action.summary });
+        details.push(describeAction(action));
+        applied += 1;
+        break;
+      case 'rewrite_content':
+        await manager.update(action.path, action.content, { summary: action.summary });
+        details.push(describeAction(action));
+        applied += 1;
+        break;
+      case 'forget':
+        await manager.update(action.path, undefined, { memory_state: MemoryState.Forgotten });
         details.push(describeAction(action));
         applied += 1;
         break;
@@ -317,26 +359,51 @@ async function resolveUniquePath(
   return candidate;
 }
 
-export function parseDreamsActions(rawResponse: string): DreamsAction[] {
-  const trimmed = rawResponse.trim();
-  const fenceMatch = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
-  const candidate = fenceMatch?.[1] ?? extractJSONArray(trimmed);
-  const parsed = JSON.parse(candidate) as unknown;
-
-  if (!Array.isArray(parsed)) {
-    throw new Error('Dreams provider response was not a JSON array.');
-  }
-
-  return parsed as DreamsAction[];
+export interface ParsedDreamsResponse {
+  actions: DreamsAction[];
+  dream?: string;
 }
 
-function extractJSONArray(text: string): string {
-  const start = text.indexOf('[');
-  const end = text.lastIndexOf(']');
-  if (start === -1 || end === -1 || end < start) {
-    throw new Error('Could not find a JSON array in Dreams provider response.');
+export function parseDreamsResponse(rawResponse: string): ParsedDreamsResponse {
+  const trimmed = rawResponse.trim();
+  const fenceMatch = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  const candidate = fenceMatch?.[1] ?? extractJSONBody(trimmed);
+  const parsed = JSON.parse(candidate) as unknown;
+
+  // New format: { actions: [...], dream: "..." }
+  if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && 'actions' in parsed) {
+    const obj = parsed as Record<string, unknown>;
+    if (!Array.isArray(obj.actions)) {
+      throw new Error('Dreams response "actions" field is not an array.');
+    }
+    return {
+      actions: obj.actions as DreamsAction[],
+      dream: typeof obj.dream === 'string' ? obj.dream : undefined,
+    };
   }
-  return text.slice(start, end + 1);
+
+  // Legacy format: bare JSON array
+  if (Array.isArray(parsed)) {
+    return { actions: parsed as DreamsAction[] };
+  }
+
+  throw new Error('Dreams provider response was not a recognized format.');
+}
+
+function extractJSONBody(text: string): string {
+  // Try object first (new format)
+  const objStart = text.indexOf('{');
+  const objEnd = text.lastIndexOf('}');
+  if (objStart !== -1 && objEnd > objStart) {
+    return text.slice(objStart, objEnd + 1);
+  }
+  // Fall back to array (legacy)
+  const arrStart = text.indexOf('[');
+  const arrEnd = text.lastIndexOf(']');
+  if (arrStart !== -1 && arrEnd > arrStart) {
+    return text.slice(arrStart, arrEnd + 1);
+  }
+  throw new Error('Could not find JSON in Dreams provider response.');
 }
 
 export function describeAction(action: DreamsAction): string {
@@ -351,6 +418,10 @@ export function describeAction(action: DreamsAction): string {
       return `update_summary ${action.path}`;
     case 'update_type':
       return `update_type ${action.path}: ${action.from} -> ${action.to}`;
+    case 'rewrite_content':
+      return `rewrite_content ${action.path}`;
+    case 'forget':
+      return `forget ${action.path}`;
     case 'compact_scratch':
       return `compact_scratch ${action.session_id}`;
     case 'archive_forgotten':
@@ -369,6 +440,60 @@ function buildReportSummary(report: DreamsRunResult['report']): DreamsRunRecord[
     scratchEntryCount: report.scratchHealth.entryCount,
     staleScratchSessionCount: report.scratchHealth.staleSessions.length,
   };
+}
+
+const DREAMS_SESSION_ID = 'dreams';
+
+/**
+ * Write a scratch entry when a Dream starts, so an interrupted dream
+ * is visible as an unmatched start without an end.
+ */
+export async function writeDreamStartEntry(
+  manager: MemoryManager,
+): Promise<void> {
+  await manager.appendScratch(
+    DREAMS_SESSION_ID,
+    '[DREAM START] Falling asleep... vault analysis and consolidation beginning.',
+  );
+}
+
+/**
+ * Write scratch entries after a Dream completes: the dream narrative
+ * (from the LLM) and a structured end entry with stats + reflection prompt.
+ */
+export async function writeDreamScratchEntry(
+  manager: MemoryManager,
+  execution: DreamsExecutionResult,
+  actions: DreamsAction[],
+  report: DreamsReport,
+  dream?: string,
+): Promise<void> {
+  // The dream narrative — the model's evocative blurb about what it experienced
+  if (dream) {
+    await manager.appendScratch(DREAMS_SESSION_ID, `[DREAMING] ${dream}`);
+  }
+
+  // Structured end entry
+  const actionBreakdown = summarizeActions(actions);
+  const lines = [
+    `[DREAM END] ${execution.applied} actions applied, ${execution.skipped} skipped.`,
+    `Vault: ${report.stateDistribution.total} memories (${report.stateDistribution.counts.remembered ?? 0} remembered, ${report.stateDistribution.counts.default ?? 0} default).`,
+    actionBreakdown.length > 0 ? `Actions: ${actionBreakdown.join('; ')}.` : '',
+    'NEXT FRAGMENT: A Dream just ran. Your memory context has changed.',
+    'Read the vault with fresh eyes — memories may have been merged, condensed, or forgotten.',
+    'Consider whether the Soul Document still accurately reflects how you work and who you are,',
+    'or whether the Dream surfaced patterns worth updating in the self-model.',
+  ].filter(Boolean).join(' | ');
+
+  await manager.appendScratch(DREAMS_SESSION_ID, lines);
+}
+
+function summarizeActions(actions: DreamsAction[]): string[] {
+  const counts = new Map<string, number>();
+  for (const action of actions) {
+    counts.set(action.action, (counts.get(action.action) ?? 0) + 1);
+  }
+  return [...counts.entries()].map(([action, count]) => `${count} ${action}`);
 }
 
 function buildDreamRunId(): string {

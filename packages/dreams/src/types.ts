@@ -1,4 +1,5 @@
 import type { DreamsUsage } from './providers/types';
+import type { DreamsEngramContext } from './prompt';
 
 export type DreamsFocus =
   | 'state_distribution'
@@ -100,6 +101,18 @@ export type DreamsAction =
       reason: string;
     }
   | {
+      action: 'rewrite_content';
+      path: string;
+      content: string;
+      summary: string;
+      reason: string;
+    }
+  | {
+      action: 'forget';
+      path: string;
+      reason: string;
+    }
+  | {
       action: 'compact_scratch';
       session_id: string;
       summary: string;
@@ -128,6 +141,7 @@ export interface DreamsPlanResult {
   reviewNotes: DreamsReviewNote[];
   rawResponse: string;
   actions: DreamsAction[];
+  dream?: string;
   usage?: DreamsUsage;
 }
 
@@ -136,6 +150,7 @@ export interface DreamsRunResult {
   reviewNotes: DreamsReviewNote[];
   rawResponse: string;
   actions: DreamsAction[];
+  dream?: string;
   usage?: DreamsUsage;
   execution: DreamsExecutionResult;
 }
@@ -184,4 +199,5 @@ export interface DreamsRunnerOptions {
   baseURL?: string;
   dryRun?: boolean;
   focus?: DreamsFocus[];
+  engramContext?: DreamsEngramContext;
 }

@@ -19,9 +19,131 @@ import type {
 const THREAD_TAG_PREFIX = 'engram/thread/';
 const BASE_THREAD_TAG = 'engram/thread';
 const DAY_MS = 24 * 60 * 60 * 1000;
+const STALE_SCRATCH_DAYS = 2;
+const COMPACTED_SCRATCH_MAX_AGE_DAYS = 7;
+
+/** Bare tag → engram/ namespace mapping for unambiguous cases. */
+const TAG_NORMALIZATION_MAP: Record<string, string> = {
+  architecture: 'engram/architecture',
+  bootstrap: 'engram/bootstrap',
+  'bootstrap-sequence': 'engram/bootstrap',
+  bootstrapping: 'engram/bootstrap',
+  dreams: 'engram/dreams',
+  identity: 'engram/identity',
+  project: 'engram/project',
+  roadmap: 'engram/roadmap',
+  scratch: 'engram/scratch',
+  snapshot: 'engram/snapshot',
+  threads: 'engram/threads',
+  'engram-feature': 'engram/feature',
+  'harness-detection': 'engram/harness-detection',
+  'harness-negotiation': 'engram/harness-negotiation',
+  'open-question': 'engram/open-question',
+  'session-log': 'engram/session-log',
+};
+
+export interface PreCleanupResult {
+  tagsFixed: number;
+  tagsNormalized: number;
+  scratchEntriesPurged: number;
+}
 
 export class DreamsAnalyzer {
   constructor(private readonly manager: MemoryManager) {}
+
+  /**
+   * Run deterministic cleanup that doesn't need LLM judgment:
+   * - Fix JSON-string tags → YAML arrays
+   * - Normalize bare tags to engram/ namespace
+   * - Purge compacted scratch entries older than 7 days
+   * - Auto-compact scratch sessions older than 2 days
+   */
+  async preCleanup(): Promise<PreCleanupResult> {
+    const result: PreCleanupResult = { tagsFixed: 0, tagsNormalized: 0, scratchEntriesPurged: 0 };
+
+    // Fix tags on all notes
+    const notes = await this.manager.list();
+    for (const note of notes) {
+      // Access raw value — may be a JSON string at runtime despite the type
+      const raw: unknown = note.frontmatter.tags;
+      let tags: string[] | null = null;
+      let changed = false;
+
+      // Fix JSON-string tags (e.g. '["foo", "bar"]' stored as a string)
+      if (typeof raw === 'string' && raw.startsWith('[')) {
+        try {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            tags = parsed.filter(Boolean).map(String);
+            changed = true;
+            result.tagsFixed += 1;
+          }
+        } catch {
+          // Not valid JSON — leave as-is
+        }
+      }
+
+      if (!tags) {
+        tags = this.getTags(note);
+      }
+
+      // Normalize bare tags to engram/ namespace
+      const normalized = tags.map((tag) => {
+        const mapped = TAG_NORMALIZATION_MAP[tag];
+        if (mapped && tag !== mapped) {
+          changed = true;
+          result.tagsNormalized += 1;
+          return mapped;
+        }
+        return tag;
+      });
+
+      if (changed) {
+        await this.manager.update(note.path, undefined, { tags: normalized });
+      }
+    }
+
+    // Purge old compacted scratch entries and auto-compact stale sessions
+    const entries = await this.manager.readScratch({ limit: 10000 });
+    const now = Date.now();
+    const sessionMap = new Map<string, ScratchEntry[]>();
+
+    for (const entry of entries) {
+      const group = sessionMap.get(entry.sessionId) ?? [];
+      group.push(entry);
+      sessionMap.set(entry.sessionId, group);
+    }
+
+    for (const [sessionId, group] of sessionMap) {
+      const newest = group.reduce((a, b) =>
+        a.timestamp > b.timestamp ? a : b,
+      );
+      const ageDays = (now - new Date(newest.timestamp).getTime()) / DAY_MS;
+      const isCompacted = group.some((e) => e.content.includes('[COMPACTED]'));
+
+      // Purge compacted sessions older than 7 days
+      if (isCompacted && ageDays > COMPACTED_SCRATCH_MAX_AGE_DAYS) {
+        await this.manager.compactScratch({
+          sessionId,
+          thresholdMs: 0,
+          compactedContent: `[PURGED] Session ${sessionId} — compacted entries older than ${COMPACTED_SCRATCH_MAX_AGE_DAYS} days removed by Dreams pre-cleanup.`,
+        });
+        result.scratchEntriesPurged += group.length - 1;
+      }
+      // Auto-compact uncompacted sessions older than 2 days
+      else if (!isCompacted && ageDays > STALE_SCRATCH_DAYS) {
+        const summary = group.map((e) => e.content).join(' | ').slice(0, 300);
+        await this.manager.compactScratch({
+          sessionId,
+          thresholdMs: 0,
+          compactedContent: `[AUTO-COMPACTED by Dreams] ${summary}`,
+        });
+        result.scratchEntriesPurged += group.length - 1;
+      }
+    }
+
+    return result;
+  }
 
   async analyze(focus?: DreamsFocus[]): Promise<DreamsReport> {
     const focusAreas: DreamsFocus[] = focus && focus.length > 0

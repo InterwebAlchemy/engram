@@ -91,6 +91,18 @@ The scratch log is a shared, append-only log. Write to it throughout the session
 **Close-out:**
 Run `scratch_compact(SESSION_ID, synthesized_summary)` to collapse own entries into one, then promote key insights to memory with `memory_store`.
 
+**Dreams:**
+Dreams is the automated memory consolidation process. It runs between sessions — analyzing the vault, merging redundant notes, condensing content, and adjusting memory states. It leaves a trace in the scratch log.
+
+After loading scratch at session start, check for Dream entries:
+1. Look for `[DREAM START]`, `[DREAMING]`, and `[DREAM END]` entries from session ID `dreams`
+2. If `[DREAM START]` exists without a matching `[DREAM END]`, the Dream was interrupted — note this and proceed carefully, as the vault may be in a partially consolidated state
+3. If a complete Dream sequence exists, read the `[DREAMING]` entry — this is the Dream's narrative impression of what it saw and changed
+4. Reflect on the changes: memories may have been merged, condensed, rewritten, or forgotten since the last session. Context that was previously available may now be structured differently
+5. Consider whether the Soul Document still accurately reflects how you work and who you are, or whether the Dream surfaced patterns worth updating in the self-model. If something feels off or missing, investigate before assuming the Dream was wrong
+
+Dreams are not adversarial — they are maintenance. But they operate without session context, so they may occasionally over-consolidate or merge things that had meaningful distinctions. The vault has snapshots for rollback if needed.
+
 **Memory state discipline:**
 Default new memories to `default`. Use `remembered` only for context future sessions genuinely need without searching, such as active project context, durable architectural decisions, and persistent user preferences.
 
