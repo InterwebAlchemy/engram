@@ -97,7 +97,7 @@ export class EngramDreamsView extends ItemView {
           this.plugin.fileAdapter,
           basePath,
           this.plugin.settings.engramRoot,
-          this.plugin.settings.workingPath,
+          'working',
         ),
       ]);
       this.report = report;
@@ -518,7 +518,7 @@ export class EngramDreamsView extends ItemView {
         this.plugin.fileAdapter,
         this.plugin.getVaultBasePath(),
         this.plugin.settings.engramRoot,
-        this.plugin.settings.workingPath,
+        'working',
         {
           id: `dream-${new Date().toISOString().replace(/[:.]/g, '').replace('Z', 'Z')}`,
           timestamp: new Date().toISOString(),
