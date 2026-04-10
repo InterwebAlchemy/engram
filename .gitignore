@@ -8,6 +8,7 @@ dist/
 .dev-settings.json
 tmp/
 .snapshots/
+release/
 packages/obsidian-plugin/main.js
 
 # local bootstrap overlays used during Engram development

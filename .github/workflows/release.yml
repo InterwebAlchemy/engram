@@ -1,0 +1,92 @@
+name: Beta Release
+
+on:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: beta-release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release:
+    name: Beta Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 'lts/*'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Stage plugin artifacts
+        run: |
+          mkdir -p dist
+          cp packages/obsidian-plugin/main.js dist/main.js
+          cp packages/obsidian-plugin/styles.css dist/styles.css
+
+      - name: Determine beta version
+        run: |
+          # Latest beta tag (bare, no v prefix); strip -beta.N suffix for base
+          LAST_BETA=$(git tag | grep -E '^[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+$' | sort -V | tail -1)
+          if [ -n "$LAST_BETA" ]; then
+            BASE_VERSION=$(echo "$LAST_BETA" | sed 's/-beta\..*//')
+            BETA_COUNT=$(git tag | grep -E "^${BASE_VERSION}-beta\." | wc -l | tr -d ' ')
+          else
+            BASE_VERSION=$(node -p "require('./manifest.json').version" | sed 's/-.*//')
+            BETA_COUNT=0
+          fi
+          NEXT_BETA=$((BETA_COUNT + 1))
+          BETA_VERSION="${BASE_VERSION}-beta.${NEXT_BETA}"
+          echo "BETA_VERSION=${BETA_VERSION}" >> $GITHUB_ENV
+
+      - name: Update manifests and zip
+        run: |
+          npm_package_version=$BETA_VERSION node scripts/version-bump.mjs
+          bash scripts/zip-it.sh
+
+      - name: Tag and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add manifest-beta.json
+          git commit -m "chore(release): updating to $BETA_VERSION [skip ci]"
+          # Bare tag — no v prefix (Obsidian/BRAT convention)
+          git tag $BETA_VERSION
+
+          # Rebase-retry loop in case beta commit races with another push
+          MAX_RETRIES=3
+          for i in $(seq 1 $MAX_RETRIES); do
+            git pull --rebase origin main && git push origin main && break
+            echo "Push failed (attempt $i/$MAX_RETRIES), retrying..."
+            sleep 2
+          done
+
+          git push origin $BETA_VERSION
+
+      - name: Create GitHub pre-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create $BETA_VERSION \
+            --prerelease \
+            --title "$BETA_VERSION" \
+            --generate-notes \
+            "release/engram.zip#Engram Obsidian Plugin" \
+            dist/main.js \
+            dist/manifest.json \
+            manifest-beta.json \
+            dist/styles.css
