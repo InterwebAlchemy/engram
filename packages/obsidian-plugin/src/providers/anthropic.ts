@@ -175,7 +175,11 @@ export class AnthropicAdapter implements ProviderAdapter {
     }
 
     const maxTokens = config.maxTokens ?? 16000;
-    // budget_tokens must be less than max_tokens; cap at 10 000 to be conservative
+    // Anthropic requires budget_tokens >= 1024 when thinking is enabled.
+    // For small maxTokens (narrative calls, short completions) skip thinking
+    // entirely so the request doesn't 400, and allow a custom temperature.
+    const thinkingMinTokens = 1280;
+    const useThinking = maxTokens >= thinkingMinTokens;
     const budgetTokens = Math.min(10000, Math.floor(maxTokens * 0.8));
 
     const body: Record<string, unknown> = {
@@ -183,9 +187,15 @@ export class AnthropicAdapter implements ProviderAdapter {
       messages: conversationMessages,
       max_tokens: maxTokens,
       stream,
-      thinking: { type: 'enabled', budget_tokens: budgetTokens },
-      // temperature must be 1 (or omitted) when extended thinking is enabled
-      temperature: 1,
+      ...(useThinking
+        ? {
+            thinking: { type: 'enabled', budget_tokens: budgetTokens },
+            // temperature must be 1 (or omitted) when extended thinking is enabled
+            temperature: 1,
+          }
+        : {
+            temperature: config.temperature ?? 1,
+          }),
     };
     if (systemParts.length > 0) body.system = systemParts.join('\n\n');
     if (config.topP !== undefined) body.top_p = config.topP;

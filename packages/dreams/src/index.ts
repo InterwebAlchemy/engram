@@ -2,7 +2,7 @@
 
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import { runDreams } from './runner';
+import { runDreams, runDreamsCleanup } from './runner';
 import type { DreamsFocus, DreamsRunnerOptions } from './types';
 
 const DEFAULT_MODEL = 'claude-sonnet-4-6';
@@ -20,6 +20,23 @@ async function main(): Promise<void> {
     dryRun: args.dryRun,
     focus: args.focus,
   };
+
+  if (args.cleanupOnly) {
+    const result = await runDreamsCleanup({
+      vaultPath,
+      focus: args.focus,
+    });
+
+    console.log(`Dreams cleanup timestamp: ${result.report.timestamp}`);
+    console.log(`Vault: ${vaultPath}`);
+    console.log(
+      `Pre-cleanup: ${result.preCleanup.tagsFixed} tags fixed, ${result.preCleanup.tagsNormalized} tags normalized, ${result.preCleanup.scratchEntriesPurged} scratch entries purged, ${result.preCleanup.orphanedDreamStartsResolved} orphaned dream starts resolved`,
+    );
+    console.log(`Scratch entries remaining: ${result.report.scratchHealth.entryCount}`);
+    console.log(`Scratch stale sessions remaining: ${result.report.scratchHealth.staleSessions.length}`);
+    console.log(`Thread pressure: ${result.report.threadHealth.oversizedThreads.length} oversized, ${result.report.threadHealth.staleThreads.length} stale`);
+    return;
+  }
 
   const result = await runDreams(options);
 
@@ -56,6 +73,7 @@ interface ParsedArgs {
   apiKey?: string;
   baseURL?: string;
   dryRun: boolean;
+  cleanupOnly: boolean;
   focus?: DreamsFocus[];
 }
 
@@ -66,6 +84,7 @@ function parseArgs(argv: string[]): ParsedArgs {
     apiKey: process.env.ENGRAM_DREAMS_API_KEY,
     baseURL: process.env.ENGRAM_DREAMS_BASE_URL,
     dryRun: false,
+    cleanupOnly: false,
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -95,6 +114,9 @@ function parseArgs(argv: string[]): ParsedArgs {
         break;
       case '--dry-run':
         parsed.dryRun = true;
+        break;
+      case '--cleanup-only':
+        parsed.cleanupOnly = true;
         break;
       case '--help':
       case '-h':
@@ -144,7 +166,7 @@ function stripQuotes(value: string): string {
 }
 
 function printHelp(): void {
-  console.log('Usage: engram-dreams --vault <path> [--provider anthropic|openai] [--model <id>] [--api-key <key>] [--base-url <url>] [--dry-run]');
+  console.log('Usage: engram-dreams --vault <path> [--provider anthropic|openai] [--model <id>] [--api-key <key>] [--base-url <url>] [--dry-run] [--cleanup-only]');
 }
 
 main().catch((error: unknown) => {

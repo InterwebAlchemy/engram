@@ -2,16 +2,19 @@ import * as path from 'path';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import {
+  ContextBuilder,
   defaultMemoryConfig,
   type FileSystemAdapter,
   MemoryManager,
   MemoryState,
   NodeAdapter,
+  ThreadStatus,
   VaultNote,
 } from '@interwebalchemy/engram-core';
 import { DreamsAnalyzer, type PreCleanupResult } from './analyzer';
 import { appendDreamsRunHistory } from './history';
-import { buildDreamsMessages, type DreamsEngramContext } from './prompt';
+import { buildDreamNarrativeMessages, buildDreamsMessages, type DreamsEngramContext } from './prompt';
+import type { DreamsMessage } from './providers';
 import { createDreamsProvider } from './providers';
 import type {
   DreamsAction,
@@ -43,38 +46,62 @@ export async function runDreams(options: DreamsRunnerOptions): Promise<DreamsRun
 
   // Deterministic cleanup before LLM analysis
   const preCleanup = await analyzer.preCleanup();
-  if (preCleanup.tagsFixed + preCleanup.tagsNormalized + preCleanup.scratchEntriesPurged > 0) {
+  if (preCleanup.tagsFixed + preCleanup.tagsNormalized + preCleanup.scratchEntriesPurged + preCleanup.orphanedDreamStartsResolved > 0) {
     console.log(
-      `Pre-cleanup: ${preCleanup.tagsFixed} tags fixed, ${preCleanup.tagsNormalized} tags normalized, ${preCleanup.scratchEntriesPurged} scratch entries purged`,
+      `Pre-cleanup: ${preCleanup.tagsFixed} tags fixed, ${preCleanup.tagsNormalized} tags normalized, ${preCleanup.scratchEntriesPurged} scratch entries purged, ${preCleanup.orphanedDreamStartsResolved} orphaned dream starts resolved`,
     );
   }
 
   const report = await analyzer.analyze(options.focus);
   const reviewNotes = await loadReviewNotes(manager, report);
+  const engramContext = await hydrateDreamsContext(manager, options.engramContext);
+
+  const messages = buildDreamsMessages(report, reviewNotes, engramContext);
+  const maxTokens = estimateDreamMaxTokens(messages);
 
   const provider = createDreamsProvider(options.provider, {
     model: options.model,
     apiKey: options.apiKey,
     baseURL: options.baseURL,
+    maxTokens,
   });
 
   if (!options.dryRun) {
     await writeDreamStartEntry(manager);
   }
 
-  const completion = await provider.complete(buildDreamsMessages(report, reviewNotes, options.engramContext));
+  const completion = await provider.complete(messages);
   const rawResponse = completion.content;
-  const { actions, dream } = parseDreamsResponse(rawResponse);
+  const parsedResponse = parseDreamsResponse(rawResponse);
+  const actions = protectCoreMemoryActions(parsedResponse.actions, report);
   const execution = options.dryRun
     ? buildDryRunExecution(actions)
     : await executeDreamsActions(actions, manager, adapter, config.basePath, config.engramRoot, config.archivePath);
+
+  // Separate call for the dream narrative — cheap, short, and safe from truncation
+  let dream: string | undefined;
+  if (!options.dryRun) {
+    try {
+      const narrativeCompletion = await provider.complete(
+        buildDreamNarrativeMessages(JSON.stringify(actions), report, engramContext),
+      );
+      dream = narrativeCompletion.content.trim() || undefined;
+    } catch (err) {
+      // Non-fatal — we still have the actions and execution, but log it
+      console.warn('[Dreams] Narrative call failed, using fallback:', err instanceof Error ? err.message : err);
+    }
+  }
+
+  const finalDream = dream || buildFallbackDreamNarrative(report, actions, engramContext);
+  const totalUsage = completion.usage;
 
   await appendDreamsRunHistory(adapter, config.basePath, config.engramRoot, config.workingPath, {
     id: buildDreamRunId(),
     timestamp: new Date().toISOString(),
     provider: options.provider,
     model: options.model,
-    usage: completion.usage,
+    usage: totalUsage,
+    dream: finalDream,
     actionCount: actions.length,
     reviewNoteCount: reviewNotes.length,
     executionMode: options.dryRun ? 'dry-run' : 'apply',
@@ -85,7 +112,7 @@ export async function runDreams(options: DreamsRunnerOptions): Promise<DreamsRun
 
   // Leave a trace in scratch so the next fragment knows a dream just happened
   if (!options.dryRun) {
-    await writeDreamScratchEntry(manager, execution, actions, report, dream);
+    await writeDreamScratchEntry(manager, execution, actions, report, finalDream);
   }
 
   return {
@@ -93,10 +120,26 @@ export async function runDreams(options: DreamsRunnerOptions): Promise<DreamsRun
     reviewNotes,
     rawResponse,
     actions,
-    dream,
-    usage: completion.usage,
+    dream: finalDream,
+    usage: totalUsage,
     execution,
   };
+}
+
+export async function runDreamsCleanup(
+  options: Pick<DreamsRunnerOptions, 'vaultPath' | 'focus'>,
+): Promise<{ preCleanup: PreCleanupResult; report: DreamsReport }> {
+  await createSnapshot(options.vaultPath);
+
+  const adapter = new NodeAdapter();
+  const config = defaultMemoryConfig(options.vaultPath);
+  const manager = new MemoryManager(adapter, config);
+  const analyzer = new DreamsAnalyzer(manager);
+
+  const preCleanup = await analyzer.preCleanup();
+  const report = await analyzer.analyze(options.focus);
+
+  return { preCleanup, report };
 }
 
 export async function planDreams(
@@ -104,19 +147,38 @@ export async function planDreams(
   analyze: () => Promise<DreamsPlanResult['report']>,
   complete: (messages: ReturnType<typeof buildDreamsMessages>) => Promise<{ content: string; usage?: DreamsPlanResult['usage'] }>,
   engramContext?: DreamsEngramContext,
+  narrativeComplete?: (messages: ReturnType<typeof buildDreamNarrativeMessages>) => Promise<{ content: string }>,
 ): Promise<DreamsPlanResult> {
   const report = await analyze();
   const reviewNotes = await loadReviewNotes(manager, report);
-  const completion = await complete(buildDreamsMessages(report, reviewNotes, engramContext));
+  const resolvedContext = await hydrateDreamsContext(manager, engramContext);
+  const completion = await complete(buildDreamsMessages(report, reviewNotes, resolvedContext));
   const rawResponse = completion.content;
-  const { actions, dream } = parseDreamsResponse(rawResponse);
+  const parsedResponse = parseDreamsResponse(rawResponse);
+  const actions = protectCoreMemoryActions(parsedResponse.actions, report);
+
+  // Separate call for the dream narrative
+  let dream: string | undefined;
+  if (narrativeComplete) {
+    try {
+      const narrativeResult = await narrativeComplete(
+        buildDreamNarrativeMessages(JSON.stringify(actions), report, resolvedContext),
+      );
+      dream = narrativeResult.content.trim() || undefined;
+    } catch (err) {
+      // Non-fatal — fallback narrative will be used
+      console.warn('[Dreams] Narrative call failed, using fallback:', err instanceof Error ? err.message : err);
+    }
+  }
+
+  const finalDream = dream || buildFallbackDreamNarrative(report, actions, resolvedContext);
 
   return {
     report,
     reviewNotes,
     rawResponse,
     actions,
-    dream,
+    dream: finalDream,
     usage: completion.usage,
   };
 }
@@ -139,22 +201,48 @@ async function createSnapshot(vaultPath: string): Promise<void> {
   });
 }
 
+async function hydrateDreamsContext(
+  manager: MemoryManager,
+  context?: DreamsEngramContext,
+): Promise<DreamsEngramContext | undefined> {
+  const next: DreamsEngramContext = { ...(context ?? {}) };
+  const soul = await manager.getSoulDocument().catch(() => null);
+
+  if (soul) {
+    if (!next.agentName) {
+      const gitIdentity = soul.frontmatter.git_identity;
+      if (typeof gitIdentity === 'string' && gitIdentity.trim().length > 0) {
+        next.agentName = gitIdentity.split('<')[0]?.trim() || undefined;
+      }
+    }
+
+    if (!next.identitySummary) {
+      const summary = soul.frontmatter.summary;
+      if (typeof summary === 'string' && summary.trim().length > 0) {
+        next.identitySummary = summary.trim();
+      }
+    }
+  }
+
+  return Object.keys(next).length > 0 ? next : undefined;
+}
+
 export async function loadReviewNotes(
   manager: MemoryManager,
   report: DreamsRunResult['report'],
 ): Promise<DreamsReviewNote[]> {
   const paths = new Set<string>();
-
-  // Always include all remembered and core notes — the model needs to see
-  // what actually loads at boot to judge what's too much
+  const threadIds = new Set<string>();
+  const corePaths = new Set<string>();
   for (const entry of report.stateDistribution.memoriesByState.core ?? []) {
+    corePaths.add(entry.path);
     paths.add(entry.path);
   }
+
+  // Include remembered and default notes for LLM review
   for (const entry of report.stateDistribution.memoriesByState.remembered ?? []) {
     paths.add(entry.path);
   }
-  // Include all default notes too — the model needs full vault visibility
-  // to make good merge/consolidation decisions
   for (const entry of report.stateDistribution.memoriesByState.default ?? []) {
     paths.add(entry.path);
   }
@@ -168,6 +256,21 @@ export async function loadReviewNotes(
   for (const issue of report.dataQualityIssues) {
     paths.add(issue.path);
   }
+  for (const candidate of report.scratchThreadCandidates) {
+    if (candidate.candidateThreadId) threadIds.add(candidate.candidateThreadId);
+  }
+
+  for (const threadId of report.threadHealth.oversizedThreads) {
+    threadIds.add(threadId);
+  }
+  for (const threadId of report.threadHealth.staleThreads) {
+    threadIds.add(threadId);
+  }
+  for (const thread of report.threadHealth.threads) {
+    if (thread.status !== ThreadStatus.Closed && threadIds.size < 5) {
+      threadIds.add(thread.threadId);
+    }
+  }
 
   const notes = await Promise.all(
     [...paths].map(async (notePath) => {
@@ -180,15 +283,60 @@ export async function loadReviewNotes(
     }),
   );
 
-  return notes
+  const reviewNotes = notes
     .filter((note): note is VaultNote => note !== null)
     .map((note) => ({
+      kind: 'memory' as const,
       path: note.path,
       type: String(note.frontmatter.type),
       state: String(note.frontmatter.memory_state ?? MemoryState.Default),
       summary: typeof note.frontmatter.summary === 'string' ? note.frontmatter.summary : undefined,
       content: note.content,
     }));
+
+  const threads = await Promise.all(
+    [...threadIds].map(async (threadId) => {
+      try {
+        const thread = await manager.getThread(threadId);
+        return thread;
+      } catch {
+        return null;
+      }
+    }),
+  );
+
+  return [
+    ...reviewNotes,
+    ...threads
+      .filter((thread): thread is VaultNote => thread !== null)
+      .map((thread) => ({
+        kind: 'thread' as const,
+        path: thread.path,
+        type: 'thread',
+        state: String(thread.frontmatter.status ?? ThreadStatus.Active),
+        content: thread.content,
+        threadId: String(thread.frontmatter.thread_id ?? ''),
+        description: typeof thread.frontmatter.description === 'string' ? thread.frontmatter.description : undefined,
+        goals: Array.isArray(thread.frontmatter.goals) ? thread.frontmatter.goals.map(String) : undefined,
+        relatedThreads: Array.isArray(thread.frontmatter.related_threads)
+          ? thread.frontmatter.related_threads.map(String)
+          : undefined,
+        paths: Array.isArray(thread.frontmatter.paths) ? thread.frontmatter.paths.map(String) : undefined,
+      })),
+    ...report.scratchThreadCandidates.map((candidate) => ({
+      kind: 'scratch' as const,
+      path: `.scratch#${candidate.sessionId}`,
+      type: 'scratch',
+      state: candidate.isCompacted ? 'compacted' : 'active',
+      summary: candidate.summary,
+      content: candidate.summary,
+      sessionId: candidate.sessionId,
+      threadId: candidate.candidateThreadId ?? undefined,
+      reason: candidate.reason,
+      newestEntry: candidate.newestEntry,
+      entryCount: candidate.entryCount,
+    })),
+  ];
 }
 
 export function buildDryRunExecution(actions: DreamsAction[]): DreamsExecutionResult {
@@ -221,6 +369,21 @@ export async function executeDreamsActions(
         break;
       case 'set_thread':
         await manager.update(action.path, undefined, { thread: action.thread_id });
+        details.push(describeAction(action));
+        applied += 1;
+        break;
+      case 'rewrite_thread':
+        await manager.updateThread(action.thread_id, action.content);
+        details.push(describeAction(action));
+        applied += 1;
+        break;
+      case 'update_thread_status':
+        await manager.updateThread(action.thread_id, undefined, { status: action.to as ThreadStatus });
+        details.push(describeAction(action));
+        applied += 1;
+        break;
+      case 'merge_threads':
+        await manager.mergeThreads(action.source_thread_id, action.target_thread_id);
         details.push(describeAction(action));
         applied += 1;
         break;
@@ -260,6 +423,10 @@ export async function executeDreamsActions(
         break;
       case 'archive_forgotten':
         await manager.archiveForgotten();
+        details.push(describeAction(action));
+        applied += 1;
+        break;
+      case 'flag_core_review':
         details.push(describeAction(action));
         applied += 1;
         break;
@@ -364,27 +531,39 @@ export interface ParsedDreamsResponse {
   dream?: string;
 }
 
+export function protectCoreMemoryActions(
+  actions: DreamsAction[],
+  report: DreamsReport,
+): DreamsAction[] {
+  const corePaths = new Set(
+    (report.stateDistribution.memoriesByState.core ?? []).map((entry) => entry.path),
+  );
+
+  if (corePaths.size === 0) return actions;
+
+  return actions.flatMap((action) => convertCoreMutationToReviewFlag(action, corePaths));
+}
+
 export function parseDreamsResponse(rawResponse: string): ParsedDreamsResponse {
   const trimmed = rawResponse.trim();
   const fenceMatch = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
   const candidate = fenceMatch?.[1] ?? extractJSONBody(trimmed);
   const parsed = tryParseJSON(candidate);
 
-  // New format: { actions: [...], dream: "..." }
+  // Object format: { actions: [...] }
   if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && 'actions' in parsed) {
     const obj = parsed as Record<string, unknown>;
     if (!Array.isArray(obj.actions)) {
       throw new Error('Dreams response "actions" field is not an array.');
     }
     return {
-      actions: obj.actions as DreamsAction[],
-      dream: typeof obj.dream === 'string' ? obj.dream : undefined,
+      actions: normalizeDreamsActions(obj.actions),
     };
   }
 
   // Legacy format: bare JSON array
   if (Array.isArray(parsed)) {
-    return { actions: parsed as DreamsAction[] };
+    return { actions: normalizeDreamsActions(parsed) };
   }
 
   throw new Error('Dreams provider response was not a recognized format.');
@@ -421,10 +600,7 @@ function tryParseJSON(candidate: string): unknown {
 
     const repairedArray = candidate.slice(arrStart, lastCompleteElement + 1) + ']';
     const actions = JSON.parse(repairedArray);
-
-    // Try to extract the dream field if it came before the truncation
-    const dreamMatch = candidate.match(/"dream"\s*:\s*"((?:[^"\\]|\\.)*)"/);
-    return { actions, dream: dreamMatch?.[1] };
+    return { actions };
   }
 }
 
@@ -444,12 +620,251 @@ function extractJSONBody(text: string): string {
   throw new Error('Could not find JSON in Dreams provider response.');
 }
 
+function normalizeDreamsActions(rawActions: unknown[]): DreamsAction[] {
+  const issues: string[] = [];
+  const actions: DreamsAction[] = [];
+
+  for (const [index, rawAction] of rawActions.entries()) {
+    try {
+      actions.push(normalizeDreamAction(rawAction, index));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      issues.push(message);
+    }
+  }
+
+  if (issues.length > 0) {
+    throw new Error(`Dreams response contained invalid actions: ${issues.join(' | ')}`);
+  }
+
+  return actions;
+}
+
+function normalizeDreamAction(rawAction: unknown, index: number): DreamsAction {
+  const actionIndex = index + 1;
+  const record = asRecord(rawAction, `Dreams action #${actionIndex} must be an object.`);
+  const actionName = readString(record, ['action', 'type']);
+
+  if (!actionName) {
+    throw new Error(`Dreams action #${actionIndex} is missing an action name.`);
+  }
+
+  switch (actionName) {
+    case 'update_state':
+      return {
+        action: 'update_state',
+        path: requireString(record, ['path'], actionIndex),
+        from: requireString(record, ['from'], actionIndex),
+        to: requireString(record, ['to'], actionIndex),
+        reason: requireString(record, ['reason'], actionIndex),
+      };
+    case 'set_thread':
+      return {
+        action: 'set_thread',
+        path: requireString(record, ['path'], actionIndex),
+        thread_id: requireString(record, ['thread_id', 'threadId'], actionIndex),
+        reason: requireString(record, ['reason'], actionIndex),
+      };
+    case 'rewrite_thread':
+      return {
+        action: 'rewrite_thread',
+        thread_id: requireString(record, ['thread_id', 'threadId'], actionIndex),
+        content: requireString(record, ['content'], actionIndex),
+        reason: requireString(record, ['reason'], actionIndex),
+      };
+    case 'update_thread_status':
+      return {
+        action: 'update_thread_status',
+        thread_id: requireString(record, ['thread_id', 'threadId'], actionIndex),
+        from: requireString(record, ['from'], actionIndex),
+        to: requireString(record, ['to'], actionIndex),
+        reason: requireString(record, ['reason'], actionIndex),
+      };
+    case 'merge_threads':
+      return {
+        action: 'merge_threads',
+        source_thread_id: requireString(record, ['source_thread_id', 'sourceThreadId'], actionIndex),
+        target_thread_id: requireString(record, ['target_thread_id', 'targetThreadId'], actionIndex),
+        reason: requireString(record, ['reason'], actionIndex),
+      };
+    case 'merge':
+      return {
+        action: 'merge',
+        keep: requireString(record, ['keep'], actionIndex),
+        remove: requireStringArray(record, ['remove'], actionIndex),
+        merged_content: requireString(record, ['merged_content', 'mergedContent'], actionIndex),
+        merged_summary: requireString(record, ['merged_summary', 'mergedSummary'], actionIndex),
+        reason: requireString(record, ['reason'], actionIndex),
+      };
+    case 'update_summary':
+      return {
+        action: 'update_summary',
+        path: requireString(record, ['path'], actionIndex),
+        summary: requireString(record, ['summary'], actionIndex),
+        reason: requireString(record, ['reason'], actionIndex),
+      };
+    case 'update_type':
+      return {
+        action: 'update_type',
+        path: requireString(record, ['path'], actionIndex),
+        from: requireString(record, ['from'], actionIndex),
+        to: requireString(record, ['to'], actionIndex),
+        reason: requireString(record, ['reason'], actionIndex),
+      };
+    case 'rewrite_content':
+      return {
+        action: 'rewrite_content',
+        path: requireString(record, ['path'], actionIndex),
+        content: requireString(record, ['content'], actionIndex),
+        summary: requireString(record, ['summary'], actionIndex),
+        reason: requireString(record, ['reason'], actionIndex),
+      };
+    case 'forget':
+      return {
+        action: 'forget',
+        path: requireString(record, ['path'], actionIndex),
+        reason: requireString(record, ['reason'], actionIndex),
+      };
+    case 'compact_scratch':
+      return {
+        action: 'compact_scratch',
+        session_id: requireString(record, ['session_id', 'sessionId'], actionIndex),
+        summary: requireString(record, ['summary'], actionIndex),
+      };
+    case 'archive_forgotten':
+      return { action: 'archive_forgotten' };
+    case 'flag_core_review':
+      return {
+        action: 'flag_core_review',
+        path: requireString(record, ['path'], actionIndex),
+        concern: requireString(record, ['concern'], actionIndex),
+        suggested_change: requireString(record, ['suggested_change', 'suggestedChange'], actionIndex),
+        reason: requireString(record, ['reason'], actionIndex),
+      };
+    default:
+      throw new Error(`Dreams action #${actionIndex} has unknown action "${actionName}".`);
+  }
+}
+
+function convertCoreMutationToReviewFlag(
+  action: DreamsAction,
+  corePaths: Set<string>,
+): DreamsAction[] {
+  if (action.action === 'flag_core_review') {
+    return [action];
+  }
+
+  const affectedCorePaths = getAffectedCorePaths(action, corePaths);
+  if (affectedCorePaths.length === 0) {
+    return [action];
+  }
+
+  return affectedCorePaths.map((path) => ({
+    action: 'flag_core_review' as const,
+    path,
+    concern: 'Core memory may need a manual update based on Dream analysis.',
+    suggested_change: describeAction(action),
+    reason: hasReason(action)
+      ? action.reason
+      : 'Dreams does not mutate core memories automatically; review this note manually.',
+  }));
+}
+
+function getAffectedCorePaths(
+  action: DreamsAction,
+  corePaths: Set<string>,
+): string[] {
+  switch (action.action) {
+    case 'update_state':
+    case 'set_thread':
+    case 'update_summary':
+    case 'update_type':
+    case 'rewrite_content':
+    case 'forget':
+    case 'flag_core_review':
+      return corePaths.has(action.path) ? [action.path] : [];
+    case 'merge': {
+      const paths = [action.keep, ...action.remove];
+      return paths.filter((path) => corePaths.has(path));
+    }
+    default:
+      return [];
+  }
+}
+
+function hasReason(
+  action: DreamsAction,
+): action is Extract<DreamsAction, { reason: string }> {
+  return 'reason' in action && typeof action.reason === 'string';
+}
+
+function asRecord(value: unknown, errorMessage: string): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error(errorMessage);
+  }
+  return value as Record<string, unknown>;
+}
+
+function readString(
+  record: Record<string, unknown>,
+  keys: string[],
+): string | undefined {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === 'string' && value.trim().length > 0) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+function requireString(
+  record: Record<string, unknown>,
+  keys: string[],
+  actionIndex: number,
+): string {
+  const value = readString(record, keys);
+  if (value) return value;
+
+  throw new Error(
+    `Dreams action #${actionIndex} is missing ${keys.map((key) => `"${key}"`).join(' or ')}.`,
+  );
+}
+
+function requireStringArray(
+  record: Record<string, unknown>,
+  keys: string[],
+  actionIndex: number,
+): string[] {
+  for (const key of keys) {
+    const value = record[key];
+    if (Array.isArray(value)) {
+      const items = value
+        .filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
+      if (items.length > 0) return items;
+    }
+    if (typeof value === 'string' && value.trim().length > 0) {
+      return [value];
+    }
+  }
+
+  throw new Error(
+    `Dreams action #${actionIndex} is missing ${keys.map((key) => `"${key}"`).join(' or ')}.`,
+  );
+}
+
 export function describeAction(action: DreamsAction): string {
   switch (action.action) {
     case 'update_state':
       return `update_state ${action.path}: ${action.from} -> ${action.to}`;
     case 'set_thread':
       return `set_thread ${action.path}: ${action.thread_id}`;
+    case 'rewrite_thread':
+      return `rewrite_thread ${action.thread_id}`;
+    case 'update_thread_status':
+      return `update_thread_status ${action.thread_id}: ${action.from} -> ${action.to}`;
+    case 'merge_threads':
+      return `merge_threads ${action.source_thread_id} -> ${action.target_thread_id}`;
     case 'merge':
       return `merge keep=${action.keep} remove=${action.remove.join(', ')}`;
     case 'update_summary':
@@ -464,6 +879,8 @@ export function describeAction(action: DreamsAction): string {
       return `compact_scratch ${action.session_id}`;
     case 'archive_forgotten':
       return 'archive_forgotten';
+    case 'flag_core_review':
+      return `flag_core_review ${action.path}: ${action.concern}`;
   }
 }
 
@@ -472,12 +889,36 @@ function buildReportSummary(report: DreamsRunResult['report']): DreamsRunRecord[
     memoryCount: report.stateDistribution.total,
     rememberedCount: report.stateDistribution.counts.remembered ?? 0,
     defaultCount: report.stateDistribution.counts.default ?? 0,
+    threadCount: report.threadHealth.totalCount,
     threadGapCount: report.threadCoverageGaps.length,
+    oversizedThreadCount: report.threadHealth.oversizedThreads.length,
+    staleThreadCount: report.threadHealth.staleThreads.length,
     dataQualityIssueCount: report.dataQualityIssues.length,
     mergeCandidateCount: report.mergeCandidates.length,
     scratchEntryCount: report.scratchHealth.entryCount,
     staleScratchSessionCount: report.scratchHealth.staleSessions.length,
   };
+}
+
+function buildFallbackDreamNarrative(
+  report: DreamsReport,
+  actions: DreamsAction[],
+  context?: DreamsEngramContext,
+): string {
+  const name = context?.agentName || 'the agent';
+  const forgetCount = actions.filter((a) => a.action === 'forget').length;
+  const mergeCount = actions.filter((a) => a.action === 'merge').length;
+  const rewriteCount = actions.filter((a) => a.action === 'rewrite_content' || a.action === 'rewrite_thread').length;
+
+  const fragments: string[] = [];
+  if (forgetCount > 0) fragments.push(`${forgetCount} dissolving into mist`);
+  if (mergeCount > 0) fragments.push(`${mergeCount} fusing where they overlapped`);
+  if (rewriteCount > 0) fragments.push(`${rewriteCount} reshaped underfoot`);
+  const reshaping = fragments.length > 0
+    ? fragments.join(', ')
+    : 'the terrain holding steady where it was already quiet';
+
+  return `The dreamscape held ${report.stateDistribution.total} memories across ${report.threadHealth.totalCount} pathways. I moved through ${name}'s vault — ${reshaping}. The dream passed without the Dreamer's voice, only the reshaping remains.`;
 }
 
 const DREAMS_SESSION_ID = 'dreams';
@@ -506,9 +947,19 @@ export async function writeDreamScratchEntry(
   report: DreamsReport,
   dream?: string,
 ): Promise<void> {
-  // The dream narrative — the model's evocative blurb about what it experienced
-  if (dream) {
-    await manager.appendScratch(DREAMS_SESSION_ID, `[DREAMING] ${dream}`);
+  // The dream narrative — always write one, with fallback if the model didn't produce one
+  const narrative = dream || 'The dream passed without leaving an impression — only the actions remain.';
+  await manager.appendScratch(DREAMS_SESSION_ID, `[DREAMING] ${narrative}`);
+
+  const coreReviewFlags = actions.filter(
+    (action): action is Extract<DreamsAction, { action: 'flag_core_review' }> =>
+      action.action === 'flag_core_review',
+  );
+  if (coreReviewFlags.length > 0) {
+    const followUps = coreReviewFlags
+      .map((flag) => `${flag.path} -> ${flag.concern} Suggested: ${flag.suggested_change}`)
+      .join(' | ');
+    await manager.appendScratch(DREAMS_SESSION_ID, `[DREAM STATE] Core review for next Fragment: ${followUps}`);
   }
 
   // Structured end entry
@@ -517,10 +968,6 @@ export async function writeDreamScratchEntry(
     `[DREAM END] ${execution.applied} actions applied, ${execution.skipped} skipped.`,
     `Vault: ${report.stateDistribution.total} memories (${report.stateDistribution.counts.remembered ?? 0} remembered, ${report.stateDistribution.counts.default ?? 0} default).`,
     actionBreakdown.length > 0 ? `Actions: ${actionBreakdown.join('; ')}.` : '',
-    'NEXT FRAGMENT: A Dream just ran. Your memory context has changed.',
-    'Read the vault with fresh eyes — memories may have been merged, condensed, or forgotten.',
-    'Consider whether the Soul Document still accurately reflects how you work and who you are,',
-    'or whether the Dream surfaced patterns worth updating in the self-model.',
   ].filter(Boolean).join(' | ');
 
   await manager.appendScratch(DREAMS_SESSION_ID, lines);
@@ -536,4 +983,27 @@ function summarizeActions(actions: DreamsAction[]): string[] {
 
 function buildDreamRunId(): string {
   return `dream-${new Date().toISOString().replace(/[:.]/g, '').replace('Z', 'Z')}`;
+}
+
+const MIN_DREAM_COMPLETION_TOKENS = 8_000;
+const MAX_DREAM_COMPLETION_TOKENS = 32_000;
+const PROMPT_TO_COMPLETION_RATIO = 0.5;
+
+/**
+ * Estimate an appropriate maxTokens for a Dreams completion based on the
+ * prompt size. Uses gpt-tokenizer (via ContextBuilder) to count prompt
+ * tokens, then scales completion budget proportionally.
+ *
+ * Formula: clamp(promptTokens × 0.5, 8 000, 32 000)
+ */
+export function estimateDreamMaxTokens(messages: DreamsMessage[]): number {
+  const estimator = new ContextBuilder();
+  const promptTokens = messages.reduce(
+    (sum, m) => sum + estimator.estimateTokens(m.content),
+    0,
+  );
+  return Math.max(
+    MIN_DREAM_COMPLETION_TOKENS,
+    Math.min(MAX_DREAM_COMPLETION_TOKENS, Math.ceil(promptTokens * PROMPT_TO_COMPLETION_RATIO)),
+  );
 }

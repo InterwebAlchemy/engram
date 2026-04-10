@@ -13,12 +13,14 @@ import {
   summarizeDreamsUsage,
 } from '../../../dreams/src/history';
 import {
+  estimateDreamMaxTokens,
   executeDreamsActions,
   planDreams,
   writeDreamStartEntry,
   writeDreamScratchEntry,
 } from '../../../dreams/src/runner';
 import type {
+  DreamsAction,
   DreamsRunHistory,
   DreamsExecutionResult,
   DreamsPlanResult,
@@ -167,7 +169,7 @@ export class EngramDreamsView extends ItemView {
 
     const center = overlay.createDiv({ cls: 'engram-dreams-overlay-center' });
     const label = center.createSpan({ cls: 'engram-dreams-overlay-text', text: 'Dreaming...' });
-    this.dreamAnimator = new Ciph3rTextAnimator(label, 'Dreaming...');
+    this.dreamAnimator = new Ciph3rTextAnimator(label, 'Dreaming...', 250);
     this.dreamAnimator.start();
   }
 
@@ -264,10 +266,16 @@ export class EngramDreamsView extends ItemView {
 
     const rememberedCount = report.stateDistribution.counts.remembered ?? 0;
     const defaultCount = report.stateDistribution.counts.default ?? 0;
+    const threadPressureCount = new Set([
+      ...report.threadHealth.oversizedThreads,
+      ...report.threadHealth.staleThreads,
+    ]).size;
 
     this.renderStatCard(grid, 'Memories', String(report.stateDistribution.total), 'Total notes tracked by Dreams.');
     this.renderStatCard(grid, 'Remembered', String(rememberedCount), 'Auto-loaded context that should stay intentionally small.');
     this.renderStatCard(grid, 'Default', String(defaultCount), 'Background memories available for search or later semantic retrieval.');
+    this.renderStatCard(grid, 'Threads', String(report.threadHealth.totalCount), 'Workstreams tracked in `engram/threads`.');
+    this.renderStatCard(grid, 'Thread pressure', String(threadPressureCount), 'Threads that look stale or too large and may need consolidation.');
     this.renderStatCard(grid, 'Thread gaps', String(report.threadCoverageGaps.length), 'Notes tagged to a thread namespace but missing `thread:` frontmatter.');
     this.renderStatCard(grid, 'Data issues', String(report.dataQualityIssues.length), 'Missing summaries, bootstrap metadata, or type mismatches.');
     this.renderStatCard(grid, 'Stale scratch', String(report.scratchHealth.staleSessions.length), 'Sessions that still need compaction.');
@@ -315,7 +323,8 @@ export class EngramDreamsView extends ItemView {
 
     const list = section.createEl('ul', { cls: 'engram-dreams-list' });
     for (const run of history.runs.slice(-5).reverse()) {
-      list.createEl('li', {
+      const item = list.createEl('li');
+      item.createDiv({
         text: [
           formatTimestamp(run.timestamp),
           run.provider,
@@ -326,6 +335,12 @@ export class EngramDreamsView extends ItemView {
           run.executionMode,
         ].join(' · '),
       });
+      if (run.dream) {
+        item.createDiv({
+          cls: 'engram-dreams-stat-description',
+          text: run.dream,
+        });
+      }
     }
   }
 
@@ -347,6 +362,15 @@ export class EngramDreamsView extends ItemView {
       text: `${applied} applied · ${skipped} skipped${snapshotLabel}`,
     });
 
+    if (this.latestPlan.dream) {
+      section.createDiv({
+        cls: 'engram-dreams-stat-description',
+        text: this.latestPlan.dream,
+      });
+    }
+
+    this.renderCoreReviewFlags(section, this.latestPlan.actions);
+
     if (this.latestExecution && this.latestExecution.details.length > 0) {
       const executionList = section.createEl('ul', { cls: 'engram-dreams-list' });
       for (const detail of this.latestExecution.details) {
@@ -363,9 +387,54 @@ export class EngramDreamsView extends ItemView {
     });
   }
 
+  private renderCoreReviewFlags(parent: HTMLElement, actions: DreamsAction[]): void {
+    const coreFlags = actions.filter(
+      (action): action is Extract<DreamsAction, { action: 'flag_core_review' }> =>
+        action.action === 'flag_core_review',
+    );
+    if (coreFlags.length === 0) return;
+
+    const block = parent.createDiv({ cls: 'engram-dreams-plan-details' });
+    block.createEl('h5', { text: 'Core review for next Fragment' });
+    block.createDiv({
+      cls: 'engram-dreams-section-description',
+      text: 'Dreams used core memories as read-only context. These notes were flagged for manual follow-up instead of automatic mutation.',
+    });
+
+    const list = block.createEl('ul', { cls: 'engram-dreams-list' });
+    for (const flag of coreFlags) {
+      const item = list.createEl('li');
+      item.createDiv({ text: `${baseName(flag.path)} -> ${flag.concern}` });
+      item.createDiv({
+        cls: 'engram-dreams-stat-description',
+        text: `Suggested: ${flag.suggested_change}`,
+      });
+      item.createDiv({
+        cls: 'engram-dreams-stat-description',
+        text: flag.reason,
+      });
+    }
+  }
+
 
   private renderFindings(parent: HTMLElement, report: DreamsReport): void {
     const sections = parent.createDiv({ cls: 'engram-dreams-sections' });
+
+    this.renderFindingSection(
+      sections,
+      'Thread pressure',
+      report.threadHealth.threads
+        .filter((thread) => thread.isOversized || thread.isStale)
+        .map((thread) => {
+          const flags = [
+            thread.isOversized ? 'oversized' : '',
+            thread.isStale ? 'stale' : '',
+          ].filter(Boolean).join(', ');
+          const sizeKb = (thread.contentBytes / 1024).toFixed(1);
+          return `${thread.threadId} -> ${thread.status}, ${thread.lineCount} lines, ${sizeKb} KB${flags ? `, ${flags}` : ''}`;
+        }),
+      'Thread docs should stay short, current, and mergeable instead of accreting session history.',
+    );
 
     this.renderFindingSection(
       sections,
@@ -389,6 +458,17 @@ export class EngramDreamsView extends ItemView {
         return `${session.sessionId} -> ${session.entryCount} entries, ${status}`;
       }),
       'Long-lived uncompacted sessions are a strong Dreams target.',
+    );
+
+    this.renderFindingSection(
+      sections,
+      'Scratch to thread',
+      report.scratchThreadCandidates.map((candidate) => {
+        const similarity = `${(candidate.similarity * 100).toFixed(0)}%`;
+        const thread = candidate.candidateThreadId ?? 'no clear thread';
+        return `${candidate.sessionId} -> ${thread}, ${candidate.entryCount} entries, ${similarity} overlap`;
+      }),
+      'Recent scratch can be evidence that a thread doc is stale, missing current state, or already up to date.',
     );
 
     this.renderFindingSection(
@@ -460,6 +540,8 @@ export class EngramDreamsView extends ItemView {
   }
 
   private async handleDream(): Promise<void> {
+    if (this.dreaming) return;
+
     const selection = this.getSelectedOption();
     if (!selection) {
       new Notice('No Dreams model is configured yet. Enable one in Settings first.');
@@ -483,6 +565,9 @@ export class EngramDreamsView extends ItemView {
       const soul = await this.plugin.memoryManager.getSoulDocument();
       const gitIdentity = soul?.frontmatter.git_identity as string | undefined;
       const agentName = gitIdentity?.split('<')[0]?.trim() || undefined;
+      const identitySummary = typeof soul?.frontmatter.summary === 'string'
+        ? soul.frontmatter.summary.trim()
+        : undefined;
 
       // Snapshot before any mutations — protects scratch from preCleanup and dream start
       const snapshot = await this.createSnapshotManager().create({
@@ -504,17 +589,26 @@ export class EngramDreamsView extends ItemView {
         this.plugin.memoryManager,
         () => analyzer.analyze(),
         async (messages) => {
+          const maxTokens = estimateDreamMaxTokens(messages);
           const result = await provider.complete(messages as ChatMessage[], {
             model: selection.modelId,
             temperature: 0,
-            maxTokens: 16000,
+            maxTokens,
           });
           return {
             content: result.content.trim(),
             usage: result.usage,
           };
         },
-        { agentName },
+        { agentName, identitySummary },
+        async (messages) => {
+          const result = await provider.complete(messages as ChatMessage[], {
+            model: selection.modelId,
+            temperature: 0.7,
+            maxTokens: 512,
+          });
+          return { content: result.content.trim() };
+        },
       );
 
       this.latestPlan = plan;
@@ -552,6 +646,7 @@ export class EngramDreamsView extends ItemView {
           provider: selection.providerId,
           model: selection.modelId,
           usage: plan.usage,
+          dream: plan.dream,
           actionCount: plan.actions.length,
           reviewNoteCount: plan.reviewNotes.length,
           executionMode: 'apply',
@@ -561,7 +656,10 @@ export class EngramDreamsView extends ItemView {
             memoryCount: plan.report.stateDistribution.total,
             rememberedCount: plan.report.stateDistribution.counts.remembered ?? 0,
             defaultCount: plan.report.stateDistribution.counts.default ?? 0,
+            threadCount: plan.report.threadHealth.totalCount,
             threadGapCount: plan.report.threadCoverageGaps.length,
+            oversizedThreadCount: plan.report.threadHealth.oversizedThreads.length,
+            staleThreadCount: plan.report.threadHealth.staleThreads.length,
             dataQualityIssueCount: plan.report.dataQualityIssues.length,
             mergeCandidateCount: plan.report.mergeCandidates.length,
             scratchEntryCount: plan.report.scratchHealth.entryCount,

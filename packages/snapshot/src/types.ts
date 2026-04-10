@@ -41,6 +41,7 @@ export interface RestoreSnapshotOptions {
   vaultPath: string;
   engramRoot?: string;
   createSafetySnapshot?: boolean;
+  preserveRelativePaths?: string[];
   label?: string;
   reason?: string;
 }
@@ -48,4 +49,5 @@ export interface RestoreSnapshotOptions {
 export interface RestoreSnapshotResult {
   restored: SnapshotRecord;
   safetySnapshot?: SnapshotRecord;
+  preservedRelativePaths?: string[];
 }

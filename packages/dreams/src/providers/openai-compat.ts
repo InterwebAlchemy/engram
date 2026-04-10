@@ -21,7 +21,7 @@ export class OpenAICompatProvider implements DreamsProvider {
     const response = await this.client.chat.completions.create({
       model: this.config.model,
       temperature: 0,
-      max_tokens: 4000,
+      max_tokens: this.config.maxTokens ?? 16000,
       messages: messages.map<ChatCompletionMessageParam>((message) => ({
         role: message.role,
         content: message.content,

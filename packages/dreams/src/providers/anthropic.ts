@@ -31,7 +31,7 @@ export class AnthropicProvider implements DreamsProvider {
       model: this.config.model,
       system,
       temperature: 0,
-      max_tokens: 4000,
+      max_tokens: this.config.maxTokens ?? 16000,
       messages: conversation.length > 0
         ? conversation
         : [{ role: 'user', content: 'Return an empty JSON array.' }],

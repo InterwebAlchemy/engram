@@ -3,6 +3,7 @@ import {
   MemoryManager,
   MemoryState,
   MemoryType,
+  ThreadStatus,
   type ScratchEntry,
   type VaultNote,
 } from '@interwebalchemy/engram-core';
@@ -12,15 +13,21 @@ import type {
   DreamsReport,
   MergeCandidate,
   ScratchHealth,
+  ScratchThreadCandidate,
   StateDistribution,
+  ThreadHealth,
+  ThreadHealthEntry,
   ThreadCoverageGap,
 } from './types';
 
 const THREAD_TAG_PREFIX = 'engram/thread/';
 const BASE_THREAD_TAG = 'engram/thread';
 const DAY_MS = 24 * 60 * 60 * 1000;
-const STALE_SCRATCH_DAYS = 2;
-const COMPACTED_SCRATCH_MAX_AGE_DAYS = 7;
+const STALE_SCRATCH_SESSION_MAX_AGE_HOURS = 12;
+const STALE_THREAD_MAX_AGE_DAYS = 21;
+const THREAD_CONTENT_MAX_BYTES = 1800;
+const THREAD_CONTENT_MAX_LINES = 24;
+const DREAMS_SESSION_ID = 'dreams';
 
 /** Bare tag → engram/ namespace mapping for unambiguous cases. */
 const TAG_NORMALIZATION_MAP: Record<string, string> = {
@@ -46,20 +53,29 @@ export interface PreCleanupResult {
   tagsFixed: number;
   tagsNormalized: number;
   scratchEntriesPurged: number;
+  orphanedDreamStartsResolved: number;
 }
+
+type ScratchPrunableManager = MemoryManager & {
+  pruneScratch(options: { sessionId: string; thresholdMs: number }): Promise<number>;
+};
 
 export class DreamsAnalyzer {
   constructor(private readonly manager: MemoryManager) {}
+
+  private pruneScratch(sessionId: string, thresholdMs: number): Promise<number> {
+    return (this.manager as ScratchPrunableManager).pruneScratch({ sessionId, thresholdMs });
+  }
 
   /**
    * Run deterministic cleanup that doesn't need LLM judgment:
    * - Fix JSON-string tags → YAML arrays
    * - Normalize bare tags to engram/ namespace
-   * - Purge compacted scratch entries older than 7 days
-   * - Auto-compact scratch sessions older than 2 days
+   * - Delete stale scratch sessions older than 12 hours
+   * - Auto-compact all multi-entry scratch sessions
    */
   async preCleanup(): Promise<PreCleanupResult> {
-    const result: PreCleanupResult = { tagsFixed: 0, tagsNormalized: 0, scratchEntriesPurged: 0 };
+    const result: PreCleanupResult = { tagsFixed: 0, tagsNormalized: 0, scratchEntriesPurged: 0, orphanedDreamStartsResolved: 0 };
 
     // Fix tags on all notes
     const notes = await this.manager.list();
@@ -103,7 +119,8 @@ export class DreamsAnalyzer {
       }
     }
 
-    // Purge old compacted scratch entries and auto-compact stale sessions
+    // Aggressively prune scratch: compact ALL multi-entry sessions, purge old
+    // compacted entries, and resolve orphaned Dream markers.
     const entries = await this.manager.readScratch({ limit: 10000 });
     const now = Date.now();
     const sessionMap = new Map<string, ScratchEntry[]>();
@@ -114,24 +131,49 @@ export class DreamsAnalyzer {
       sessionMap.set(entry.sessionId, group);
     }
 
+    // Resolve orphaned DREAM START entries (start without matching end)
+    const dreamsGroup = sessionMap.get(DREAMS_SESSION_ID);
+    if (dreamsGroup) {
+      const starts = dreamsGroup.filter((e) => e.content.includes('[DREAM START]'));
+      const ends = dreamsGroup.filter((e) => e.content.includes('[DREAM END]'));
+      if (starts.length > ends.length) {
+        // There are orphaned starts — compact the dreams session to clear them
+        const latestEnd = ends.at(-1);
+        const orphanedStarts = latestEnd
+          ? starts.filter((s) => s.timestamp < latestEnd.timestamp)
+          : starts.slice(0, starts.length - ends.length);
+        if (orphanedStarts.length > 0) {
+          // Remove orphaned starts by compacting the dreams session
+          await this.manager.compactScratch({
+            sessionId: DREAMS_SESSION_ID,
+            thresholdMs: 0,
+            compactedContent: `[COMPACTED] Dreams session — resolved ${orphanedStarts.length} orphaned DREAM START marker(s) from interrupted run(s).`,
+          });
+          result.scratchEntriesPurged += dreamsGroup.length - 1;
+          result.orphanedDreamStartsResolved += orphanedStarts.length;
+          // Remove from map so we don't process it again below
+          sessionMap.delete(DREAMS_SESSION_ID);
+        }
+      }
+    }
+
     for (const [sessionId, group] of sessionMap) {
+      // Skip the dreams session — handled above
+      if (sessionId === DREAMS_SESSION_ID) continue;
+
       const newest = group.reduce((a, b) =>
         a.timestamp > b.timestamp ? a : b,
       );
       const ageDays = (now - new Date(newest.timestamp).getTime()) / DAY_MS;
       const isCompacted = group.some((e) => e.content.includes('[COMPACTED]'));
 
-      // Purge compacted sessions older than 7 days
-      if (isCompacted && ageDays > COMPACTED_SCRATCH_MAX_AGE_DAYS) {
-        await this.manager.compactScratch({
-          sessionId,
-          thresholdMs: 0,
-          compactedContent: `[PURGED] Session ${sessionId} — compacted entries older than ${COMPACTED_SCRATCH_MAX_AGE_DAYS} days removed by Dreams pre-cleanup.`,
-        });
-        result.scratchEntriesPurged += group.length - 1;
+      // Scratch is coordination state, not archive: drop whole stale sessions.
+      if (ageDays * 24 > STALE_SCRATCH_SESSION_MAX_AGE_HOURS) {
+        const removed = await this.pruneScratch(sessionId, 0);
+        result.scratchEntriesPurged += removed;
       }
-      // Auto-compact uncompacted sessions older than 2 days
-      else if (!isCompacted && ageDays > STALE_SCRATCH_DAYS) {
+      // Compact ALL multi-entry sessions — not just stale ones
+      else if (!isCompacted && group.length > 1) {
         const summary = group.map((e) => e.content).join(' | ').slice(0, 300);
         await this.manager.compactScratch({
           sessionId,
@@ -151,9 +193,11 @@ export class DreamsAnalyzer {
       : [
           'state_distribution',
           'thread_coverage',
+          'thread_health',
           'merge_candidates',
           'data_quality',
           'scratch_health',
+          'scratch_thread_alignment',
         ];
 
     const notes = await this.manager.list();
@@ -169,6 +213,12 @@ export class DreamsAnalyzer {
         'thread_coverage',
         () => this.analyzeThreadCoverage(notes),
         [] as ThreadCoverageGap[],
+      ),
+      threadHealth: this.runIfIncluded(
+        focusAreas,
+        'thread_health',
+        () => this.analyzeThreadHealth(),
+        this.emptyThreadHealth(),
       ),
       mergeCandidates: this.runIfIncluded(
         focusAreas,
@@ -188,20 +238,30 @@ export class DreamsAnalyzer {
         () => this.analyzeScratchHealth(),
         this.emptyScratchHealth(),
       ),
+      scratchThreadCandidates: this.runIfIncluded(
+        focusAreas,
+        'scratch_thread_alignment',
+        () => this.analyzeScratchThreadAlignment(),
+        [] as ScratchThreadCandidate[],
+      ),
     };
 
     const [
       stateDistribution,
       threadCoverageGaps,
+      threadHealth,
       mergeCandidates,
       dataQualityIssues,
       scratchHealth,
+      scratchThreadCandidates,
     ] = await Promise.all([
       tasks.stateDistribution,
       tasks.threadCoverageGaps,
+      tasks.threadHealth,
       tasks.mergeCandidates,
       tasks.dataQualityIssues,
       tasks.scratchHealth,
+      tasks.scratchThreadCandidates,
     ]);
 
     return {
@@ -209,9 +269,11 @@ export class DreamsAnalyzer {
       focusAreas,
       stateDistribution,
       threadCoverageGaps,
+      threadHealth,
       mergeCandidates,
       dataQualityIssues,
       scratchHealth,
+      scratchThreadCandidates,
     };
   }
 
@@ -249,6 +311,21 @@ export class DreamsAnalyzer {
       totalSizeBytes: 0,
       sessions: [],
       staleSessions: [],
+    };
+  }
+
+  private emptyThreadHealth(): ThreadHealth {
+    return {
+      totalCount: 0,
+      totalSizeBytes: 0,
+      countsByStatus: {
+        [ThreadStatus.Active]: 0,
+        [ThreadStatus.Paused]: 0,
+        [ThreadStatus.Closed]: 0,
+      },
+      threads: [],
+      oversizedThreads: [],
+      staleThreads: [],
     };
   }
 
@@ -301,6 +378,62 @@ export class DreamsAnalyzer {
     return gaps;
   }
 
+  private async analyzeThreadHealth(): Promise<ThreadHealth> {
+    const threads = await this.manager.listThreads();
+    const countsByStatus: Record<string, number> = {
+      [ThreadStatus.Active]: 0,
+      [ThreadStatus.Paused]: 0,
+      [ThreadStatus.Closed]: 0,
+    };
+
+    const entries = threads.map<ThreadHealthEntry>((thread) => {
+      const status = String(thread.frontmatter.status ?? ThreadStatus.Active);
+      countsByStatus[status] = (countsByStatus[status] ?? 0) + 1;
+
+      const updated = String(thread.frontmatter.updated ?? thread.frontmatter.created ?? '');
+      const content = thread.content ?? '';
+      const contentBytes = Buffer.byteLength(content, 'utf8');
+      const lineCount = content
+        .split('\n')
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0).length;
+      const ageDays = updated.length > 0
+        ? (Date.now() - new Date(updated).getTime()) / DAY_MS
+        : 0;
+      const isOversized = contentBytes > THREAD_CONTENT_MAX_BYTES || lineCount > THREAD_CONTENT_MAX_LINES;
+      const isStale = status !== ThreadStatus.Closed && updated.length > 0 && ageDays > STALE_THREAD_MAX_AGE_DAYS;
+
+      return {
+        threadId: String(thread.frontmatter.thread_id ?? ''),
+        path: thread.path,
+        status,
+        updated,
+        contentBytes,
+        lineCount,
+        goalCount: Array.isArray(thread.frontmatter.goals) ? thread.frontmatter.goals.length : 0,
+        pathCount: Array.isArray(thread.frontmatter.paths) ? thread.frontmatter.paths.length : 0,
+        relatedThreadCount: Array.isArray(thread.frontmatter.related_threads) ? thread.frontmatter.related_threads.length : 0,
+        isOversized,
+        isStale,
+      };
+    });
+
+    entries.sort((left, right) => {
+      if (left.isOversized !== right.isOversized) return Number(right.isOversized) - Number(left.isOversized);
+      if (left.isStale !== right.isStale) return Number(right.isStale) - Number(left.isStale);
+      return right.updated.localeCompare(left.updated);
+    });
+
+    return {
+      totalCount: entries.length,
+      totalSizeBytes: entries.reduce((sum, entry) => sum + entry.contentBytes, 0),
+      countsByStatus,
+      threads: entries,
+      oversizedThreads: entries.filter((entry) => entry.isOversized).map((entry) => entry.threadId),
+      staleThreads: entries.filter((entry) => entry.isStale).map((entry) => entry.threadId),
+    };
+  }
+
   private async analyzeMergeCandidates(notes: VaultNote[]): Promise<MergeCandidate[]> {
     const candidates: MergeCandidate[] = [];
     const tokenCache = new Map<string, Set<string>>();
@@ -340,14 +473,48 @@ export class DreamsAnalyzer {
       const noteIssues: string[] = [];
 
       const state = note.frontmatter.memory_state as string | undefined;
+      if (state && !Object.values(MemoryState).includes(state as MemoryState)) {
+        noteIssues.push(`invalid memory_state "${state}"`);
+      }
+
+      if (!note.frontmatter.created || typeof note.frontmatter.created !== 'string') {
+        noteIssues.push('missing created timestamp');
+      }
+
+      if (!note.frontmatter.updated || typeof note.frontmatter.updated !== 'string') {
+        noteIssues.push('missing updated timestamp');
+      }
+
+      if (
+        'bootstrap_state' in note.frontmatter &&
+        note.frontmatter.bootstrap_state !== undefined &&
+        !['full', 'partial', 'none'].includes(String(note.frontmatter.bootstrap_state))
+      ) {
+        noteIssues.push(`invalid bootstrap_state "${String(note.frontmatter.bootstrap_state)}"`);
+      }
+
+      if (
+        'thread' in note.frontmatter &&
+        note.frontmatter.thread !== undefined &&
+        typeof note.frontmatter.thread !== 'string'
+      ) {
+        noteIssues.push('thread field is not a string');
+      }
+
+      if (
+        'tags' in note.frontmatter &&
+        note.frontmatter.tags !== undefined &&
+        !Array.isArray(note.frontmatter.tags) &&
+        typeof note.frontmatter.tags !== 'string'
+      ) {
+        noteIssues.push('tags field is neither array nor string');
+      }
+
+      // Core notes don't need summaries — they always load in full
       const needsSummary = state !== MemoryState.Core;
       const summary = note.frontmatter.summary;
       if (needsSummary && (typeof summary !== 'string' || summary.trim().length === 0)) {
         noteIssues.push('missing summary');
-      }
-
-      if (typeof note.frontmatter.bootstrap_state !== 'string') {
-        noteIssues.push('missing bootstrap_state');
       }
 
       const typeMismatch = this.detectTypeMismatch(note);
@@ -364,6 +531,85 @@ export class DreamsAnalyzer {
     }
 
     return issues;
+  }
+
+  private async analyzeScratchThreadAlignment(): Promise<ScratchThreadCandidate[]> {
+    const entries = await this.manager.readScratch({ limit: 10000 });
+    const threads = (await this.manager.listThreads())
+      .filter((thread) => String(thread.frontmatter.status ?? ThreadStatus.Active) !== ThreadStatus.Closed);
+    const sessionMap = new Map<string, ScratchEntry[]>();
+
+    for (const entry of entries) {
+      if (entry.sessionId === DREAMS_SESSION_ID) continue;
+      const group = sessionMap.get(entry.sessionId) ?? [];
+      group.push(entry);
+      sessionMap.set(entry.sessionId, group);
+    }
+
+    const candidates: ScratchThreadCandidate[] = [];
+    for (const [sessionId, group] of sessionMap) {
+      group.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+      const newestEntry = group[group.length - 1]?.timestamp ?? '';
+      if (!newestEntry) continue;
+
+      const ageMs = Date.now() - new Date(newestEntry).getTime();
+      if (ageMs > 7 * DAY_MS) continue;
+
+      const isCompacted = group.some((entry) => entry.content.includes('[COMPACTED]'));
+      const summary = group.map((entry) => entry.content).join(' | ').slice(0, 500);
+      const scratchText = group.map((entry) => entry.content).join('\n');
+      const scratchTokens = this.getTextTokenSet(scratchText);
+
+      let bestThreadId: string | null = null;
+      let bestSimilarity = 0;
+      let bestReason = '';
+
+      for (const thread of threads) {
+        const threadId = String(thread.frontmatter.thread_id ?? '');
+        const threadName = typeof thread.frontmatter.name === 'string' ? thread.frontmatter.name : '';
+        const threadBody = [
+          threadId,
+          threadName,
+          typeof thread.frontmatter.description === 'string' ? thread.frontmatter.description : '',
+          Array.isArray(thread.frontmatter.goals) ? thread.frontmatter.goals.join('\n') : '',
+          thread.content ?? '',
+        ].join('\n');
+        const similarity = this.jaccard(scratchTokens, this.getTextTokenSet(threadBody));
+        const lowerScratch = scratchText.toLowerCase();
+        const directMention = (threadId && lowerScratch.includes(threadId.toLowerCase()))
+          || (threadName && lowerScratch.includes(threadName.toLowerCase()));
+        const adjustedSimilarity = directMention ? Math.max(similarity, 0.2) : similarity;
+
+        if (adjustedSimilarity > bestSimilarity) {
+          bestSimilarity = adjustedSimilarity;
+          bestThreadId = threadId || null;
+          bestReason = directMention
+            ? `scratch directly references thread ${threadId || threadName}`
+            : `scratch overlaps with thread ${threadId || threadName} at ${(adjustedSimilarity * 100).toFixed(0)}% similarity`;
+        }
+      }
+
+      if (!bestThreadId || bestSimilarity < 0.08) continue;
+
+      candidates.push({
+        sessionId,
+        entryCount: group.length,
+        newestEntry,
+        isCompacted,
+        candidateThreadId: bestThreadId,
+        similarity: Number(bestSimilarity.toFixed(3)),
+        reason: bestReason,
+        summary,
+      });
+    }
+
+    return candidates
+      .sort((left, right) => {
+        if (left.isCompacted !== right.isCompacted) return Number(left.isCompacted) - Number(right.isCompacted);
+        if (left.similarity !== right.similarity) return right.similarity - left.similarity;
+        return right.newestEntry.localeCompare(left.newestEntry);
+      })
+      .slice(0, 8);
   }
 
   private async analyzeScratchHealth(): Promise<ScratchHealth> {
@@ -421,15 +667,19 @@ export class DreamsAnalyzer {
     const cached = cache.get(note.path);
     if (cached) return cached;
 
-    const tokens = new Set(
-      note.content
+    const tokens = this.getTextTokenSet(note.content);
+    cache.set(note.path, tokens);
+    return tokens;
+  }
+
+  private getTextTokenSet(text: string): Set<string> {
+    return new Set(
+      text
         .toLowerCase()
         .split(/[^a-z0-9]+/i)
         .map((token) => token.trim())
         .filter((token) => token.length >= 4),
     );
-    cache.set(note.path, tokens);
-    return tokens;
   }
 
   private jaccard(left: Set<string>, right: Set<string>): number {

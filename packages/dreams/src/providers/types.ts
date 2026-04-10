@@ -22,4 +22,5 @@ export interface DreamsProviderConfig {
   model: string;
   apiKey?: string;
   baseURL?: string;
+  maxTokens?: number;
 }

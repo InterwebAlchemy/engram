@@ -17,7 +17,7 @@ export class DreamCanvas {
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
-    private readonly gridSize = 20,
+    private readonly gridSize = 100,
     private readonly maxOpacity = 0.06,
   ) {}
 

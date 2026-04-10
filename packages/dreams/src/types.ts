@@ -4,9 +4,11 @@ import type { DreamsEngramContext } from './prompt';
 export type DreamsFocus =
   | 'state_distribution'
   | 'thread_coverage'
+  | 'thread_health'
   | 'merge_candidates'
   | 'data_quality'
-  | 'scratch_health';
+  | 'scratch_health'
+  | 'scratch_thread_alignment';
 
 export interface StateMemoryEntry {
   path: string;
@@ -55,14 +57,50 @@ export interface ScratchHealth {
   staleSessions: string[];
 }
 
+export interface ScratchThreadCandidate {
+  sessionId: string;
+  entryCount: number;
+  newestEntry: string;
+  isCompacted: boolean;
+  candidateThreadId: string | null;
+  similarity: number;
+  reason: string;
+  summary: string;
+}
+
+export interface ThreadHealthEntry {
+  threadId: string;
+  path: string;
+  status: string;
+  updated: string;
+  contentBytes: number;
+  lineCount: number;
+  goalCount: number;
+  pathCount: number;
+  relatedThreadCount: number;
+  isOversized: boolean;
+  isStale: boolean;
+}
+
+export interface ThreadHealth {
+  totalCount: number;
+  totalSizeBytes: number;
+  countsByStatus: Record<string, number>;
+  threads: ThreadHealthEntry[];
+  oversizedThreads: string[];
+  staleThreads: string[];
+}
+
 export interface DreamsReport {
   timestamp: string;
   focusAreas: DreamsFocus[];
   stateDistribution: StateDistribution;
   threadCoverageGaps: ThreadCoverageGap[];
+  threadHealth: ThreadHealth;
   mergeCandidates: MergeCandidate[];
   dataQualityIssues: DataQualityIssue[];
   scratchHealth: ScratchHealth;
+  scratchThreadCandidates: ScratchThreadCandidate[];
 }
 
 export type DreamsAction =
@@ -77,6 +115,25 @@ export type DreamsAction =
       action: 'set_thread';
       path: string;
       thread_id: string;
+      reason: string;
+    }
+  | {
+      action: 'rewrite_thread';
+      thread_id: string;
+      content: string;
+      reason: string;
+    }
+  | {
+      action: 'update_thread_status';
+      thread_id: string;
+      from: string;
+      to: string;
+      reason: string;
+    }
+  | {
+      action: 'merge_threads';
+      source_thread_id: string;
+      target_thread_id: string;
       reason: string;
     }
   | {
@@ -119,14 +176,31 @@ export type DreamsAction =
     }
   | {
       action: 'archive_forgotten';
+    }
+  | {
+      action: 'flag_core_review';
+      path: string;
+      concern: string;
+      suggested_change: string;
+      reason: string;
     };
 
 export interface DreamsReviewNote {
+  kind: 'memory' | 'thread' | 'scratch';
   path: string;
   type: string;
   state: string;
   summary?: string;
   content: string;
+  sessionId?: string;
+  threadId?: string;
+  description?: string;
+  goals?: string[];
+  relatedThreads?: string[];
+  paths?: string[];
+  reason?: string;
+  newestEntry?: string;
+  entryCount?: number;
 }
 
 export interface DreamsExecutionResult {
@@ -161,6 +235,7 @@ export interface DreamsRunRecord {
   provider: string;
   model: string;
   usage?: DreamsUsage;
+  dream?: string;
   actionCount: number;
   reviewNoteCount: number;
   executionMode: 'plan' | 'dry-run' | 'apply';
@@ -170,7 +245,10 @@ export interface DreamsRunRecord {
     memoryCount: number;
     rememberedCount: number;
     defaultCount: number;
+    threadCount: number;
     threadGapCount: number;
+    oversizedThreadCount: number;
+    staleThreadCount: number;
     dataQualityIssueCount: number;
     mergeCandidateCount: number;
     scratchEntryCount: number;

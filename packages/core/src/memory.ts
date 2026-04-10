@@ -24,6 +24,7 @@ import type {
   ScratchEntry,
   ScratchReadOptions,
   ScratchCompactOptions,
+  ScratchPruneOptions,
 } from './types';
 import { VaultNote } from './vault';
 import { slugify, datePath } from './utils';
@@ -768,6 +769,54 @@ export class MemoryManager {
       .filter((line): line is string => line !== null);
 
     await this.adapter.write(logPath, newLines.join('\n'));
+  }
+
+  /**
+   * Remove scratch entries for a session older than thresholdMs.
+   * Returns the number of entries deleted.
+   */
+  async pruneScratch(options: ScratchPruneOptions): Promise<number> {
+    const logPath = this.scratchFilePath;
+    this.assertWriteAllowed(logPath);
+
+    const pruneLines = (raw: string): { content: string; removed: number } => {
+      if (!raw.trim()) return { content: raw, removed: 0 };
+
+      const lines = raw.split('\n');
+      const entryPattern = /^\[([^\]]+) \| ([^\]]+)\] (.+)$/;
+      const cutoff = Date.now() - options.thresholdMs;
+      let removed = 0;
+
+      const kept = lines.filter((line) => {
+        const match = line.match(entryPattern);
+        if (!match || match[1] !== options.sessionId) return true;
+        if (new Date(match[2]).getTime() > cutoff) return true;
+        removed += 1;
+        return false;
+      });
+
+      return { content: kept.join('\n'), removed };
+    };
+
+    if (supportsProcess(this.adapter)) {
+      if (!(await this.adapter.exists(logPath))) return 0;
+
+      let removed = 0;
+      await this.adapter.process(logPath, (raw) => {
+        const result = pruneLines(raw);
+        removed = result.removed;
+        return result.content;
+      });
+      return removed;
+    }
+
+    const raw = await this.adapter.read(logPath).catch(() => '');
+    if (!raw.trim()) return 0;
+
+    const result = pruneLines(raw);
+    if (result.removed === 0) return 0;
+    await this.adapter.write(logPath, result.content);
+    return result.removed;
   }
 
   /**

@@ -18,6 +18,7 @@
     "dev:build": "bash scripts/dev.sh --build",
     "dev:clean": "bash scripts/dev.sh --clean",
     "dream": "npm run build --workspace @interwebalchemy/engram-snapshot --if-present && npm run build --workspace @interwebalchemy/engram-dreams --if-present && node packages/dreams/dist/index.js",
+    "dream:cleanup": "npm run build --workspace @interwebalchemy/engram-snapshot --if-present && npm run build --workspace @interwebalchemy/engram-core --if-present && npm run build --workspace @interwebalchemy/engram-dreams --if-present && node packages/dreams/dist/index.js --cleanup-only",
     "snapshot": "npm run build --workspace @interwebalchemy/engram-snapshot --if-present && node packages/snapshot/dist/index.js create",
     "snapshot:list": "npm run build --workspace @interwebalchemy/engram-snapshot --if-present && node packages/snapshot/dist/index.js list",
     "snapshot:restore": "npm run build --workspace @interwebalchemy/engram-snapshot --if-present && node packages/snapshot/dist/index.js restore",

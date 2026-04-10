@@ -98,6 +98,7 @@ export class SnapshotManager {
     const target = await this.resolveSnapshot(options.snapshotIdOrPath);
     const engramRoot = target.engramRoot || requestedEngramRoot;
     const engramPath = path.join(vaultPath, engramRoot);
+    const preserveRelativePaths = dedupePreservePaths(options.preserveRelativePaths ?? []);
 
     await fs.mkdir(vaultPath, { recursive: true });
 
@@ -110,19 +111,46 @@ export class SnapshotManager {
         reason: options.reason ?? 'pre-restore',
       });
     }
+    const preserveStagingDir = preserveRelativePaths.length > 0
+      ? await fs.mkdtemp(path.join(this.snapshotsDir, '.restore-preserve-'))
+      : null;
+    const preservedRelativePaths: string[] = [];
 
-    await fs.rm(engramPath, { recursive: true, force: true });
+    try {
+      if (preserveStagingDir) {
+        for (const relativePath of preserveRelativePaths) {
+          const sourcePath = path.join(engramPath, relativePath);
+          if (!(await pathExists(sourcePath))) continue;
 
-    if (target.format === 'directory') {
-      await fs.cp(path.join(target.snapshotPath, engramRoot), engramPath, { recursive: true });
-    } else {
-      await execFileAsync('tar', ['-xzf', target.snapshotPath, '-C', vaultPath]);
+          await copyPath(sourcePath, path.join(preserveStagingDir, relativePath));
+          preservedRelativePaths.push(relativePath);
+        }
+      }
+
+      await fs.rm(engramPath, { recursive: true, force: true });
+
+      if (target.format === 'directory') {
+        await fs.cp(path.join(target.snapshotPath, engramRoot), engramPath, { recursive: true });
+      } else {
+        await execFileAsync('tar', ['-xzf', target.snapshotPath, '-C', vaultPath]);
+      }
+
+      if (preserveStagingDir) {
+        for (const relativePath of preservedRelativePaths) {
+          await copyPath(path.join(preserveStagingDir, relativePath), path.join(engramPath, relativePath));
+        }
+      }
+
+      return {
+        restored: target,
+        safetySnapshot,
+        preservedRelativePaths,
+      };
+    } finally {
+      if (preserveStagingDir) {
+        await fs.rm(preserveStagingDir, { recursive: true, force: true }).catch(() => undefined);
+      }
     }
-
-    return {
-      restored: target,
-      safetySnapshot,
-    };
   }
 
   private async resolveSnapshot(snapshotIdOrPath: string): Promise<SnapshotRecord> {
@@ -229,6 +257,30 @@ async function pathExists(targetPath: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+function dedupePreservePaths(paths: string[]): string[] {
+  return [...new Set(paths.map(normalizePreserveRelativePath))];
+}
+
+function normalizePreserveRelativePath(relativePath: string): string {
+  const normalized = path.normalize(relativePath).replace(/^([/\\])+/, '');
+  if (!normalized || normalized === '.' || normalized.startsWith('..')) {
+    throw new Error(`Invalid preserve path: ${relativePath}`);
+  }
+  return normalized;
+}
+
+async function copyPath(sourcePath: string, targetPath: string): Promise<void> {
+  const stat = await fs.stat(sourcePath);
+  await fs.mkdir(path.dirname(targetPath), { recursive: true });
+
+  if (stat.isDirectory()) {
+    await fs.cp(sourcePath, targetPath, { recursive: true, force: true });
+    return;
+  }
+
+  await fs.copyFile(sourcePath, targetPath);
 }
 
 async function getDirectorySize(dirPath: string): Promise<number> {

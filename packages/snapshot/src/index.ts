@@ -108,6 +108,7 @@ async function runRestore(argv: string[]): Promise<void> {
     vaultPath,
     engramRoot: args.engramRoot,
     createSafetySnapshot: !args.noSafety,
+    preserveRelativePaths: args.preserveRelativePaths,
     label: args.label,
     reason: args.reason,
   });
@@ -115,6 +116,9 @@ async function runRestore(argv: string[]): Promise<void> {
   console.log(`Restored snapshot ${result.restored.id}`);
   if (result.safetySnapshot) {
     console.log(`Safety snapshot: ${result.safetySnapshot.id}`);
+  }
+  if (result.preservedRelativePaths && result.preservedRelativePaths.length > 0) {
+    console.log(`Preserved: ${result.preservedRelativePaths.join(', ')}`);
   }
 }
 
@@ -124,6 +128,7 @@ interface ParsedArgs {
   snapshotsDir?: string;
   label?: string;
   reason?: string;
+  preserveRelativePaths: string[];
   json: boolean;
   yes: boolean;
   noSafety: boolean;
@@ -132,6 +137,7 @@ interface ParsedArgs {
 
 function parseArgs(argv: string[]): ParsedArgs {
   const parsed: ParsedArgs = {
+    preserveRelativePaths: [],
     json: false,
     yes: false,
     noSafety: false,
@@ -155,6 +161,12 @@ function parseArgs(argv: string[]): ParsedArgs {
         break;
       case '--reason':
         parsed.reason = argv[++i];
+        break;
+      case '--preserve-relative':
+        parsed.preserveRelativePaths.push(...(argv[++i] ?? '')
+          .split(',')
+          .map((value) => value.trim())
+          .filter(Boolean));
         break;
       case '--json':
         parsed.json = true;
@@ -256,7 +268,7 @@ function printHelp(): void {
   console.log('Usage:');
   console.log('  engram-snapshot create [--vault <path>] [--snapshots-dir <path>] [--label <text>] [--reason <text>]');
   console.log('  engram-snapshot list [--snapshots-dir <path>] [--json]');
-  console.log('  engram-snapshot restore [snapshot-id-or-path] [--vault <path>] [--snapshots-dir <path>] [--yes] [--no-safety]');
+  console.log('  engram-snapshot restore [snapshot-id-or-path] [--vault <path>] [--snapshots-dir <path>] [--preserve-relative <path[,path...]>] [--yes] [--no-safety]');
 }
 
 main().catch((error: unknown) => {

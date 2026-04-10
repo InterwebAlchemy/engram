@@ -237,6 +237,13 @@ export interface ScratchCompactOptions {
   compactedContent: string;
 }
 
+export interface ScratchPruneOptions {
+  /** Session whose entries should be removed. */
+  sessionId: string;
+  /** Only prune entries older than this many milliseconds. */
+  thresholdMs: number;
+}
+
 // ─── Search ───────────────────────────────────────────────────────────────────
 
 export interface SearchResult {

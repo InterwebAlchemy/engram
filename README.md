@@ -58,6 +58,9 @@ The system is organized around a few core ideas:
 - **Token budgeting**: The `get_context` tool accepts a token budget. Core memories load first; lower-priority content is shed when the budget is tight. A quick question should use a small budget. A deep refactor may need a larger budget for more context.
 - **Working memory**: A shared scratch log with session IDs and timestamps. Multiple sessions can read and write to it concurrently. It gets compacted at session end, and key insights are promoted to long-term memory storage.
 - **Skills**: Named procedural memories the agent can store and retrieve on demand. These become reusable workflows, patterns, or instructions that persist across sessions.
+- **Dreams**: An automated synthesis process that distills memories, extracts insights, and cleans up the Engram, inspired by [Claude Code's Dream System](https://claudefa.st/blog/guide/mechanics/auto-dream). Currently triggered via the Obsidian Plugin UI.
+
+![the Obsidian plugin has a visual indicator for the Engram's Dream state](./assets/engram-dream.mp4)
 
 Memories are markdown files with YAML frontmatter, stored in your Obsidian vault. You can browse, edit, tag, and organize them like any other note.
 
@@ -128,7 +131,6 @@ Current focus areas are:
 - **Context-specific memories** that allow the Engram to load some non-Threaded memories only when they are relevant, for example: only loading context about another person when you are working on a project with them or writing them an email.
 - **Harness verification** for additional MCP clients such as Aider, Windsurf, and other MCP-capable tools.
 - **Streamlined setup** with guided onboarding and a single installation command via `brew` or `npx`.
-- **Dream processing** that synthesizes and distills memories, extracts insights, and fills gaps in knowledge, similar to [Claude Code's Dream System](https://claudescorner.substack.com/p/a-hidden-dream-command-and-the-tools)
 
 ## Harness Limitations
 
