@@ -1,6 +1,7 @@
 export const PLUGIN_ID = 'engram';
 export const CHAT_VIEW_TYPE = 'engram-chat-view';
 export const MEMORY_VIEW_TYPE = 'engram-memory-view';
+export const DREAMS_VIEW_TYPE = 'engram-dreams-view';
 
 export const DEFAULT_PREAMBLE =
   'You are a helpful AI assistant. You have access to the user\'s knowledge vault and can recall relevant memories from past conversations.';

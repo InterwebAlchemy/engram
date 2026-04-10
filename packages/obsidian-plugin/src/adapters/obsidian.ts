@@ -58,6 +58,14 @@ export class ObsidianAdapter implements FileSystemAdapter {
     }
   }
 
+  async delete(filePath: string): Promise<void> {
+    const vaultPath = this.toVaultPath(filePath);
+    const existing = this.app.vault.getAbstractFileByPath(vaultPath);
+    if (existing) {
+      await this.app.vault.delete(existing, true);
+    }
+  }
+
   async exists(filePath: string): Promise<boolean> {
     return this.app.vault.getAbstractFileByPath(this.toVaultPath(filePath)) !== null;
   }

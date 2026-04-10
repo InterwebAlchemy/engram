@@ -10,9 +10,11 @@ import { AnthropicAdapter } from './providers/anthropic';
 import type { ProviderAdapter } from './providers/types';
 import { EngramSettingTab } from './settings';
 import { EngramChatView } from './views/chat';
+import { EngramDreamsView } from './views/dreams';
 import { EngramMemoryView } from './views/memory';
 import {
   CHAT_VIEW_TYPE,
+  DREAMS_VIEW_TYPE,
   MEMORY_VIEW_TYPE,
   DEFAULT_SETTINGS,
 } from './constants';
@@ -22,6 +24,7 @@ export default class EngramPlugin extends Plugin {
   settings!: EngramSettings;
   memoryManager!: MemoryManager;
   conversation!: Conversation;
+  fileAdapter!: ObsidianAdapter;
   providers: Map<string, ProviderAdapter> = new Map();
   private autosaveInterval: ReturnType<typeof setInterval> | null = null;
 
@@ -32,6 +35,7 @@ export default class EngramPlugin extends Plugin {
 
     // Filesystem adapter backed by the Obsidian vault API
     const adapter = new ObsidianAdapter(this.app);
+    this.fileAdapter = adapter;
 
     // Memory manager scoped to the engram root
     const basePath = (this.app.vault.adapter as unknown as { basePath?: string }).basePath ?? '';
@@ -52,6 +56,7 @@ export default class EngramPlugin extends Plugin {
     // Register views
     this.registerView(CHAT_VIEW_TYPE, (leaf) => new EngramChatView(leaf, this));
     this.registerView(MEMORY_VIEW_TYPE, (leaf) => new EngramMemoryView(leaf, this));
+    this.registerView(DREAMS_VIEW_TYPE, (leaf) => new EngramDreamsView(leaf, this));
 
     // Settings tab
     this.addSettingTab(new EngramSettingTab(this.app, this));
@@ -70,6 +75,12 @@ export default class EngramPlugin extends Plugin {
       id: 'open-memory-manager',
       name: 'Open memory manager',
       callback: () => this.activateMemoryView(),
+    });
+
+    this.addCommand({
+      id: 'open-dreams-dashboard',
+      name: 'Open Dreams dashboard',
+      callback: () => this.activateDreamsView(),
     });
 
     this.addCommand({
@@ -120,6 +131,24 @@ export default class EngramPlugin extends Plugin {
 
   getActiveProvider(): ProviderAdapter | undefined {
     return this.providers.get(this.settings.activeProviderId);
+  }
+
+  async createProviderAdapter(providerId: string): Promise<ProviderAdapter | undefined> {
+    const cfg = this.settings.providers[providerId];
+    if (!cfg) return undefined;
+
+    const apiKey = await this.getProviderApiKey(providerId);
+    if (providerId === 'anthropic') {
+      return new AnthropicAdapter({
+        ...cfg,
+        apiKey,
+      });
+    }
+
+    return new OpenAICompatibleAdapter({
+      ...cfg,
+      apiKey,
+    });
   }
 
   async getProviderApiKey(providerId: string): Promise<string | undefined> {
@@ -176,6 +205,19 @@ export default class EngramPlugin extends Plugin {
     }
   }
 
+  async activateDreamsView(): Promise<void> {
+    const existing = this.app.workspace.getLeavesOfType(DREAMS_VIEW_TYPE);
+    if (existing.length > 0) {
+      this.app.workspace.revealLeaf(existing[0]);
+      return;
+    }
+    const leaf = this.app.workspace.getRightLeaf(false);
+    if (leaf) {
+      await leaf.setViewState({ type: DREAMS_VIEW_TYPE, active: true });
+      this.app.workspace.revealLeaf(leaf);
+    }
+  }
+
   // ─── Conversation persistence ──────────────────────────────────────────
 
   async saveCurrentConversation(): Promise<void> {
@@ -190,6 +232,19 @@ export default class EngramPlugin extends Plugin {
         view.refresh();
       }
     }
+  }
+
+  refreshDreamsView(): void {
+    for (const leaf of this.app.workspace.getLeavesOfType(DREAMS_VIEW_TYPE)) {
+      const view = leaf.view;
+      if (view instanceof EngramDreamsView) {
+        void view.refresh();
+      }
+    }
+  }
+
+  getVaultBasePath(): string {
+    return (this.app.vault.adapter as unknown as { basePath?: string }).basePath ?? '';
   }
 
   // ─── Autosave ──────────────────────────────────────────────────────────

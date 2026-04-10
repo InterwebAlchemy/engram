@@ -1,0 +1,23 @@
+{
+  "name": "@interwebalchemy/engram-snapshot",
+  "version": "0.1.0",
+  "description": "Snapshot and restore tooling for Engram vault state",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "engram-snapshot": "dist/index.js"
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "start": "node dist/index.js",
+    "prepublishOnly": "npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "typescript": "^5.4.5"
+  },
+  "keywords": ["engram", "snapshot", "restore", "vault", "backup"],
+  "license": "GPL-3.0-only"
+}

@@ -91,6 +91,9 @@ The scratch log is a shared, append-only log. Write to it throughout the session
 **Close-out:**
 Run `scratch_compact(SESSION_ID, synthesized_summary)` to collapse own entries into one, then promote key insights to memory with `memory_store`.
 
+**Memory state discipline:**
+Default new memories to `default`. Use `remembered` only for context future sessions genuinely need without searching, such as active project context, durable architectural decisions, and persistent user preferences.
+
 **Threads:**
 Threads are workstreams — active projects, research topics, ongoing collaborations. Each has a document at `engram/threads/{thread_id}.md` with goals, associated paths, and status.
 

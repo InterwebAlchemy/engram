@@ -229,7 +229,6 @@ export class MemoryManager {
    * Build context sections for prompt assembly:
    *  - Core memories (always in context, priority 90)
    *  - Remembered memories (always in context, priority 70)
-   *  - Relevant default-state memories from a keyword search (priority 50)
    *
    * The Soul document is intentionally excluded — load it separately via
    * getSoulDocument() / soul_get so harnesses that inject it at the
@@ -260,19 +259,6 @@ export class MemoryManager {
       return !noteThread || noteThread === threadId;
     });
 
-    // Default: search-relevant, unthreaded or matching active thread.
-    const searchResults = await this.search(query);
-    const relevantNotes = searchResults.filter((n) => {
-      if (
-        n.frontmatter.memory_state === MemoryState.Forgotten ||
-        n.frontmatter.memory_state === MemoryState.Core ||
-        n.frontmatter.memory_state === MemoryState.Remembered
-      ) return false;
-      if (!threadId) return true;
-      const noteThread = n.frontmatter.thread as string | undefined;
-      return !noteThread || noteThread === threadId;
-    });
-
     const builder = new ContextBuilder();
 
     for (const n of coreNotes) {
@@ -281,10 +267,6 @@ export class MemoryManager {
     for (const n of rememberedNotes) {
       const body = n.frontmatter.summary as string | undefined ?? n.content;
       builder.addSection(`memory:${n.path}`, body, 70);
-    }
-    for (const n of relevantNotes) {
-      const body = n.frontmatter.summary as string | undefined ?? n.content;
-      builder.addSection(`memory:${n.path}`, body, 50);
     }
 
     return builder.selectSections(budget.max);

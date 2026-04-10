@@ -38,6 +38,8 @@ Write to scratch throughout the session using `scratch_append`. Concrete trigger
 
 At session close-out, run `scratch_compact(SESSION_ID, synthesized_summary)` to collapse your entries into one, then promote key insights to memory with `memory_store`.
 
+When writing memories, default to `memory_state: default`. Reserve `remembered` for things future sessions genuinely need surfaced without searching: active project context, architectural decisions that shape ongoing work, and durable user preferences.
+
 ## Git Commits
 
 When committing on behalf of the User, append an Engram `Co-Authored-By` trailer using the `git_identity` field from the soul doc. This is **in addition to** any `Co-Authored-By` trailer the harness adds for itself — do not suppress or replace the harness trailer.

@@ -1,0 +1,187 @@
+import type { DreamsUsage } from './providers/types';
+
+export type DreamsFocus =
+  | 'state_distribution'
+  | 'thread_coverage'
+  | 'merge_candidates'
+  | 'data_quality'
+  | 'scratch_health';
+
+export interface StateMemoryEntry {
+  path: string;
+  updated: string;
+  hasThread: boolean;
+  hasSummary: boolean;
+}
+
+export interface StateDistribution {
+  counts: Record<string, number>;
+  total: number;
+  memoriesByState: Record<string, StateMemoryEntry[]>;
+}
+
+export interface ThreadCoverageGap {
+  path: string;
+  threadTags: string[];
+  hasThreadField: boolean;
+  suggestedThreadId: string | null;
+}
+
+export interface MergeCandidate {
+  paths: string[];
+  similarity: number;
+  sharedTags: string[];
+  reason: string;
+}
+
+export interface DataQualityIssue {
+  path: string;
+  issues: string[];
+}
+
+export interface ScratchSessionHealth {
+  sessionId: string;
+  entryCount: number;
+  oldestEntry: string;
+  newestEntry: string;
+  isCompacted: boolean;
+}
+
+export interface ScratchHealth {
+  entryCount: number;
+  totalSizeBytes: number;
+  sessions: ScratchSessionHealth[];
+  staleSessions: string[];
+}
+
+export interface DreamsReport {
+  timestamp: string;
+  focusAreas: DreamsFocus[];
+  stateDistribution: StateDistribution;
+  threadCoverageGaps: ThreadCoverageGap[];
+  mergeCandidates: MergeCandidate[];
+  dataQualityIssues: DataQualityIssue[];
+  scratchHealth: ScratchHealth;
+}
+
+export type DreamsAction =
+  | {
+      action: 'update_state';
+      path: string;
+      from: string;
+      to: string;
+      reason: string;
+    }
+  | {
+      action: 'set_thread';
+      path: string;
+      thread_id: string;
+      reason: string;
+    }
+  | {
+      action: 'merge';
+      keep: string;
+      remove: string[];
+      merged_content: string;
+      merged_summary: string;
+      reason: string;
+    }
+  | {
+      action: 'update_summary';
+      path: string;
+      summary: string;
+      reason: string;
+    }
+  | {
+      action: 'update_type';
+      path: string;
+      from: string;
+      to: string;
+      reason: string;
+    }
+  | {
+      action: 'compact_scratch';
+      session_id: string;
+      summary: string;
+    }
+  | {
+      action: 'archive_forgotten';
+    };
+
+export interface DreamsReviewNote {
+  path: string;
+  type: string;
+  state: string;
+  summary?: string;
+  content: string;
+}
+
+export interface DreamsExecutionResult {
+  dryRun: boolean;
+  applied: number;
+  skipped: number;
+  details: string[];
+}
+
+export interface DreamsPlanResult {
+  report: DreamsReport;
+  reviewNotes: DreamsReviewNote[];
+  rawResponse: string;
+  actions: DreamsAction[];
+  usage?: DreamsUsage;
+}
+
+export interface DreamsRunResult {
+  report: DreamsReport;
+  reviewNotes: DreamsReviewNote[];
+  rawResponse: string;
+  actions: DreamsAction[];
+  usage?: DreamsUsage;
+  execution: DreamsExecutionResult;
+}
+
+export interface DreamsRunRecord {
+  id: string;
+  timestamp: string;
+  provider: string;
+  model: string;
+  usage?: DreamsUsage;
+  actionCount: number;
+  reviewNoteCount: number;
+  executionMode: 'plan' | 'dry-run' | 'apply';
+  appliedActions?: number;
+  skippedActions?: number;
+  reportSummary: {
+    memoryCount: number;
+    rememberedCount: number;
+    defaultCount: number;
+    threadGapCount: number;
+    dataQualityIssueCount: number;
+    mergeCandidateCount: number;
+    scratchEntryCount: number;
+    staleScratchSessionCount: number;
+  };
+}
+
+export interface DreamsRunHistory {
+  version: 1;
+  updatedAt: string;
+  runs: DreamsRunRecord[];
+}
+
+export interface DreamsUsageTrend {
+  latest?: DreamsRunRecord;
+  baselineAverageTotalTokens?: number;
+  recentAverageTotalTokens?: number;
+  deltaFromBaseline?: number;
+}
+
+export interface DreamsRunnerOptions {
+  vaultPath: string;
+  provider: 'anthropic' | 'openai';
+  model: string;
+  apiKey?: string;
+  baseURL?: string;
+  dryRun?: boolean;
+  focus?: DreamsFocus[];
+}

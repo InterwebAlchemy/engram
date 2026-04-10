@@ -1,7 +1,8 @@
 /* ─── Layout ──────────────────────────────────────────────────────────────── */
 
 .engram-chat-container,
-.engram-memory-container {
+.engram-memory-container,
+.engram-dreams-container {
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -256,6 +257,197 @@ details[open] > .engram-reasoning-summary::before {
   border: none;
   border-radius: var(--radius-s);
   cursor: pointer;
+}
+
+/* ─── Dreams dashboard ───────────────────────────────────────────────────── */
+
+.engram-dreams-toolbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.engram-dreams-toolbar-copy h3 {
+  margin: 0 0 4px;
+}
+
+.engram-dreams-toolbar-copy p {
+  margin: 0;
+}
+
+.engram-dreams-toolbar-actions {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.engram-dreams-controls {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px;
+  border-bottom: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+}
+
+.engram-dreams-controls-copy h4 {
+  margin: 0 0 4px;
+}
+
+.engram-dreams-controls-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.engram-dreams-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  padding: 16px;
+}
+
+.engram-dreams-stat-card,
+.engram-dreams-section {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  background: var(--background-secondary);
+}
+
+.engram-dreams-stat-card {
+  padding: 14px;
+}
+
+.engram-dreams-stat-label {
+  color: var(--text-muted);
+  font-size: var(--font-smaller);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.engram-dreams-stat-value {
+  margin: 6px 0;
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.engram-dreams-stat-description,
+.engram-dreams-section-description,
+.engram-dreams-snapshot-meta {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  line-height: 1.4;
+}
+
+.engram-dreams-sections {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+  padding: 0 16px 16px;
+}
+
+.engram-dreams-section {
+  padding: 14px;
+}
+
+.engram-dreams-section h4 {
+  margin: 0 0 6px;
+}
+
+.engram-dreams-plan-summary {
+  margin-top: 12px;
+}
+
+.engram-dreams-plan-details {
+  margin-top: 12px;
+}
+
+.engram-dreams-plan-details details + details {
+  margin-top: 8px;
+}
+
+.engram-dreams-action-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.engram-dreams-action-card {
+  padding: 10px 12px;
+  border-radius: var(--radius-s);
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border-hover);
+}
+
+.engram-dreams-action-title {
+  font-weight: 600;
+  margin-bottom: 4px;
+  word-break: break-word;
+}
+
+.engram-dreams-execution {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.engram-dreams-execution h5 {
+  margin: 0 0 6px;
+}
+
+.engram-dreams-list {
+  margin: 12px 0 0;
+  padding-left: 18px;
+}
+
+.engram-dreams-list li + li {
+  margin-top: 6px;
+}
+
+.engram-dreams-empty {
+  padding: 16px;
+  color: var(--text-muted);
+}
+
+.engram-dreams-snapshot-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.engram-dreams-snapshot-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: var(--radius-s);
+  background: var(--background-primary);
+}
+
+.engram-dreams-snapshot-copy {
+  min-width: 0;
+}
+
+.engram-dreams-snapshot-title {
+  font-weight: 600;
+  word-break: break-word;
+}
+
+.engram-dreams-raw-output {
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  border-radius: var(--radius-s);
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
 }
 
 /* ─── Settings: accordion sections ───────────────────────────────────────── */
