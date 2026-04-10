@@ -133,11 +133,11 @@ export default class EngramPlugin extends Plugin {
     return this.providers.get(this.settings.activeProviderId);
   }
 
-  async createProviderAdapter(providerId: string): Promise<ProviderAdapter | undefined> {
+  createProviderAdapter(providerId: string): ProviderAdapter | undefined {
     const cfg = this.settings.providers[providerId];
     if (!cfg) return undefined;
 
-    const apiKey = await this.getProviderApiKey(providerId);
+    const apiKey = this.getProviderApiKey(providerId);
     if (providerId === 'anthropic') {
       return new AnthropicAdapter({
         ...cfg,
@@ -151,14 +151,11 @@ export default class EngramPlugin extends Plugin {
     });
   }
 
-  async getProviderApiKey(providerId: string): Promise<string | undefined> {
-    const secretName = this.settings.providers[providerId]?.apiKeySecret;
-    if (!secretName) return undefined;
+  getProviderApiKey(providerId: string): string | undefined {
+    const secretId = this.settings.providers[providerId]?.apiKeySecret;
+    if (!secretId) return undefined;
     try {
-      const value = await (this.app as unknown as {
-        secretStorage: { get(name: string): Promise<string | null> };
-      }).secretStorage.get(secretName);
-      return value ?? undefined;
+      return this.app.secretStorage.getSecret(secretId) ?? undefined;
     } catch {
       return undefined;
     }

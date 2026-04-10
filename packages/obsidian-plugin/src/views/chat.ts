@@ -389,7 +389,7 @@ export class EngramChatView extends ItemView {
       return;
     }
 
-    const apiKey = await this.plugin.getProviderApiKey(provider.id);
+    const apiKey = this.plugin.getProviderApiKey(provider.id);
     if (apiKey) {
       (provider as { updateConfig?: (c: { apiKey: string }) => void }).updateConfig?.({ apiKey });
     }

@@ -490,7 +490,7 @@ export class EngramDreamsView extends ItemView {
     this.render();
 
     try {
-      const provider = await this.plugin.createProviderAdapter(selection.providerId);
+      const provider = this.plugin.createProviderAdapter(selection.providerId);
       if (!provider) {
         throw new Error(`Could not create provider adapter for ${selection.providerName}.`);
       }
