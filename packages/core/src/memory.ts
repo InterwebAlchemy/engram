@@ -31,6 +31,8 @@ import { slugify, datePath } from './utils';
 import { ContextBuilder } from './context';
 import { Conversation } from './conversation';
 import type { ConversationFrontmatter, Message } from './types';
+import { KeywordSearchProvider } from './scoring';
+import type { SearchProvider } from './scoring';
 
 type ProcessCapableAdapter = FileSystemAdapter & {
   process(path: string, fn: (content: string) => string): Promise<string>;
@@ -40,21 +42,105 @@ function supportsProcess(adapter: FileSystemAdapter): adapter is ProcessCapableA
   return typeof (adapter as ProcessCapableAdapter).process === 'function';
 }
 
+/** Return summary for non-core context loading, or null when unavailable. */
+function summaryOnly(note: VaultNote): string | null {
+  const summary = note.frontmatter.summary;
+  return typeof summary === 'string' && summary.trim().length > 0
+    ? summary
+    : null;
+}
+
+function normalizeNoteContent(content: string): string {
+  return content.replace(/\r\n?/g, '\n');
+}
+
+function truncateInline(text: string, maxChars: number): string {
+  const normalized = text.replace(/\s+/g, ' ').trim();
+  if (normalized.length <= maxChars) return normalized;
+  return `${normalized.slice(0, Math.max(0, maxChars - 1)).trimEnd()}…`;
+}
+
+function extractOpenTodos(content: string, limit: number): string[] {
+  const lines = normalizeNoteContent(content).split('\n');
+  const headingPattern = /^\s{0,3}#{1,6}\s+todos?\s*$/i;
+  const anyHeadingPattern = /^\s{0,3}#{1,6}\s+\S/;
+
+  let inTodoSection = false;
+  const todos: string[] = [];
+
+  for (const line of lines) {
+    if (!inTodoSection) {
+      if (headingPattern.test(line)) {
+        inTodoSection = true;
+      }
+      continue;
+    }
+
+    if (anyHeadingPattern.test(line)) break;
+
+    const match = line.match(/^\s*(?:[-*]|\d+\.)\s+\[ \]\s+(.+?)\s*$/);
+    if (!match) continue;
+
+    todos.push(truncateInline(match[1], 120));
+    if (todos.length >= limit) break;
+  }
+
+  return todos;
+}
+
+function summarizeThread(thread: VaultNote): string {
+  const frontmatter = thread.frontmatter as unknown as ThreadFrontmatter;
+  const lines: string[] = [];
+
+  lines.push(`Thread: ${frontmatter.name ?? frontmatter.thread_id}`);
+  lines.push(`Status: ${frontmatter.status ?? ThreadStatus.Active}`);
+
+  if (typeof frontmatter.description === 'string' && frontmatter.description.trim()) {
+    lines.push(`Description: ${truncateInline(frontmatter.description, 180)}`);
+  }
+
+  const goals = Array.isArray(frontmatter.goals)
+    ? frontmatter.goals
+        .map((goal) => String(goal).trim())
+        .filter(Boolean)
+        .slice(0, 3)
+    : [];
+  if (goals.length > 0) {
+    lines.push('Goals:');
+    for (const goal of goals) {
+      lines.push(`- ${truncateInline(goal, 120)}`);
+    }
+  }
+
+  const todos = extractOpenTodos(thread.content, 5);
+  if (todos.length > 0) {
+    lines.push('Todo:');
+    for (const todo of todos) {
+      lines.push(`- [ ] ${todo}`);
+    }
+  }
+
+  return lines.join('\n');
+}
+
 export class MemoryManager {
   /** Absolute path to the engram write root. */
   private readonly writeRoot: string;
   /** Absolute paths the assistant may read. */
   private readonly readRoots: string[];
+  private readonly searchProvider: SearchProvider;
 
   constructor(
     private readonly adapter: FileSystemAdapter,
     private readonly config: MemoryConfig,
+    searchProvider?: SearchProvider,
   ) {
     this.writeRoot = path.resolve(config.basePath, config.engramRoot);
     this.readRoots = [
       this.writeRoot,
       ...config.readPaths.map((p) => path.resolve(config.basePath, p)),
     ];
+    this.searchProvider = searchProvider ?? new KeywordSearchProvider();
   }
 
   // ─── Write-scope enforcement ──────────────────────────────────────────────
@@ -103,6 +189,10 @@ export class MemoryManager {
     return path.join(this.writeRoot, this.config.memoryPath, dirName);
   }
 
+  private notesDir(): string {
+    return path.join(this.writeRoot, this.config.notesPath);
+  }
+
   private threadDir(): string {
     return path.join(this.writeRoot, this.config.threadsPath);
   }
@@ -111,9 +201,34 @@ export class MemoryManager {
     return path.join(this.threadDir(), `${threadId}.md`);
   }
 
+  private contextLabelFor(note: VaultNote): string {
+    const memoryRoot = path.join(this.writeRoot, this.config.memoryPath);
+    return `memory:${path.relative(memoryRoot, note.path)}`;
+  }
+
   private conversationDir(dateStr?: string): string {
     const base = path.join(this.writeRoot, this.config.conversationsPath);
     return dateStr ? path.join(base, dateStr) : base;
+  }
+
+  private normalizeNotePath(filePath: string): string {
+    const notesRoot = this.notesDir();
+    const resolved = path.isAbsolute(filePath)
+      ? filePath
+      : path.resolve(notesRoot, filePath);
+    const withExt = path.extname(resolved) ? resolved : `${resolved}.md`;
+
+    if (withExt !== notesRoot && !withExt.startsWith(notesRoot + path.sep)) {
+      throw new Error(
+        `Note path must stay within the notes directory ("${notesRoot}")`,
+      );
+    }
+
+    return withExt;
+  }
+
+  private noteRelativePath(filePath: string): string {
+    return path.relative(this.notesDir(), filePath);
   }
 
   private workingDir(): string {
@@ -235,12 +350,17 @@ export class MemoryManager {
   }
 
   /**
-   * Build context sections for prompt assembly:
-   *  - Core memories (always in context, priority 90)
-   *  - Remembered memories (always in context, priority 70)
+   * Build context sections for prompt assembly.
+   *
+   * Loading strategy:
+   *  - Active thread summary: included when threadId is provided (priority 85)
+   *  - Core memories: always included (priority 90), summary preferred
+   *  - Remembered memories: included at priority 70 (65 if query-irrelevant)
+   *  - Default memories: included only when query-relevant (priority 40-60)
+   *  - All non-core memories load summaries only; notes without summaries are skipped
    *
    * The Soul document is intentionally excluded — load it separately via
-   * getSoulDocument() / soul_get so harnesses that inject it at the
+   * getSoulDocument() / the `soul` MCP tool so harnesses that inject it at the
    * system-prompt level don't receive a duplicate copy here.
    */
   async getContext(query: string, budget: TokenBudget, threadId?: string): Promise<ContextSection[]> {
@@ -254,28 +374,85 @@ export class MemoryManager {
 
     const soulPath = path.join(this.memoryTypeDir(MemoryType.Reflection), `${SOUL_DOCUMENT_SLUG}.md`);
 
-    // Core memories always load regardless of thread — core is core.
-    const coreNotes = valid.filter(
-      (n) => n.frontmatter.memory_state === MemoryState.Core && n.path !== soulPath,
-    );
+    const coreNotes: VaultNote[] = [];
+    const rememberedNotes: VaultNote[] = [];
+    const defaultNotes: VaultNote[] = [];
 
-    // Remembered: load if unthreaded (cross-thread) or matching active thread.
-    // Exclude remembered memories tagged to a different thread.
-    const rememberedNotes = valid.filter((n) => {
-      if (n.frontmatter.memory_state !== MemoryState.Remembered) return false;
-      if (!threadId) return true;
-      const noteThread = n.frontmatter.thread as string | undefined;
-      return !noteThread || noteThread === threadId;
-    });
+    for (const n of valid) {
+      if (n.path === soulPath) continue;
+      const state = n.frontmatter.memory_state;
+
+      if (state === MemoryState.Core) {
+        coreNotes.push(n);
+        continue;
+      }
+
+      // Thread filtering: exclude notes scoped to a different thread
+      if (threadId) {
+        const noteThread = n.frontmatter.thread as string | undefined;
+        if (noteThread && noteThread !== threadId) continue;
+      }
+
+      if (state === MemoryState.Remembered) {
+        rememberedNotes.push(n);
+      } else if (state === MemoryState.Default) {
+        defaultNotes.push(n);
+      }
+    }
 
     const builder = new ContextBuilder();
 
-    for (const n of coreNotes) {
-      builder.addSection(`memory:${n.path}`, n.content, 90);
+    if (threadId) {
+      const thread = await this.getThread(threadId);
+      if (thread) {
+        builder.addSection(`thread:${threadId}`, summarizeThread(thread), 85);
+      }
     }
-    for (const n of rememberedNotes) {
-      const body = n.frontmatter.summary as string | undefined ?? n.content;
-      builder.addSection(`memory:${n.path}`, body, 70);
+
+    // Core: always load. Use summary if available and content is large.
+    for (const n of coreNotes) {
+      const summary = n.frontmatter.summary as string | undefined;
+      const body = summary && builder.estimateTokens(n.content) > 200
+        ? summary
+        : n.content;
+      builder.addSection(this.contextLabelFor(n), body, 90);
+    }
+
+    const hasQuery = query && query.trim().length > 0;
+
+    if (hasQuery) {
+      // Score all non-core notes against the query
+      const allCandidates = [...rememberedNotes, ...defaultNotes];
+      const scored = this.searchProvider.rank(query, allCandidates);
+      const scoredPaths = new Set(scored.map((s) => s.note.path));
+
+      // Query-relevant notes get priority based on state + score
+      for (const { note, score } of scored) {
+        const body = summaryOnly(note);
+        if (!body) continue;
+        if (note.frontmatter.memory_state === MemoryState.Remembered) {
+          builder.addSection(this.contextLabelFor(note), body, 70);
+        } else {
+          // Default: priority 40-60 scaled by relevance
+          builder.addSection(this.contextLabelFor(note), body, 40 + Math.round(score * 20));
+        }
+      }
+
+      // Remembered notes that didn't match the query still load, but at lower priority
+      for (const n of rememberedNotes) {
+        if (!scoredPaths.has(n.path)) {
+          const body = summaryOnly(n);
+          if (!body) continue;
+          builder.addSection(this.contextLabelFor(n), body, 65);
+        }
+      }
+    } else {
+      // No query: backward-compatible behavior — all remembered, no defaults
+      for (const n of rememberedNotes) {
+        const body = summaryOnly(n);
+        if (!body) continue;
+        builder.addSection(this.contextLabelFor(n), body, 70);
+      }
     }
 
     return builder.selectSections(budget.max);
@@ -623,6 +800,225 @@ export class MemoryManager {
     return notes.filter((n): n is VaultNote => n !== null);
   }
 
+  // ─── Note operations ──────────────────────────────────────────────────────
+
+  /**
+   * Create a raw markdown note under engram/notes.
+   * Fails if the target path already exists.
+   */
+  async createNote(filePath: string, content: string): Promise<string> {
+    const target = this.normalizeNotePath(filePath);
+    this.assertWriteAllowed(target);
+
+    if (await this.adapter.exists(target)) {
+      throw new Error(`Note already exists: ${target}`);
+    }
+
+    await this.adapter.mkdir(path.dirname(target));
+    await this.adapter.write(target, normalizeNoteContent(content));
+    return target;
+  }
+
+  /**
+   * Read a raw note from engram/notes.
+   */
+  async readNote(filePath: string): Promise<string> {
+    const target = this.normalizeNotePath(filePath);
+    return this.adapter.read(target);
+  }
+
+  /**
+   * Overwrite an existing raw note under engram/notes.
+   */
+  async updateNote(
+    filePath: string,
+    content: string,
+    expectedCurrentContent?: string,
+  ): Promise<string> {
+    const target = this.normalizeNotePath(filePath);
+    this.assertWriteAllowed(target);
+
+    if (!(await this.adapter.exists(target))) {
+      throw new Error(`Note not found: ${target}`);
+    }
+
+    const nextContent = normalizeNoteContent(content);
+    const expected = expectedCurrentContent !== undefined
+      ? normalizeNoteContent(expectedCurrentContent)
+      : undefined;
+
+    if (supportsProcess(this.adapter)) {
+      let conflictDetected = false;
+      await this.adapter.process(target, (current) => {
+        const normalizedCurrent = normalizeNoteContent(current);
+        if (expected !== undefined && normalizedCurrent !== expected) {
+          conflictDetected = true;
+          return current;
+        }
+        if (normalizedCurrent === nextContent) {
+          return current;
+        }
+        return nextContent;
+      });
+
+      if (conflictDetected) {
+        throw new Error(`Note changed since last read: ${target}`);
+      }
+
+      return target;
+    }
+
+    const current = normalizeNoteContent(await this.adapter.read(target));
+    if (expected !== undefined && current !== expected) {
+      throw new Error(`Note changed since last read: ${target}`);
+    }
+    if (current !== nextContent) {
+      await this.adapter.write(target, nextContent);
+    }
+    return target;
+  }
+
+  /**
+   * Append markdown content to a raw note under engram/notes.
+   * Creates the note if it does not exist yet.
+   */
+  async appendNote(
+    filePath: string,
+    content: string,
+    options: {
+      expectedCurrentContent?: string;
+      separator?: string;
+    } = {},
+  ): Promise<string> {
+    const target = this.normalizeNotePath(filePath);
+    this.assertWriteAllowed(target);
+
+    const addition = normalizeNoteContent(content);
+    const expected = options.expectedCurrentContent !== undefined
+      ? normalizeNoteContent(options.expectedCurrentContent)
+      : undefined;
+    const separator = normalizeNoteContent(options.separator ?? '\n\n');
+
+    if (supportsProcess(this.adapter)) {
+      let conflictDetected = false;
+
+      await this.adapter.process(target, (current) => {
+        const normalizedCurrent = normalizeNoteContent(current);
+        if (expected !== undefined && normalizedCurrent !== expected) {
+          conflictDetected = true;
+          return current;
+        }
+        if (!normalizedCurrent) {
+          return addition;
+        }
+        if (!addition) {
+          return current;
+        }
+        return `${normalizedCurrent}${separator}${addition}`;
+      });
+
+      if (conflictDetected) {
+        throw new Error(`Note changed since last read: ${target}`);
+      }
+
+      return target;
+    }
+
+    const exists = await this.adapter.exists(target);
+    const current = exists
+      ? normalizeNoteContent(await this.adapter.read(target))
+      : '';
+    if (expected !== undefined && current !== expected) {
+      throw new Error(`Note changed since last read: ${target}`);
+    }
+
+    const nextContent = !current
+      ? addition
+      : !addition
+        ? current
+        : `${current}${separator}${addition}`;
+
+    if (!exists) {
+      await this.adapter.mkdir(path.dirname(target));
+      await this.adapter.write(target, nextContent);
+      return target;
+    }
+    if (current !== nextContent) {
+      await this.adapter.write(target, nextContent);
+    }
+    return target;
+  }
+
+  /**
+   * List markdown notes under engram/notes.
+   */
+  async listNotes(options: {
+    limit?: number;
+    prefix?: string;
+  } = {}): Promise<Array<{ path: string; preview: string }>> {
+    const notesRoot = this.notesDir();
+    const files = await this.adapter.list(notesRoot).catch(() => [] as string[]);
+    const prefix = options.prefix
+      ? options.prefix.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
+      : undefined;
+
+    const filtered = files
+      .map((filePath) => this.noteRelativePath(filePath))
+      .filter((relativePath) => !prefix || relativePath === prefix || relativePath.startsWith(prefix + '/'))
+      .sort((a, b) => a.localeCompare(b))
+      .slice(0, options.limit ?? 20);
+
+    const results = await Promise.all(
+      filtered.map(async (relativePath) => {
+        const content = await this.readNote(relativePath);
+        return {
+          path: relativePath,
+          preview: content.slice(0, 200),
+        };
+      }),
+    );
+
+    return results;
+  }
+
+  /**
+   * Search markdown notes under engram/notes.
+   */
+  async searchNotes(
+    query: string,
+    options: { limit?: number } = {},
+  ): Promise<Array<{ path: string; preview: string; score?: number }>> {
+    const notesRoot = this.notesDir();
+    const results = await this.adapter.search(query, notesRoot).catch(() => [] as Array<{
+      path: string;
+      content: string;
+      score?: number;
+    }>);
+
+    return results
+      .slice(0, options.limit ?? 10)
+      .map((result) => ({
+        path: this.noteRelativePath(result.path),
+        preview: result.content.slice(0, 200),
+        score: result.score,
+      }));
+  }
+
+  /**
+   * Delete an existing raw note from engram/notes.
+   */
+  async deleteNote(filePath: string): Promise<string> {
+    const target = this.normalizeNotePath(filePath);
+    this.assertWriteAllowed(target);
+
+    if (!(await this.adapter.exists(target))) {
+      throw new Error(`Note not found: ${target}`);
+    }
+
+    await this.adapter.delete(target);
+    return target;
+  }
+
   // ─── Scratch operations ───────────────────────────────────────────────────
 
   private get scratchFilePath(): string {
@@ -639,6 +1035,82 @@ export class MemoryManager {
         return { sessionId: match[1], timestamp: match[2], content: match[3] };
       })
       .filter((e): e is ScratchEntry => e !== null);
+  }
+
+  private bootstrapScratchEntries(
+    entries: ScratchEntry[],
+    limit: number,
+    since?: string,
+  ): ScratchEntry[] {
+    const now = Date.now();
+    const ageCutoff = now - 7 * 24 * 60 * 60 * 1000;
+    const compactedCutoff = now - 72 * 60 * 60 * 1000;
+    const sinceTs = since ? new Date(since).getTime() : null;
+    const transformed: ScratchEntry[] = [];
+
+    for (let index = 0; index < entries.length; index += 1) {
+      const entry = entries[index];
+      const entryTs = new Date(entry.timestamp).getTime();
+
+      if (entryTs < ageCutoff) continue;
+      if (sinceTs !== null && entryTs < sinceTs) continue;
+
+      if (entry.content.startsWith('[COMPACTED]') && entryTs < compactedCutoff) {
+        continue;
+      }
+
+      if (!entry.content.startsWith('[DREAM START]')) {
+        transformed.push(entry);
+        continue;
+      }
+
+      let dreamNarrative: ScratchEntry | null = null;
+      let dreamEnd: ScratchEntry | null = null;
+      let cursor = index + 1;
+
+      while (cursor < entries.length) {
+        const candidate = entries[cursor];
+        const candidateTs = new Date(candidate.timestamp).getTime();
+
+        if (candidateTs >= ageCutoff && (sinceTs === null || candidateTs >= sinceTs)) {
+          if (candidate.content.startsWith('[DREAMING]')) {
+            dreamNarrative = candidate;
+          }
+          if (candidate.content.startsWith('[DREAM END]')) {
+            dreamEnd = candidate;
+            break;
+          }
+        }
+
+        cursor += 1;
+      }
+
+      if (!dreamEnd) {
+        continue;
+      }
+
+      if (dreamNarrative) {
+        transformed.push(dreamNarrative);
+      }
+
+      const stats = dreamEnd.content
+        .replace(/^\[DREAM END\]\s*/, '')
+        .split('|')[0]
+        ?.trim();
+      if (stats) {
+        transformed.push({
+          ...dreamEnd,
+          content: `[DREAM SUMMARY] ${stats}`,
+        });
+      }
+
+      index = cursor;
+    }
+
+    transformed.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    const limited = transformed.slice(0, limit);
+    limited.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+    return limited;
   }
 
   /**
@@ -678,6 +1150,11 @@ export class MemoryManager {
     if (options.sessionId) {
       entries = entries.filter((e) => e.sessionId === options.sessionId);
     }
+
+    if (options.bootstrap) {
+      return this.bootstrapScratchEntries(entries, options.limit ?? 10, options.since);
+    }
+
     if (options.since) {
       const sinceTs = new Date(options.since).getTime();
       entries = entries.filter((e) => new Date(e.timestamp).getTime() >= sinceTs);

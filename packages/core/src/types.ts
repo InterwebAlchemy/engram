@@ -100,14 +100,14 @@ export interface NoteFrontmatter {
   /** Platform where this memory was written (e.g. 'claude-code', 'claude-ai', 'claude-desktop'). */
   platform?: string;
   /**
-   * Compressed summary for token-efficient context loading. When present, get_context
+   * Compressed summary for token-efficient context loading. When present, context
    * uses this for lower-priority memories (p50/p70) instead of full content. Full text
-   * is always available via memory_read. Soul and core memories (p100/p90) always load
+   * is always available via memory(action: "read"). Soul and core memories (p100/p90) always load
    * full content regardless.
    */
   summary?: string;
   /**
-   * Thread ID this memory belongs to. When set, get_context will only load this memory
+   * Thread ID this memory belongs to. When set, context will only load this memory
    * when the matching thread is active. Unset memories are cross-thread and always eligible.
    */
   thread?: string;
@@ -157,6 +157,7 @@ export interface MemoryConfig {
   mode: 'integrated' | 'standalone';
   engramRoot: string;
   memoryPath: string;
+  notesPath: string;
   threadsPath: string;
   conversationsPath: string;
   workingPath: string;
@@ -175,6 +176,7 @@ export function defaultMemoryConfig(
     mode,
     engramRoot: mode === 'integrated' ? 'engram' : '.',
     memoryPath: 'memory',
+    notesPath: 'notes',
     threadsPath: 'threads',
     conversationsPath: 'conversations',
     workingPath: 'working',
@@ -226,6 +228,8 @@ export interface ScratchReadOptions {
   limit?: number;
   /** Return only entries at or after this ISO timestamp. */
   since?: string;
+  /** Apply bootstrap pruning and dream-sequence compaction. */
+  bootstrap?: boolean;
 }
 
 export interface ScratchCompactOptions {

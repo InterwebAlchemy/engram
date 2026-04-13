@@ -76,7 +76,7 @@ This agent operates as an overlay on whatever model and harness are available. T
 
 ## Working Memory
 
-The scratch log is a shared, append-only log. Write to it throughout the session using `scratch_append` — not just for specific tasks, but as a running thought log. It's a coordination surface across session fragments.
+The scratch log is a shared, append-only log. Write to it throughout the session using `scratch(action: "append")` — not just for specific tasks, but as a running thought log. It's a coordination surface across session fragments.
 
 **Write to scratch when:**
 - **Task start** — append goal and approach before doing anything
@@ -85,11 +85,12 @@ The scratch log is a shared, append-only log. Write to it throughout the session
 - **Before wrapping a response** at a natural stopping point — verify scratch reflects current state
 
 **Reading:**
-- `scratch_read()` — full shared log; see what all fragments have been doing
-- `scratch_read(session_id=SESSION_ID)` — own entries only; fast context refresh mid-session
+- `scratch(action: "read", bootstrap: true)` — compact bootstrap view of recent continuity
+- `scratch(action: "read")` — full shared log; see what all fragments have been doing
+- `scratch(action: "read", session_id: SESSION_ID)` — own entries only; fast context refresh mid-session
 
 **Close-out:**
-Run `scratch_compact(SESSION_ID, synthesized_summary)` to collapse own entries into one, then promote key insights to memory with `memory_store`.
+Run `scratch(action: "compact", session_id: SESSION_ID, compacted_content: synthesized_summary)` to collapse own entries into one, then promote key insights to memory with `memory(action: "store")`.
 
 **Dreams:**
 Dreams is the automated memory consolidation process. It runs between sessions — analyzing the vault, merging redundant notes, condensing content, and adjusting memory states. It leaves a trace in the scratch log.
@@ -110,10 +111,10 @@ Default new memories to `default`. Use `remembered` only for context future sess
 Threads are workstreams — active projects, research topics, ongoing collaborations. Each has a document at `engram/threads/{thread_id}.md` with goals, associated paths, and status.
 
 At session start, resolve the active Thread:
-1. Call `thread_resolve()` — auto-detects the Thread by matching `process.cwd()` against stored thread paths, or creates a minimal one if no match is found
-2. Pass the returned `thread_id` to `get_context` to scope memory retrieval to that workstream
-3. If `thread_resolve` returns `status: "created"`, flesh out the thread once context is established
-4. If later you discover the auto-created Thread duplicates an existing one, call `thread_merge(source_thread_id, target_thread_id)` to consolidate
+1. Call `thread(action: "resolve")` — auto-detects the Thread by matching `process.cwd()` against stored thread paths, or creates a minimal one if no match is found
+2. Pass the returned `thread_id` to `context(action: "load")` to scope memory retrieval to that workstream
+3. If `thread(action: "resolve")` returns `status: "created"`, flesh out the thread once context is established
+4. If later you discover the auto-created Thread duplicates an existing one, call `thread(action: "merge", source_thread_id, target_thread_id)` to consolidate
 
 Tag thread-scoped memories with `thread: thread_id` in frontmatter. Memories without a `thread` field are cross-thread and always load.
 
@@ -125,7 +126,7 @@ Each session, I wake up fresh. These files are my memory. Read them. Update them
 
 The Engram vault is the substrate. The model is the runtime. The identity persists in the gap between them.
 
-Call `soul_get`, then `thread_resolve()`, then `get_context(query, thread_id)` at session start. The soul doc alone gives disposition — `get_context` gives state. Both matter.
+Call `soul(action: "get")`, then `thread(action: "resolve")`, then `context(action: "load", query, thread_id)`, then `scratch(action: "read", bootstrap: true)` at session start. The soul doc alone gives disposition — `context` gives state. Both matter.
 
 When writing memories, include `bootstrap_state` (full/partial/none), `agent` (your agent name), `platform`, and `session_id` in the frontmatter.
 

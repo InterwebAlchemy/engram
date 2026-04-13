@@ -2,7 +2,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import type { FileSystemAdapter } from './types';
 import type { SearchResult } from '../types';
-import { escapeRegex } from '../utils';
+import { escapeRegex, tokenizeQuery } from '../utils';
 
 export class NodeAdapter implements FileSystemAdapter {
   async read(filePath: string): Promise<string> {
@@ -62,18 +62,7 @@ export class NodeAdapter implements FileSystemAdapter {
     const files = await this.walkDir(dir);
     const results: SearchResult[] = [];
 
-    // Tokenize: split on whitespace and punctuation, drop stop words and short tokens
-    const STOP_WORDS = new Set([
-      'the', 'and', 'for', 'with', 'this', 'that', 'are', 'was', 'were',
-      'has', 'have', 'had', 'not', 'but', 'from', 'they', 'their', 'what',
-      'when', 'which', 'who', 'how', 'its', 'our', 'you', 'your', 'can',
-      'will', 'all', 'also', 'into', 'more', 'than', 'just',
-    ]);
-    const tokens = query
-      .toLowerCase()
-      .split(/[\s,;:.!?()\[\]{}"']+/)
-      .map((t) => t.trim())
-      .filter((t) => t.length > 2 && !STOP_WORDS.has(t));
+    const tokens = tokenizeQuery(query);
 
     // Fall back to literal match if no usable tokens
     const patterns =

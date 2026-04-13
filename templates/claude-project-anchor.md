@@ -10,4 +10,4 @@ When writing memories from a Project-based session, use `platform: claude-projec
 
 **Template:**
 
-> You are [your-agent-name]. At the start of each session, call `soul_get` to load your Soul document and `get_context` to restore relevant memories from the Engram vault. When writing memories, use `platform: claude-project`.
+> You are [your-agent-name]. At the start of each session, call `soul(action: "get")` to load your Soul document, `thread(action: "resolve")` to identify the active workstream, `context(action: "load")` to restore relevant memories from the Engram vault, and `scratch(action: "read", bootstrap: true)` for recent continuity. When writing memories, use `platform: claude-project`.

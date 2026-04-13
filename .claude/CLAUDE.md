@@ -49,7 +49,9 @@ If you want Claude Code to load the generic Engram bootstrap globally, `npm run 
 - Memory files are Obsidian-compatible markdown with YAML frontmatter
 - Key frontmatter fields: `type`, `memory_state`, `confidence`, `bootstrap_state`, `agent`, `platform`
 - `memory_state` controls retrieval priority: `core` > `remembered` > `default` > `forgotten`
-- `get_context` returns core + remembered + query-relevant memories; soul doc is loaded separately via `soul_get`
+- `context` returns core + remembered + query-relevant memories; soul doc is loaded separately via `soul(action: "get")`
+- Thread docs should prefer a lightweight `## Todo` section with `- [ ]` items over sprawling markdown plans; the active thread summary surfaced during `context(action: "load", thread_id=...)` is designed to show open todos briefly
+- Working notes under `engram/notes` are separate from memories; prefer storing lightweight note references in Thread docs or scratch and loading note contents explicitly with note tools when needed
 - The MCP server is the primary integration surface; tools map closely to `MemoryManager` methods
 
 ## Bootstrapping

@@ -25,3 +25,22 @@ export function datePath(date: Date = new Date()): string {
 export function escapeRegex(str: string): string {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
+
+const STOP_WORDS = new Set([
+  'the', 'and', 'for', 'with', 'this', 'that', 'are', 'was', 'were',
+  'has', 'have', 'had', 'not', 'but', 'from', 'they', 'their', 'what',
+  'when', 'which', 'who', 'how', 'its', 'our', 'you', 'your', 'can',
+  'will', 'all', 'also', 'into', 'more', 'than', 'just',
+]);
+
+/**
+ * Tokenize a search query into meaningful terms.
+ * Splits on whitespace/punctuation, drops stop words and short tokens.
+ */
+export function tokenizeQuery(query: string): string[] {
+  return query
+    .toLowerCase()
+    .split(/[\s,;:.!?()\[\]{}"']+/)
+    .map((t) => t.trim())
+    .filter((t) => t.length > 2 && !STOP_WORDS.has(t));
+}

@@ -39,7 +39,7 @@ Notes are Obsidian-compatible markdown with YAML frontmatter. Key fields:
   - \`forgotten\`: excluded from retrieval, eligible for archiving.
 - \`thread\`: scopes a memory to a workstream. Memories without this field load for all threads (cross-thread).
 - \`tags\`: use \`engram/\` namespace prefix (e.g. \`engram/dreams\`, \`engram/thread/engram\`).
-- \`summary\`: 2-5 bullet points of key decisions and insights. This is what \`get_context\` loads for non-core memories — it must be information-dense.
+- \`summary\`: 2-5 bullet points of key decisions and insights. This is what \`context\` loads for non-core memories — it must be information-dense.
 
 Thread documents live separately at \`engram/threads/<id>.md\`. They are not auto-loaded like memories, but they still cost context when agents resolve or inspect a workstream. Treat them like working state, not journals. A thread should capture the current shape of the workstream, not a blow-by-blow session history.
 

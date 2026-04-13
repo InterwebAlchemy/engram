@@ -45,7 +45,7 @@ Use `AGENTS.md` as the source of truth. If you want Claude Code to load it globa
 cp templates/AGENTS.md ~/.claude/CLAUDE.md
 ```
 
-This tells Claude Code to call `soul_get`, `thread_resolve`, and `get_context` at the start of every session.
+This tells Claude Code to call `soul(action: "get")`, `thread(action: "resolve")`, `context(action: "load")`, and `scratch(action: "read", bootstrap: true)` at the start of every session.
 
 ### 3. Write your Soul document
 
@@ -67,9 +67,9 @@ If you use Claude Desktop or the Claude Web UI with a Project:
 
 ### 5. Start your first session
 
-In Claude Code (or your configured harness), open a project and start a conversation. Your agent will call `soul_get`, `thread_resolve`, and `get_context` automatically, load its Soul document, and be ready to work.
+In Claude Code (or your configured harness), open a project and start a conversation. Your agent will call `soul(action: "get")`, `thread(action: "resolve")`, `context(action: "load")`, and `scratch(action: "read", bootstrap: true)` automatically, load its Soul document, and be ready to work.
 
-On first run with an empty vault, `get_context` will return nothing — that's expected. Your agent will build up memories over time.
+On first run with an empty vault, `context(action: "load")` will return nothing — that's expected. Your agent will build up memories over time.
 
 ---
 

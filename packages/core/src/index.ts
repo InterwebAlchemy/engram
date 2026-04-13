@@ -31,4 +31,7 @@ export type { FileSystemAdapter } from './adapters/types';
 export { NodeAdapter } from './adapters/node';
 
 export { pruneMessages } from './prune';
-export { slugify, datePath } from './utils';
+export { slugify, datePath, tokenizeQuery } from './utils';
+
+export { KeywordSearchProvider } from './scoring';
+export type { SearchProvider, ScoredNote } from './scoring';
