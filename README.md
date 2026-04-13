@@ -16,8 +16,8 @@ Built on the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/), E
 
 You're working on a complicated refactor.
 
-1. Start your refactor session in the Claude Code Desktop App or Claude Code extension to scaffold out the changes and implement the initial architecture
-2. Switch to the Codex Desktop App or Codex extension to carry the same identity and project context into a different coding harness
+1. Start your refactor session in the Claude Code Desktop App or Claude Code VS Code extension to scaffold out the changes and implement the initial architecture
+2. Switch to the Codex Desktop App or Codex VS Code extension to carry the same identity and project context into a different coding harness
 3. Use Claude Desktop to review the same thread and continue the work from a different interface
 
 Each new session loads the same identity, project context, and working memory — no re-explaining architecture decisions, no re-litigating naming conventions, no temporary markdown files to coordinate across tools.
@@ -81,7 +81,7 @@ Cross-device continuity is established by any of the available [synchronization 
    - `MCP_CONFIGURE_CLAUDE_DESKTOP=true` — adds the MCP server to Claude Desktop
    - `MCP_CONFIGURE_CURSOR=true` — adds the MCP server to Cursor and copies bootstrap instructions to clipboard for pasting into Cursor Settings
 
-   Verified bootstrap harnesses today: `Claude Code CLI`, `Claude Code Desktop App`, `Claude Code extension`, `Claude Desktop`, `Codex Desktop App`, `Codex extension`, `Cursor`, `GitHub Copilot CLI`, and `GitHub Copilot in VS Code`.
+   Verified bootstrap harnesses today: `Claude Code CLI`, `Claude Code Desktop App`, `Claude Code VS Code extension`, `Claude Desktop`, `Codex Desktop App`, `Codex VS Code extension`, `Cursor`, `GitHub Copilot CLI`, and `GitHub Copilot in VS Code`.
    Other MCP client setup paths may exist in this repo, but they should be treated as configuration helpers until bootstrap behavior is actually verified.
 
 4. Copy [`templates/soul-template.md`](templates/soul-template.md) to `engram/memory/reflections/soul.md` in your vault and fill it in with your agent's identity, working style, values, and relationship context. Each session bootstraps by calling `soul(action: "get")`, then `thread(action: "resolve")` (auto-detects or creates the active Thread from the working directory), then `context(action: "load")`, then `scratch(action: "read", bootstrap: true)`.
@@ -89,7 +89,7 @@ Cross-device continuity is established by any of the available [synchronization 
 
 ### Bootstrapping a session
 
-Verified bootstrap harnesses today are `Claude Code CLI`, `Claude Code Desktop App`, `Claude Code extension`, `Claude Desktop`, `Codex Desktop App`, `Codex extension`, `Cursor`, `GitHub Copilot CLI`, and `GitHub Copilot in VS Code`.
+Verified bootstrap harnesses today are `Claude Code CLI`, `Claude Code Desktop App`, `Claude Code VS Code extension`, `Claude Desktop`, `Codex Desktop App`, `Codex VS Code extension`, `Cursor`, `GitHub Copilot CLI`, and `GitHub Copilot in VS Code`.
 
 The reusable bootstrap instructions live in [`templates/AGENTS.md`](templates/AGENTS.md). Harness-specific files like `CLAUDE.md` should be treated as duplicates of that template, and project-level `AGENTS.md` files can carry repo-specific contributor instructions. As more harnesses are verified, they should be added here explicitly rather than implied.
 

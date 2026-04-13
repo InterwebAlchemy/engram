@@ -25,6 +25,36 @@ if [ -f "$REPO_ROOT/.env" ]; then
   set +a
 fi
 
+upsert_env_var() {
+  local key="$1"
+  local value="$2"
+  local escaped_value
+  local env_file="$REPO_ROOT/.env"
+  local tmp_file="$REPO_ROOT/.env.tmp"
+
+  printf -v escaped_value '%q' "$value"
+  touch "$env_file"
+
+  awk -v key="$key" -v value="$escaped_value" '
+    BEGIN { updated = 0 }
+    index($0, key "=") == 1 {
+      if (!updated) {
+        print key "=" value
+        updated = 1
+      }
+      next
+    }
+    { print }
+    END {
+      if (!updated) {
+        print key "=" value
+      }
+    }
+  ' "$env_file" > "$tmp_file"
+
+  mv "$tmp_file" "$env_file"
+}
+
 # ─── Resolve vault path ────────────────────────────────────────────────────
 
 source "$REPO_ROOT/scripts/resolve-vault.sh"
@@ -156,10 +186,10 @@ fi
 # ─── Persist vault path to .env ───────────────────────────────────────────
 
 if ! grep -qsE '^ENGRAM_VAULT_PATH=' "$REPO_ROOT/.env" 2>/dev/null; then
-  echo "ENGRAM_VAULT_PATH=$VAULT_PATH" >> "$REPO_ROOT/.env"
+  upsert_env_var "ENGRAM_VAULT_PATH" "$VAULT_PATH"
   echo "Saved vault path to .env"
 elif [ "$(grep -E '^ENGRAM_VAULT_PATH=' "$REPO_ROOT/.env" | cut -d= -f2-)" = "" ]; then
-  sed -i.bak "s|^ENGRAM_VAULT_PATH=.*|ENGRAM_VAULT_PATH=$VAULT_PATH|" "$REPO_ROOT/.env" && rm -f "$REPO_ROOT/.env.bak"
+  upsert_env_var "ENGRAM_VAULT_PATH" "$VAULT_PATH"
   echo "Updated vault path in .env"
 fi
 
@@ -237,10 +267,9 @@ if [ "${MCP_CONFIGURE_CLAUDE_CODE:-false}" = "true" ]; then
 
       # Persist the choice so re-runs don't prompt again
       if grep -qsE '^MCP_CLAUDE_CODE_SCOPE=' "$REPO_ROOT/.env" 2>/dev/null; then
-        sed -i.bak "s|^MCP_CLAUDE_CODE_SCOPE=.*|MCP_CLAUDE_CODE_SCOPE=$SCOPE|" "$REPO_ROOT/.env" \
-          && rm -f "$REPO_ROOT/.env.bak"
+        upsert_env_var "MCP_CLAUDE_CODE_SCOPE" "$SCOPE"
       else
-        echo "MCP_CLAUDE_CODE_SCOPE=$SCOPE" >> "$REPO_ROOT/.env"
+        upsert_env_var "MCP_CLAUDE_CODE_SCOPE" "$SCOPE"
       fi
     fi
 
@@ -332,7 +361,7 @@ fi
 
 # ── VS Code ────────────────────────────────────────────────────────────────
 # Registers the MCP server at the user level in VS Code so it's available to
-# any agent running inside VS Code (Copilot, Claude Code extension, etc.).
+# any agent running inside VS Code (Copilot, Claude Code VS Code extension, etc.).
 
 if [ "${MCP_CONFIGURE_VSCODE:-false}" = "true" ]; then
   echo "Configuring VS Code..."
@@ -390,7 +419,7 @@ echo "Setup complete!"
 echo ""
 echo "  Vault:  $VAULT_PATH"
 echo "  Plugin: $DEST"
-echo "  Verified bootstrap harnesses: Claude Code CLI, Claude Code Desktop App, Claude Code extension, Claude Desktop, Codex Desktop App, Codex extension, Cursor"
+echo "  Verified bootstrap harnesses: Claude Code CLI, Claude Code Desktop App, Claude Code VS Code extension, Claude Desktop, Codex Desktop App, Codex VS Code extension, Cursor, GitHub Copilot CLI, GitHub Copilot in VS Code"
 echo ""
 echo "Next steps:"
 echo "  1. Open the vault in Obsidian (File → Open vault → Open folder as vault)"
@@ -401,7 +430,7 @@ echo "MCP server:"
 echo "  Command:  $MCP_SCRIPT"
 echo "  To auto-configure clients, set MCP_CONFIGURE_* vars in .env and re-run setup."
 echo "  Configured clients are not automatically verified bootstrap harnesses."
-echo "  Today we have verified bootstrap behavior with Claude Code CLI, Claude Code Desktop App, Claude Code extension, Claude Desktop, Codex Desktop App, Codex extension, and Cursor."
+echo "  Today we have verified bootstrap behavior with Claude Code CLI, Claude Code Desktop App, Claude Code VS Code extension, Claude Desktop, Codex Desktop App, Codex VS Code extension, Cursor, GitHub Copilot CLI, and GitHub Copilot in VS Code."
 echo "  Manual config uses the command above with --vault \"$VAULT_PATH\""
 
 if command -v obsidian &>/dev/null; then
