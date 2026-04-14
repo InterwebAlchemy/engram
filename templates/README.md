@@ -2,7 +2,7 @@
 
 These templates help you establish an Engram for a new agent. Copy and customize them; don't edit the originals.
 
-> **Coming soon:** A `bootstrap` command will automate this setup — placing files, prompting for your agent's name, and generating your initial Soul document.
+> Prefer the guided path? Run `npm run cli` from the repo root to scaffold `.env`, configure harness setup, and generate an initial Soul document.
 
 ---
 

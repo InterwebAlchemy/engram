@@ -73,7 +73,7 @@ export enum MemoryType {
 // ─── Frontmatter ─────────────────────────────────────────────────────────────
 
 export type Confidence = 'high' | 'medium' | 'low';
-export type NoteStatus = 'active' | 'archived';
+export type NoteStatus = 'active' | 'archived' | 'paused' | 'closed';
 
 /**
  * How much context the author had when writing this memory.

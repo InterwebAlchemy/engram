@@ -271,6 +271,7 @@ export interface DreamsUsageTrend {
 
 export interface DreamsRunnerOptions {
   vaultPath: string;
+  engramRoot?: string;
   provider: 'anthropic' | 'openai';
   model: string;
   apiKey?: string;

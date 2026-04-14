@@ -1,10 +1,11 @@
 import {
-  MemoryManager,
-  Conversation,
+  type MemoryManager,
+  type Conversation,
   MemoryType,
-  pruneMessages,
+  type VaultNote,
+  type ChatMessage,
+  type Confidence,
 } from '@interwebalchemy/engram-core';
-import type { Message, VaultNote, ChatMessage, Confidence } from '@interwebalchemy/engram-core';
 import type { ProviderAdapter, CompletionConfig } from './providers/types';
 
 interface ExtractedMemory {
@@ -55,42 +56,86 @@ export async function extractMemories(
   });
 
   // Parse the JSON response
-  let extracted: ExtractedMemory[];
-  try {
-    // Strip markdown fences if the model wrapped them anyway
-    const cleaned = result.content
-      .replace(/^```json?\s*/i, '')
-      .replace(/```\s*$/, '')
-      .trim();
-    extracted = JSON.parse(cleaned);
-    if (!Array.isArray(extracted)) return [];
-  } catch {
+  const extracted = parseExtractedMemories(result.content);
+  if (extracted.length === 0) {
     return [];
   }
 
   // Store each extracted memory
-  const typeMap: Record<string, MemoryType> = {
+  const typeMap: Record<ExtractedMemory['type'], MemoryType> = {
     fact: MemoryType.Fact,
     entity: MemoryType.Entity,
     reflection: MemoryType.Reflection,
   };
 
-  const notes: VaultNote[] = [];
-  for (const mem of extracted) {
-    if (!mem.content || !mem.type) continue;
+  return (await Promise.all(extracted.map(async (memory) => {
     try {
-      const note = await memoryManager.store(
-        mem.content,
-        typeMap[mem.type] ?? MemoryType.Fact,
-        mem.tags ?? [],
-        provider.id,
-        mem.confidence,
+      return await memoryManager.store(
+        memory.content,
+        typeMap[memory.type],
+        {
+          tags: memory.tags,
+          provider: provider.id,
+          confidence: memory.confidence,
+        },
       );
-      notes.push(note);
     } catch {
-      // Skip individual failures (e.g. duplicate slugs)
+      return null;
     }
+  }))).filter((note): note is VaultNote => note !== null);
+}
+
+function parseExtractedMemories(rawContent: string): ExtractedMemory[] {
+  try {
+    const cleanedContent = stripMarkdownFences(rawContent);
+    const parsed: unknown = JSON.parse(cleanedContent);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed.filter((item): item is ExtractedMemory => isExtractedMemory(item));
+  } catch {
+    return [];
+  }
+}
+
+function stripMarkdownFences(content: string): string {
+  return content
+    .replace(/^```json?\s*/iv, '')
+    .replace(/```\s*$/v, '')
+    .trim();
+}
+
+function isExtractedMemory(value: unknown): value is ExtractedMemory {
+  if (!isRecord(value)) {
+    return false;
   }
 
-  return notes;
+  const { content, type, tags, confidence } = value;
+  return (
+    isExtractedContent(content) &&
+    isExtractedType(type) &&
+    isStringArray(tags) &&
+    isConfidence(confidence)
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function isExtractedContent(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function isExtractedType(value: unknown): value is ExtractedMemory['type'] {
+  return value === 'fact' || value === 'entity' || value === 'reflection';
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === 'string');
+}
+
+function isConfidence(value: unknown): value is Confidence {
+  return value === 'high' || value === 'medium' || value === 'low';
 }

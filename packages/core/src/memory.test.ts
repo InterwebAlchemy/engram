@@ -1,15 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import * as fs from 'fs/promises';
-import * as os from 'os';
-import * as path from 'path';
+import * as fs from 'node:fs/promises';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import { MemoryManager } from './memory';
 import { NodeAdapter } from './adapters/node';
 import { VaultNote } from './vault';
 import { defaultMemoryConfig, MemoryState, MemoryType, type NoteFrontmatter } from './types';
 
 async function createTempVault(): Promise<string> {
-  return fs.mkdtemp(path.join(os.tmpdir(), 'engram-memory-test-'));
+  return await fs.mkdtemp(path.join(os.tmpdir(), 'engram-memory-test-'));
 }
 
 async function writeNote(
@@ -299,8 +299,8 @@ test('thread inbox reads legacy single-file inbox notes for backward compatibili
 
   const items = await manager.listThreadInbox('demo-thread');
   assert.equal(items.length, 1);
-  assert.match(items[0]!.content, /Legacy handoff item/);
-  assert.match(items[0]!.path, /inbox\/demo-thread/);
+  assert.match(items[0].content, /Legacy handoff item/);
+  assert.match(items[0].path, /inbox\/demo-thread/);
 });
 
 test('thread inbox items sort by created date (FIFO)', async (t) => {
@@ -330,9 +330,9 @@ test('thread inbox items sort by created date (FIFO)', async (t) => {
 
   const items = await manager.listThreadInbox('demo-thread');
   assert.equal(items.length, 3);
-  assert.match(items[0]!.content, /First item/);
-  assert.match(items[1]!.content, /Second item/);
-  assert.match(items[2]!.content, /Third item/);
+  assert.match(items[0].content, /First item/);
+  assert.match(items[1].content, /Second item/);
+  assert.match(items[2].content, /Third item/);
 });
 
 test('thread inbox add and remove lifecycle', async (t) => {
@@ -354,7 +354,7 @@ test('thread inbox add and remove lifecycle', async (t) => {
   await manager.removeThreadInboxItem('demo-thread', 'First handoff');
   items = await manager.listThreadInbox('demo-thread');
   assert.equal(items.length, 1);
-  assert.match(items[0]!.content, /Second handoff/);
+  assert.match(items[0].content, /Second handoff/);
 
   // Complete (alias for remove) by original text
   await manager.completeThreadInboxItem('demo-thread', 'Second handoff');
@@ -424,7 +424,7 @@ test('note CRUD stays inside engram/notes and round-trips content', async (t) =>
 
   const deletedPath = await manager.deleteNote('blog/session-21-after-the-dream');
   assert.equal(deletedPath, createdPath);
-  await assert.rejects(() => manager.readNote('blog/session-21-after-the-dream'));
+  await assert.rejects(async () => await manager.readNote('blog/session-21-after-the-dream'));
 });
 
 test('note CRUD rejects paths outside engram/notes', async (t) => {
@@ -436,11 +436,11 @@ test('note CRUD rejects paths outside engram/notes', async (t) => {
   const manager = new MemoryManager(new NodeAdapter(), defaultMemoryConfig(vaultRoot, 'integrated'));
 
   await assert.rejects(
-    () => manager.createNote('../memory/facts/not-allowed', 'nope'),
+    async () => await manager.createNote('../memory/facts/not-allowed', 'nope'),
     /notes directory/,
   );
   await assert.rejects(
-    () => manager.readNote(path.join(vaultRoot, 'engram', 'memory', 'facts', 'not-allowed.md')),
+    async () => await manager.readNote(path.join(vaultRoot, 'engram', 'memory', 'facts', 'not-allowed.md')),
     /notes directory/,
   );
 });
@@ -457,7 +457,7 @@ test('updateNote detects conflicts when expected content is stale', async (t) =>
   await manager.updateNote('blog/conflict-note', '# Title\n\nRemote edit');
 
   await assert.rejects(
-    () => manager.updateNote(
+    async () => await manager.updateNote(
       'blog/conflict-note',
       '# Title\n\nMy local edit',
       '# Title\n\nOriginal',
@@ -510,7 +510,7 @@ test('appendNote detects conflicts when expected content is stale', async (t) =>
   await manager.appendNote('blog/append-conflict', 'Remote addition');
 
   await assert.rejects(
-    () => manager.appendNote(
+    async () => await manager.appendNote(
       'blog/append-conflict',
       'My local addition',
       { expectedCurrentContent: 'Original' },

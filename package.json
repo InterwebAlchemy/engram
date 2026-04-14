@@ -7,8 +7,11 @@
   "scripts": {
     "build": "npm run build --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
-    "lint": "npm run lint --workspaces --if-present",
+    "lint": "eslint .",
+    "lint:workspaces": "npm run lint --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
     "clean": "npm run clean --workspaces --if-present",
+    "cli": "npm run build --workspace @interwebalchemy/engram-cli --if-present && node packages/cli/dist/index.js",
     "prepare": "husky",
     "setup:hooks": "husky",
     "sync:agents": "node scripts/sync-agent-instructions.mjs",
@@ -26,6 +29,10 @@
   },
   "license": "GPL-3.0-only",
   "devDependencies": {
+    "@commitlint/cli": "^20.5.0",
+    "@commitlint/config-conventional": "^20.5.0",
+    "eslint": "^9.39.4",
+    "eslint-config-love": "^152.0.0",
     "husky": "^9.1.7",
     "typescript": "^5.4.5"
   }

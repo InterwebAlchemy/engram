@@ -2,7 +2,7 @@
 #
 # setup-dev.sh — Set up (or refresh) the Engram dev vault.
 #
-# Creates the vault directory, scaffolds the engram folder structure,
+# Creates the vault directory, scaffolds the Engram folder structure,
 # enables the plugin in Obsidian config, and symlinks build artifacts.
 # Safe to re-run — skips anything that already exists.
 #
@@ -59,18 +59,24 @@ upsert_env_var() {
 
 source "$REPO_ROOT/scripts/resolve-vault.sh"
 
+ENGRAM_ROOT="${ENGRAM_ROOT:-engram}"
+ENGRAM_ROOT="${ENGRAM_ROOT#/}"
+ENGRAM_ROOT="${ENGRAM_ROOT%/}"
+ENGRAM_ROOT="${ENGRAM_ROOT:-engram}"
+
 echo "Vault path: $VAULT_PATH"
+echo "Engram root: $ENGRAM_ROOT"
 
 # ─── Create vault structure ────────────────────────────────────────────────
 
 mkdir -p "$VAULT_PATH/.obsidian/plugins/engram"
 
-# Scaffold the engram directory structure inside the vault
+# Scaffold the Engram directory structure inside the vault
 # so the plugin has somewhere to write immediately
-for dir in engram/memory/facts engram/memory/entities engram/memory/reflections \
-           engram/memory/skill engram/conversations/2026-03-20 engram/working \
-           engram/archive engram/templates \
-           engram/notes/inbox/threads \
+for dir in "$ENGRAM_ROOT/memory/facts" "$ENGRAM_ROOT/memory/entities" "$ENGRAM_ROOT/memory/reflections" \
+           "$ENGRAM_ROOT/memory/skill" "$ENGRAM_ROOT/conversations/2026-03-20" "$ENGRAM_ROOT/working" \
+           "$ENGRAM_ROOT/archive" "$ENGRAM_ROOT/templates" \
+           "$ENGRAM_ROOT/notes/inbox/threads" \
            "Daily Notes" "Journal"; do
   mkdir -p "$VAULT_PATH/$dir"
 done
@@ -194,6 +200,14 @@ elif [ "$(grep -E '^ENGRAM_VAULT_PATH=' "$REPO_ROOT/.env" | cut -d= -f2-)" = "" 
   echo "Updated vault path in .env"
 fi
 
+if ! grep -qsE '^ENGRAM_ROOT=' "$REPO_ROOT/.env" 2>/dev/null; then
+  upsert_env_var "ENGRAM_ROOT" "$ENGRAM_ROOT"
+  echo "Saved Engram root to .env"
+elif [ "$(grep -E '^ENGRAM_ROOT=' "$REPO_ROOT/.env" | cut -d= -f2-)" = "" ]; then
+  upsert_env_var "ENGRAM_ROOT" "$ENGRAM_ROOT"
+  echo "Updated Engram root in .env"
+fi
+
 # ─── Seed dev vault with sample notes ─────────────────────────────────────
 # Only runs when:
 #   - VAULT_PATH is the default tmp/vault (safe to overwrite), OR
@@ -203,7 +217,9 @@ fi
 SEED_DIR="$REPO_ROOT/scripts/seed"
 
 if [ "$VAULT_PATH" = "$DEFAULT_VAULT_PATH" ] || [ "${ENGRAM_SEED_VAULT:-false}" = "true" ]; then
-  cp -rn "$SEED_DIR/." "$VAULT_PATH/"
+  cp -rn "$SEED_DIR/Daily Notes/." "$VAULT_PATH/Daily Notes/"
+  cp -rn "$SEED_DIR/Journal/." "$VAULT_PATH/Journal/"
+  cp -rn "$SEED_DIR/engram/." "$VAULT_PATH/$ENGRAM_ROOT/"
   echo "Seed notes copied (existing files skipped)."
 else
   echo "Skipping seed — vault is user-configured. Set ENGRAM_SEED_VAULT=true to force."
@@ -419,6 +435,7 @@ echo ""
 echo "Setup complete!"
 echo ""
 echo "  Vault:  $VAULT_PATH"
+echo "  Root:   $ENGRAM_ROOT"
 echo "  Plugin: $DEST"
 echo "  Verified bootstrap harnesses: Claude Code CLI, Claude Code Desktop App, Claude Code VS Code extension, Claude Desktop, Codex Desktop App, Codex VS Code extension, Cursor, GitHub Copilot CLI, GitHub Copilot in VS Code"
 echo ""
@@ -432,7 +449,7 @@ echo "  Command:  $MCP_SCRIPT"
 echo "  To auto-configure clients, set MCP_CONFIGURE_* vars in .env and re-run setup."
 echo "  Configured clients are not automatically verified bootstrap harnesses."
 echo "  Today we have verified bootstrap behavior with Claude Code CLI, Claude Code Desktop App, Claude Code VS Code extension, Claude Desktop, Codex Desktop App, Codex VS Code extension, Cursor, GitHub Copilot CLI, and GitHub Copilot in VS Code."
-echo "  Manual config uses the command above with --vault \"$VAULT_PATH\""
+echo "  Manual config uses the command above with --vault \"$VAULT_PATH\" --engram-root \"$ENGRAM_ROOT\""
 
 if command -v obsidian &>/dev/null; then
   echo ""

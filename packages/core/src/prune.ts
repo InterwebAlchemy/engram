@@ -2,6 +2,96 @@ import { MemoryState } from './types';
 import type { Message, ChatMessage, PruneOptions } from './types';
 import { ContextBuilder } from './context';
 
+const DEFAULT_CORRECTION_FACTOR = 1;
+const UNLIMITED_MESSAGE_CAP = 0;
+
+function hasNonEmptyString(value: string | undefined): value is string {
+  return value !== undefined && value.length > 0;
+}
+
+function estimateMessageTokens(
+  estimator: ContextBuilder,
+  content: string,
+  maxTokens: number | undefined,
+): number {
+  return maxTokens === undefined ? 0 : estimator.estimateTokens(content);
+}
+
+function fitsWithinTokenBudget(
+  tokensUsed: number,
+  messageTokens: number,
+  maxTokens: number | undefined,
+): boolean {
+  return maxTokens === undefined || tokensUsed + messageTokens <= maxTokens;
+}
+
+function appendWithinBudget(
+  options: {
+    included: Message[];
+    candidates: Message[];
+    estimator: ContextBuilder;
+    maxMessages: number | undefined;
+    maxTokens: number | undefined;
+    initialTokensUsed: number;
+  },
+): {
+  included: Message[];
+  tokensUsed: number;
+} {
+  const {
+    included,
+    candidates,
+    estimator,
+    maxMessages,
+    maxTokens,
+    initialTokensUsed,
+  } = options;
+  let nonCoreCount = 0;
+  let tokensUsed = initialTokensUsed;
+
+  for (const message of candidates) {
+    if (maxMessages !== undefined && nonCoreCount >= maxMessages) break;
+
+    const messageTokens = estimateMessageTokens(estimator, message.content, maxTokens);
+    if (!fitsWithinTokenBudget(tokensUsed, messageTokens, maxTokens)) continue;
+
+    included.push(message);
+    tokensUsed += messageTokens;
+    nonCoreCount += 1;
+  }
+
+  return { included, tokensUsed };
+}
+
+function normalizeMaxMessages(maxMessages: number | undefined): number | undefined {
+  return maxMessages === undefined || maxMessages === UNLIMITED_MESSAGE_CAP
+    ? undefined
+    : maxMessages;
+}
+
+function countInitialTokens(
+  estimator: ContextBuilder,
+  coreMessages: Message[],
+  maxTokens: number | undefined,
+  systemPrompt: string | undefined,
+): number {
+  let tokensUsed = 0;
+
+  if (hasNonEmptyString(systemPrompt) && maxTokens !== undefined) {
+    tokensUsed += estimator.estimateTokens(systemPrompt);
+  }
+
+  if (maxTokens === undefined) {
+    return tokensUsed;
+  }
+
+  for (const message of coreMessages) {
+    tokensUsed += estimator.estimateTokens(message.content);
+  }
+
+  return tokensUsed;
+}
+
 /**
  * Prune a message array down to what fits in a context window, respecting
  * memory states and optional caps.
@@ -41,11 +131,11 @@ export function pruneMessages(
   const {
     maxTokens,
     systemPrompt,
-    correctionFactor = 1.0,
+    correctionFactor = DEFAULT_CORRECTION_FACTOR,
   } = options;
 
   // 0 is treated as "no limit" — undefined and 0 both mean unlimited.
-  const maxMessages = options.maxMessages || undefined;
+  const maxMessages = normalizeMaxMessages(options.maxMessages);
 
   const estimator = new ContextBuilder(correctionFactor);
 
@@ -58,41 +148,29 @@ export function pruneMessages(
 
   // ─── Budget accounting ──────────────────────────────────────────────────
 
-  let tokensUsed = 0;
-  if (systemPrompt && maxTokens) {
-    tokensUsed += estimator.estimateTokens(systemPrompt);
-  }
-
-  // Core always included — count their tokens but never skip them
-  for (const msg of core) {
-    if (maxTokens) {
-      tokensUsed += estimator.estimateTokens(msg.content);
-    }
-  }
+  const tokensUsed = countInitialTokens(estimator, core, maxTokens, systemPrompt);
 
   // ─── Fill with remembered, then defaults ────────────────────────────────
 
-  let nonCoreCount = 0;
   const included: Message[] = [...core];
-
-  for (const msg of remembered) {
-    if (maxMessages !== undefined && nonCoreCount >= maxMessages) break;
-    const tokens = maxTokens ? estimator.estimateTokens(msg.content) : 0;
-    if (maxTokens && tokensUsed + tokens > maxTokens) continue;
-    included.push(msg);
-    tokensUsed += tokens;
-    nonCoreCount++;
-  }
+  const { tokensUsed: rememberedTokensUsed } = appendWithinBudget({
+    included,
+    candidates: remembered,
+    estimator,
+    maxMessages,
+    maxTokens,
+    initialTokensUsed: tokensUsed,
+  });
 
   // Defaults: newest-first (reverse-chronological) to keep recent context
-  for (const msg of [...defaults].reverse()) {
-    if (maxMessages !== undefined && nonCoreCount >= maxMessages) break;
-    const tokens = maxTokens ? estimator.estimateTokens(msg.content) : 0;
-    if (maxTokens && tokensUsed + tokens > maxTokens) continue;
-    included.push(msg);
-    tokensUsed += tokens;
-    nonCoreCount++;
-  }
+  appendWithinBudget({
+    included,
+    candidates: [...defaults].reverse(),
+    estimator,
+    maxMessages,
+    maxTokens,
+    initialTokensUsed: rememberedTokensUsed,
+  });
 
   // ─── Always include the most recent message ───────────────────────────────
   // Regardless of budget or caps, the latest non-forgotten message (the user's
@@ -102,7 +180,7 @@ export function pruneMessages(
   const lastNonForgotten = [...messages]
     .reverse()
     .find((m) => m.memoryState !== MemoryState.Forgotten);
-  if (lastNonForgotten && !included.includes(lastNonForgotten)) {
+  if (lastNonForgotten !== undefined && !included.includes(lastNonForgotten)) {
     included.push(lastNonForgotten);
   }
 
@@ -113,7 +191,7 @@ export function pruneMessages(
   // ─── Map to ChatMessage[] ───────────────────────────────────────────────
 
   const out: ChatMessage[] = [];
-  if (systemPrompt) {
+  if (hasNonEmptyString(systemPrompt)) {
     out.push({ role: 'system', content: systemPrompt });
   }
   for (const msg of included) {

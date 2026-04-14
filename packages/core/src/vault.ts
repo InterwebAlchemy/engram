@@ -4,6 +4,13 @@ import { MemoryState, MemoryType } from './types';
 import type { NoteFrontmatter } from './types';
 
 const DELIMITER = '---';
+const BODY_START_OFFSET = 2;
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === 'object' && value !== null
+    ? Object.fromEntries(Object.entries(value))
+    : null;
+}
 
 export class VaultNote {
   constructor(
@@ -32,15 +39,24 @@ export class VaultNote {
     }
 
     const fmRaw = lines.slice(1, closeIdx + 1).join('\n');
-    const body = lines.slice(closeIdx + 2).join('\n').trim();
+    const body = lines.slice(closeIdx + BODY_START_OFFSET).join('\n').trim();
 
-    let frontmatter: NoteFrontmatter;
+    let frontmatter = VaultNote.defaultFrontmatter();
     try {
-      const parsed = yaml.parse(fmRaw) as Record<string, unknown>;
-      frontmatter = {
-        ...parsed,
-        memory_state: (parsed.memory_state as MemoryState) ?? MemoryState.Default,
-      } as NoteFrontmatter;
+      const parsed = asRecord(yaml.parse(fmRaw));
+      if (parsed !== null) {
+        frontmatter = {
+          ...frontmatter,
+          ...parsed,
+          memory_state:
+            parsed.memory_state === MemoryState.Core ||
+            parsed.memory_state === MemoryState.Remembered ||
+            parsed.memory_state === MemoryState.Default ||
+            parsed.memory_state === MemoryState.Forgotten
+              ? parsed.memory_state
+              : MemoryState.Default,
+        };
+      }
     } catch {
       frontmatter = VaultNote.defaultFrontmatter();
     }
@@ -67,7 +83,7 @@ export class VaultNote {
   }
 
   appendContent(text: string): void {
-    this.content = this.content ? `${this.content}\n\n${text}` : text;
+    this.content = this.content.length > 0 ? `${this.content}\n\n${text}` : text;
   }
 
   async save(adapter: FileSystemAdapter): Promise<void> {

@@ -6,9 +6,18 @@
  * so the canvas stays dark rather than accumulating brightness.
  */
 
+const DEFAULT_GRID_SIZE = 100;
+const DEFAULT_MAX_OPACITY = 0.06;
+const INITIAL_TOGGLE_MAX_MS = 150;
+const TOGGLE_DELAY_MS = 25;
+const NEXT_TOGGLE_MAX_MS = 200;
+const FADE_SPEED = 0.004;
+const MIN_OPACITY_DELTA = 0.0005;
+const OFFSET_DIVISOR = 2;
+
 export class DreamCanvas {
   private animationId: number | null = null;
-  private squareOpacities: number[] = [];
+  private readonly squareOpacities: number[] = [];
   private targetOpacities: number[] = [];
   private lastUpdateTime = 0;
   private nextToggleTime = 0;
@@ -17,19 +26,19 @@ export class DreamCanvas {
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
-    private readonly gridSize = 100,
-    private readonly maxOpacity = 0.06,
+    private readonly gridSize = DEFAULT_GRID_SIZE,
+    private readonly maxOpacity = DEFAULT_MAX_OPACITY,
   ) {}
 
   start(): void {
     this.resize();
-    this.resizeHandler = () => this.resize();
+    this.resizeHandler = () => { this.resize(); };
     window.addEventListener('resize', this.resizeHandler);
-    this.animationId = requestAnimationFrame((t) => this.animate(t));
+    this.animationId = requestAnimationFrame((t) => { this.animate(t); });
   }
 
   stop(): void {
-    if (this.resizeHandler) {
+    if (this.resizeHandler !== null) {
       window.removeEventListener('resize', this.resizeHandler);
       this.resizeHandler = null;
     }
@@ -42,32 +51,43 @@ export class DreamCanvas {
   private resizeHandler: (() => void) | null = null;
 
   private resize(): void {
-    const rect = this.canvas.getBoundingClientRect();
-    this.canvas.width = rect.width;
-    this.canvas.height = rect.height;
+    const { canvas } = this;
+    const rect = canvas.getBoundingClientRect();
+    const {
+      width,
+      height,
+    } = rect;
+    canvas.width = width;
+    canvas.height = height;
 
-    const minDim = Math.min(this.canvas.width, this.canvas.height);
+    const minDim = Math.min(canvas.width, canvas.height);
     const squareSize = Math.max(1, Math.floor(minDim / this.gridSize));
-    this.cols = Math.ceil(this.canvas.width / squareSize);
-    this.rows = Math.ceil(this.canvas.height / squareSize);
+    this.cols = Math.ceil(canvas.width / squareSize);
+    this.rows = Math.ceil(canvas.height / squareSize);
 
     const total = this.cols * this.rows;
-    const prev = this.squareOpacities.length;
-    this.squareOpacities.length = total;
-    this.targetOpacities.length = total;
-    for (let i = prev; i < total; i++) {
-      this.squareOpacities[i] = 0;
-      this.targetOpacities[i] = 0;
+    const {
+      squareOpacities,
+      targetOpacities,
+    } = this;
+    const { length: previousLength } = squareOpacities;
+    squareOpacities.length = total;
+    targetOpacities.length = total;
+    for (let index = previousLength; index < total; index += 1) {
+      squareOpacities[index] = 0;
+      targetOpacities[index] = 0;
     }
   }
 
   private animate(time: number): void {
     const ctx = this.canvas.getContext('2d');
-    if (!ctx) return;
+    if (ctx === null) {
+      return;
+    }
 
     if (this.lastUpdateTime === 0) {
       this.lastUpdateTime = time;
-      this.nextToggleTime = time + Math.random() * 150 + 25;
+      this.nextToggleTime = time + Math.random() * INITIAL_TOGGLE_MAX_MS + TOGGLE_DELAY_MS;
     }
 
     const delta = time - this.lastUpdateTime;
@@ -75,48 +95,68 @@ export class DreamCanvas {
 
     const total = this.cols * this.rows;
     if (total === 0) {
-      this.animationId = requestAnimationFrame((t) => this.animate(t));
+      this.requestNextFrame();
       return;
     }
 
-    // Toggle a random square on or off
-    if (time >= this.nextToggleTime) {
-      const idx = Math.floor(Math.random() * total);
-      this.targetOpacities[idx] =
-        this.targetOpacities[idx] > 0 ? 0 : this.maxOpacity;
-      this.nextToggleTime = time + Math.random() * 200 + 25;
+    this.updateToggleTargets(time, total);
+    this.interpolateSquareOpacities(total, delta);
+    this.drawSquares(ctx, total);
+    this.requestNextFrame();
+  }
+
+  private requestNextFrame(): void {
+    this.animationId = requestAnimationFrame((timestamp) => { this.animate(timestamp); });
+  }
+
+  private updateToggleTargets(time: number, total: number): void {
+    if (time < this.nextToggleTime) {
+      return;
     }
 
-    // Smoothly interpolate toward targets
-    const fadeSpeed = 0.004;
-    for (let i = 0; i < total; i++) {
-      const current = this.squareOpacities[i] ?? 0;
-      const target = this.targetOpacities[i] ?? 0;
-      const diff = target - current;
-      this.squareOpacities[i] =
-        Math.abs(diff) > 0.0005
-          ? current + diff * fadeSpeed * delta
-          : target;
+    const targetIndex = Math.floor(Math.random() * total);
+    this.targetOpacities[targetIndex] =
+      this.targetOpacities[targetIndex] > 0 ? 0 : this.maxOpacity;
+    this.nextToggleTime = time + Math.random() * NEXT_TOGGLE_MAX_MS + TOGGLE_DELAY_MS;
+  }
+
+  private interpolateSquareOpacities(total: number, delta: number): void {
+    const {
+      squareOpacities,
+      targetOpacities,
+    } = this;
+    for (let index = 0; index < total; index += 1) {
+      const currentOpacity = squareOpacities.at(index) ?? 0;
+      const targetOpacity = targetOpacities.at(index) ?? 0;
+      const opacityDelta = targetOpacity - currentOpacity;
+      squareOpacities[index] =
+        Math.abs(opacityDelta) > MIN_OPACITY_DELTA
+          ? currentOpacity + opacityDelta * FADE_SPEED * delta
+          : targetOpacity;
     }
+  }
 
-    // Draw
-    ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+  private drawSquares(ctx: CanvasRenderingContext2D, total: number): void {
+    const { canvas } = this;
+    const context = ctx;
+    context.clearRect(0, 0, canvas.width, canvas.height);
 
-    const minDim = Math.min(this.canvas.width, this.canvas.height);
+    const minDim = Math.min(canvas.width, canvas.height);
     const squareSize = Math.max(1, Math.floor(minDim / this.gridSize));
-    const offsetX = (this.canvas.width - this.cols * squareSize) / 2;
-    const offsetY = (this.canvas.height - this.rows * squareSize) / 2;
+    const offsetX = (canvas.width - this.cols * squareSize) / OFFSET_DIVISOR;
+    const offsetY = (canvas.height - this.rows * squareSize) / OFFSET_DIVISOR;
 
-    for (let i = 0; i < total; i++) {
-      const opacity = this.squareOpacities[i] ?? 0;
-      if (opacity > 0.0005) {
-        const x = offsetX + (i % this.cols) * squareSize;
-        const y = offsetY + Math.floor(i / this.cols) * squareSize;
-        ctx.fillStyle = `rgba(255, 255, 255, ${opacity})`;
-        ctx.fillRect(x, y, squareSize, squareSize);
+    const { squareOpacities } = this;
+    for (let index = 0; index < total; index += 1) {
+      const opacity = squareOpacities.at(index) ?? 0;
+      if (opacity <= MIN_OPACITY_DELTA) {
+        continue;
       }
-    }
 
-    this.animationId = requestAnimationFrame((t) => this.animate(t));
+      const x = offsetX + (index % this.cols) * squareSize;
+      const y = offsetY + Math.floor(index / this.cols) * squareSize;
+      context.fillStyle = `rgba(255, 255, 255, ${opacity})`;
+      context.fillRect(x, y, squareSize, squareSize);
+    }
   }
 }

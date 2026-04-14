@@ -1,16 +1,35 @@
-import { ItemView, WorkspaceLeaf, setIcon } from 'obsidian';
+import { ItemView, type WorkspaceLeaf, setIcon } from 'obsidian';
 import { MemoryState, MemoryType } from '@interwebalchemy/engram-core';
 import type { VaultNote } from '@interwebalchemy/engram-core';
 import type EngramPlugin from '../main';
 import { MEMORY_VIEW_TYPE } from '../constants';
 
-interface MemoryGroup {
-  type: string;
-  notes: VaultNote[];
-}
+const MEMORY_VIEW_TITLE = 'Engram Memories';
+const MEMORY_VIEW_ICON = 'database';
+const PREVIEW_LENGTH = 120;
+const STATE_CYCLE = [
+  MemoryState.Default,
+  MemoryState.Core,
+  MemoryState.Remembered,
+  MemoryState.Forgotten,
+];
+const MEMORY_TYPE_OPTIONS = [
+  MemoryType.Fact,
+  MemoryType.Entity,
+  MemoryType.Reflection,
+];
+const MEMORY_STATE_OPTIONS = [
+  MemoryState.Core,
+  MemoryState.Remembered,
+  MemoryState.Default,
+  MemoryState.Forgotten,
+];
 
 export class EngramMemoryView extends ItemView {
-  private plugin: EngramPlugin;
+  private readonly plugin: EngramPlugin;
+  private readonly viewType = MEMORY_VIEW_TYPE;
+  private readonly displayText = MEMORY_VIEW_TITLE;
+  private readonly iconName = MEMORY_VIEW_ICON;
   private listContainer!: HTMLElement;
   private filterState: MemoryState | undefined;
   private filterType: MemoryType | undefined;
@@ -21,21 +40,24 @@ export class EngramMemoryView extends ItemView {
   }
 
   getViewType(): string {
-    return MEMORY_VIEW_TYPE;
+    return this.viewType;
   }
 
   getDisplayText(): string {
-    return 'Engram Memories';
+    return this.displayText;
   }
 
   getIcon(): string {
-    return 'database';
+    return this.iconName;
   }
 
   // ─── Lifecycle ────────────────────────────────────────────────────────
 
   async onOpen(): Promise<void> {
-    const container = this.containerEl.children[1] as HTMLElement;
+    const container = this.containerEl.children.item(1);
+    if (!(container instanceof HTMLElement)) {
+      throw new Error('Memory view container was not available.');
+    }
     container.empty();
     container.addClass('engram-memory-container');
 
@@ -45,7 +67,8 @@ export class EngramMemoryView extends ItemView {
   }
 
   async onClose(): Promise<void> {
-    // Nothing to clean up
+    this.listContainer.empty();
+    await Promise.resolve();
   }
 
   // ─── Filters ──────────────────────────────────────────────────────────
@@ -56,23 +79,23 @@ export class EngramMemoryView extends ItemView {
     // Type filter
     const typeSelect = bar.createEl('select', { cls: 'engram-filter-select' });
     typeSelect.createEl('option', { value: '', text: 'All types' });
-    for (const t of [MemoryType.Fact, MemoryType.Entity, MemoryType.Reflection]) {
-      typeSelect.createEl('option', { value: t, text: t });
+    for (const type of MEMORY_TYPE_OPTIONS) {
+      typeSelect.createEl('option', { value: type, text: type });
     }
-    typeSelect.addEventListener('change', async () => {
-      this.filterType = typeSelect.value ? (typeSelect.value as MemoryType) : undefined;
-      await this.refresh();
+    typeSelect.addEventListener('change', () => {
+      this.filterType = parseMemoryType(typeSelect.value);
+      void this.refresh();
     });
 
     // State filter
     const stateSelect = bar.createEl('select', { cls: 'engram-filter-select' });
     stateSelect.createEl('option', { value: '', text: 'All states' });
-    for (const s of [MemoryState.Core, MemoryState.Remembered, MemoryState.Default, MemoryState.Forgotten]) {
-      stateSelect.createEl('option', { value: s, text: s });
+    for (const state of MEMORY_STATE_OPTIONS) {
+      stateSelect.createEl('option', { value: state, text: state });
     }
-    stateSelect.addEventListener('change', async () => {
-      this.filterState = stateSelect.value ? (stateSelect.value as MemoryState) : undefined;
-      await this.refresh();
+    stateSelect.addEventListener('change', () => {
+      this.filterState = parseMemoryState(stateSelect.value);
+      void this.refresh();
     });
 
     // Refresh button
@@ -81,7 +104,9 @@ export class EngramMemoryView extends ItemView {
       attr: { 'aria-label': 'Refresh' },
     });
     setIcon(refreshBtn, 'refresh-cw');
-    refreshBtn.addEventListener('click', () => this.refresh());
+    refreshBtn.addEventListener('click', () => {
+      void this.refresh();
+    });
   }
 
   // ─── Rendering ────────────────────────────────────────────────────────
@@ -89,20 +114,21 @@ export class EngramMemoryView extends ItemView {
   async refresh(): Promise<void> {
     this.listContainer.empty();
 
-    let notes: VaultNote[];
     try {
-      notes = await this.plugin.memoryManager.list({
+      const notes = await this.plugin.memoryManager.list({
         type: this.filterType,
         state: this.filterState,
       });
+      this.renderNotes(notes);
     } catch (err) {
       this.listContainer.createDiv({
         cls: 'engram-empty',
-        text: `Could not load memories: ${(err as Error).message}`,
+        text: `Could not load memories: ${getErrorMessage(err)}`,
       });
-      return;
     }
+  }
 
+  private renderNotes(notes: VaultNote[]): void {
     if (notes.length === 0) {
       this.listContainer.createDiv({
         cls: 'engram-empty',
@@ -114,9 +140,13 @@ export class EngramMemoryView extends ItemView {
     // Group by type
     const groups = new Map<string, VaultNote[]>();
     for (const note of notes) {
-      const type = String(note.frontmatter.type ?? 'unknown');
-      if (!groups.has(type)) groups.set(type, []);
-      groups.get(type)!.push(note);
+      const type = resolveMemoryTypeLabel(note);
+      const groupNotes = groups.get(type);
+      if (groupNotes === undefined) {
+        groups.set(type, [note]);
+      } else {
+        groupNotes.push(note);
+      }
     }
 
     for (const [type, groupNotes] of groups) {
@@ -142,36 +172,25 @@ export class EngramMemoryView extends ItemView {
     const fileName = note.path.split('/').pop() ?? note.path;
     const nameEl = header.createSpan({
       cls: 'engram-memory-name',
-      text: fileName.replace(/\.md$/, ''),
+      text: fileName.replace(/\.md$/v, ''),
     });
     // Click to open in editor
     nameEl.addEventListener('click', () => {
-      this.app.workspace.openLinkText(note.path, '', false);
+      void this.app.workspace.openLinkText(note.path, '', false);
     });
 
     // State badge (clickable to cycle)
-    const state = (note.frontmatter.memory_state as MemoryState) ?? MemoryState.Default;
+    const state = note.frontmatter.memory_state ?? MemoryState.Default;
     const badge = header.createSpan({
       cls: `engram-memory-badge engram-memory-${state}`,
       text: state,
     });
-    badge.addEventListener('click', async () => {
-      const states = [
-        MemoryState.Default,
-        MemoryState.Core,
-        MemoryState.Remembered,
-        MemoryState.Forgotten,
-      ];
-      const idx = states.indexOf(state);
-      const next = states[(idx + 1) % states.length];
-      await this.plugin.memoryManager.update(note.path, undefined, {
-        memory_state: next,
-      });
-      await this.refresh();
+    badge.addEventListener('click', () => {
+      void this.cycleMemoryState(note.path, state);
     });
 
     // Tags
-    const tags = (note.frontmatter.tags as string[] | undefined) ?? [];
+    const tags = (note.frontmatter.tags) ?? [];
     if (tags.length > 0) {
       const tagRow = item.createDiv({ cls: 'engram-memory-tags' });
       for (const tag of tags) {
@@ -182,7 +201,59 @@ export class EngramMemoryView extends ItemView {
     // Preview
     item.createDiv({
       cls: 'engram-memory-preview',
-      text: note.content.slice(0, 120) + (note.content.length > 120 ? '...' : ''),
+      text: buildPreview(note.content),
     });
   }
+
+  private async cycleMemoryState(path: string, state: MemoryState): Promise<void> {
+    const stateIndex = STATE_CYCLE.indexOf(state);
+    const nextState = STATE_CYCLE.at((stateIndex + 1) % STATE_CYCLE.length) ?? MemoryState.Default;
+    await this.plugin.memoryManager.update(path, undefined, {
+      memory_state: nextState,
+    });
+    await this.refresh();
+  }
+}
+
+function parseMemoryType(value: string): MemoryType | undefined {
+  switch (value) {
+    case 'fact':
+      return MemoryType.Fact;
+    case 'entity':
+      return MemoryType.Entity;
+    case 'reflection':
+      return MemoryType.Reflection;
+    default:
+      return undefined;
+  }
+}
+
+function parseMemoryState(value: string): MemoryState | undefined {
+  switch (value) {
+    case 'core':
+      return MemoryState.Core;
+    case 'remembered':
+      return MemoryState.Remembered;
+    case 'default':
+      return MemoryState.Default;
+    case 'forgotten':
+      return MemoryState.Forgotten;
+    default:
+      return undefined;
+  }
+}
+
+function resolveMemoryTypeLabel(note: VaultNote): string {
+  return typeof note.frontmatter.type === 'string'
+    ? note.frontmatter.type
+    : 'unknown';
+}
+
+function buildPreview(content: string): string {
+  const suffix = content.length > PREVIEW_LENGTH ? '...' : '';
+  return `${content.slice(0, PREVIEW_LENGTH)}${suffix}`;
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

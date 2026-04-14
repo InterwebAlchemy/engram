@@ -85,50 +85,56 @@ export interface ProviderSettings {
 
 // ─── Default settings ─────────────────────────────────────────────────────────
 
+const DEFAULT_ACTIVE_PROVIDER_ID = process.env.NODE_ENV === 'production'
+  ? 'openrouter'
+  : 'local';
+
+const DEFAULT_PROVIDERS: Record<string, ProviderSettings> = {
+  openrouter: {
+    id: 'openrouter',
+    name: 'OpenRouter',
+    baseUrl: 'https://openrouter.ai/api',
+    defaultModel: 'openrouter/auto',
+    enabledModels: KNOWN_MODELS.openrouter.map((m) => m.id),
+    customModels: [],
+  },
+  openai: {
+    id: 'openai',
+    name: 'OpenAI',
+    baseUrl: 'https://api.openai.com',
+    defaultModel: 'gpt-5',
+    enabledModels: KNOWN_MODELS.openai.map((m) => m.id),
+    customModels: [],
+  },
+  anthropic: {
+    id: 'anthropic',
+    name: 'Anthropic',
+    defaultModel: 'claude-sonnet-4-6',
+    enabledModels: KNOWN_MODELS.anthropic.map((m) => m.id),
+    customModels: [],
+  },
+  mistral: {
+    id: 'mistral',
+    name: 'Mistral',
+    baseUrl: 'https://api.mistral.ai',
+    defaultModel: 'mistral-large-latest',
+    enabledModels: KNOWN_MODELS.mistral.map((m) => m.id),
+    customModels: [],
+  },
+  local: {
+    id: 'local',
+    name: 'Local (LM Studio / Unsloth Studio / etc.)',
+    baseUrl: 'http://localhost:1234',
+    defaultModel: '',
+    enabledModels: [],
+    customModels: [],
+  },
+};
+
 export const DEFAULT_SETTINGS = {
   // Provider config
-  activeProviderId: (process.env.NODE_ENV === 'production' ? 'openrouter' : 'local') as string,
-  providers: {
-    openrouter: {
-      id: 'openrouter',
-      name: 'OpenRouter',
-      baseUrl: 'https://openrouter.ai/api',
-      defaultModel: 'openrouter/auto',
-      enabledModels: KNOWN_MODELS.openrouter.map((m) => m.id),
-      customModels: [] as string[],
-    },
-    openai: {
-      id: 'openai',
-      name: 'OpenAI',
-      baseUrl: 'https://api.openai.com',
-      defaultModel: 'gpt-5',
-      enabledModels: KNOWN_MODELS.openai.map((m) => m.id),
-      customModels: [] as string[],
-    },
-    anthropic: {
-      id: 'anthropic',
-      name: 'Anthropic',
-      defaultModel: 'claude-sonnet-4-6',
-      enabledModels: KNOWN_MODELS.anthropic.map((m) => m.id),
-      customModels: [] as string[],
-    },
-    mistral: {
-      id: 'mistral',
-      name: 'Mistral',
-      baseUrl: 'https://api.mistral.ai',
-      defaultModel: 'mistral-large-latest',
-      enabledModels: KNOWN_MODELS.mistral.map((m) => m.id),
-      customModels: [] as string[],
-    },
-    local: {
-      id: 'local',
-      name: 'Local (LM Studio / Unsloth Studio / etc.)',
-      baseUrl: 'http://localhost:1234',
-      defaultModel: '',
-      enabledModels: [] as string[],
-      customModels: [] as string[],
-    },
-  } as Record<string, ProviderSettings>,
+  activeProviderId: DEFAULT_ACTIVE_PROVIDER_ID,
+  providers: DEFAULT_PROVIDERS,
 
   // Memory
   maxMemoryCount: 10,

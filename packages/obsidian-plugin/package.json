@@ -7,7 +7,9 @@
   "scripts": {
     "build": "node esbuild.config.mjs",
     "build:watch": "node esbuild.config.mjs --watch",
-    "clean": "rm -rf main.js main.js.map styles.css"
+    "clean": "rm -rf main.js main.js.map styles.css",
+    "lint": "eslint src --max-warnings=0",
+    "typecheck": "tsc --project tsconfig.json --noEmit"
   },
   "dependencies": {
     "@interwebalchemy/engram-core": "*"

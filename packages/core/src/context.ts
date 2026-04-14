@@ -1,6 +1,10 @@
 import { encode } from 'gpt-tokenizer';
 import type { ContextSection } from './types';
 
+const INITIAL_CORRECTION_FACTOR = 1;
+const CALIBRATION_PREVIOUS_WEIGHT = 0.8;
+const CALIBRATION_CURRENT_WEIGHT = 0.2;
+
 interface SectionEntry extends ContextSection {
   estimatedTokens: number;
 }
@@ -8,7 +12,7 @@ interface SectionEntry extends ContextSection {
 export class ContextBuilder {
   private sections: SectionEntry[] = [];
 
-  constructor(public correctionFactor: number = 1.0) {}
+  constructor(public correctionFactor = INITIAL_CORRECTION_FACTOR) {}
 
   estimateTokens(text: string): number {
     return Math.ceil(encode(text).length * this.correctionFactor);
@@ -21,7 +25,8 @@ export class ContextBuilder {
   calibrate(estimated: number, actual: number): void {
     if (estimated === 0) return;
     const ratio = actual / estimated;
-    this.correctionFactor = this.correctionFactor * 0.8 + ratio * 0.2;
+    this.correctionFactor =
+      this.correctionFactor * CALIBRATION_PREVIOUS_WEIGHT + ratio * CALIBRATION_CURRENT_WEIGHT;
   }
 
   /**
@@ -36,10 +41,10 @@ export class ContextBuilder {
       priority,
       estimatedTokens: this.estimateTokens(content),
     };
-    if (existing !== -1) {
-      this.sections[existing] = entry;
-    } else {
+    if (existing === -1) {
       this.sections.push(entry);
+    } else {
+      this.sections[existing] = entry;
     }
   }
 

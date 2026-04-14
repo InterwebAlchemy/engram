@@ -4,21 +4,29 @@ import { VaultNote } from './vault';
 
 type MemoryItem = VaultNote | Message;
 
-export class MemoryStateManager {
+const rankByState: Record<MemoryState, number> = {
+  [MemoryState.Core]: 0,
+  [MemoryState.Remembered]: 1,
+  [MemoryState.Default]: 2,
+  [MemoryState.Forgotten]: 3,
+};
+
+export const MemoryStateManager = {
   getState(item: MemoryItem): MemoryState {
     if (item instanceof VaultNote) {
-      return (item.frontmatter.memory_state as MemoryState) ?? MemoryState.Default;
+      return item.frontmatter.memory_state ?? MemoryState.Default;
     }
-    return (item as Message).memoryState ?? MemoryState.Default;
-  }
+    return item.memoryState;
+  },
 
   setState(item: MemoryItem, state: MemoryState): void {
     if (item instanceof VaultNote) {
       item.updateFrontmatter({ memory_state: state });
     } else {
-      (item as Message).memoryState = state;
+      const nextItem = item;
+      nextItem.memoryState = state;
     }
-  }
+  },
 
   /**
    * Return all items eligible for context injection, ordered by priority:
@@ -26,16 +34,9 @@ export class MemoryStateManager {
    * Does not enforce the token budget here — ContextBuilder does that.
    */
   getEligible(items: MemoryItem[], _budget: TokenBudget): MemoryItem[] {
-    const rank = (item: MemoryItem): number => {
-      switch (this.getState(item)) {
-        case MemoryState.Core: return 0;
-        case MemoryState.Remembered: return 1;
-        case MemoryState.Default: return 2;
-        case MemoryState.Forgotten: return 3;
-      }
-    };
+    const rank = (item: MemoryItem): number => rankByState[MemoryStateManager.getState(item)];
     return items
-      .filter((i) => this.getState(i) !== MemoryState.Forgotten)
+      .filter((item) => MemoryStateManager.getState(item) !== MemoryState.Forgotten)
       .sort((a, b) => rank(a) - rank(b));
-  }
-}
+  },
+};

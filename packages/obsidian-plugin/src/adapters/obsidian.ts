@@ -1,6 +1,8 @@
-import { App, TFile, TFolder, normalizePath } from 'obsidian';
-import type { FileSystemAdapter } from '@interwebalchemy/engram-core';
-import type { SearchResult } from '@interwebalchemy/engram-core';
+import { type App, TFile, TFolder, normalizePath } from 'obsidian';
+import type {
+  FileSystemAdapter,
+  SearchResult,
+} from '@interwebalchemy/engram-core';
 
 /**
  * FileSystemAdapter backed by Obsidian's vault API.
@@ -12,12 +14,11 @@ import type { SearchResult } from '@interwebalchemy/engram-core';
 export class ObsidianAdapter implements FileSystemAdapter {
   private readonly vaultBasePath: string;
 
-  constructor(private app: App) {
+  constructor(private readonly app: App) {
     // Obsidian's vault APIs use vault-relative paths, but MemoryManager
     // constructs absolute paths via path.resolve(basePath, …). We capture
     // the vault root here so we can strip it before every vault API call.
-    this.vaultBasePath =
-      (app.vault.adapter as unknown as { basePath?: string }).basePath ?? '';
+    this.vaultBasePath = getStringProperty(app.vault.adapter, 'basePath') ?? '';
   }
 
   /**
@@ -26,21 +27,25 @@ export class ObsidianAdapter implements FileSystemAdapter {
    * it is returned as-is after normalization.
    */
   private toVaultPath(filePath: string): string {
-    if (this.vaultBasePath && filePath.startsWith(this.vaultBasePath)) {
-      return normalizePath(filePath.slice(this.vaultBasePath.length).replace(/^[\\/]/, ''));
+    if (
+      this.vaultBasePath.length > 0 &&
+      filePath.startsWith(this.vaultBasePath)
+    ) {
+      return normalizePath(filePath.slice(this.vaultBasePath.length).replace(/^[\\\/]/v, ''));
     }
+
     return normalizePath(filePath);
   }
 
   async read(filePath: string): Promise<string> {
     const vaultPath = this.toVaultPath(filePath);
-    if (this.shouldUseRawAdapter(vaultPath)) {
-      return this.app.vault.adapter.read(vaultPath);
+    if (shouldUseRawAdapter(vaultPath)) {
+      return await this.app.vault.adapter.read(vaultPath);
     }
 
     const file = this.app.vault.getAbstractFileByPath(vaultPath);
     if (file instanceof TFile) {
-      return this.app.vault.read(file);
+      return await this.app.vault.read(file);
     }
     throw new Error(`File not found: ${vaultPath}`);
   }
@@ -50,11 +55,11 @@ export class ObsidianAdapter implements FileSystemAdapter {
 
     // Ensure parent directory exists
     const dir = vaultPath.substring(0, vaultPath.lastIndexOf('/'));
-    if (dir) {
+    if (dir.length > 0) {
       await this.mkdirRecursive(dir);
     }
 
-    if (this.shouldUseRawAdapter(vaultPath)) {
+    if (shouldUseRawAdapter(vaultPath)) {
       await this.app.vault.adapter.write(vaultPath, content);
       return;
     }
@@ -82,26 +87,26 @@ export class ObsidianAdapter implements FileSystemAdapter {
     const vaultPath = this.toVaultPath(filePath);
 
     const dir = vaultPath.substring(0, vaultPath.lastIndexOf('/'));
-    if (dir) {
+    if (dir.length > 0) {
       await this.mkdirRecursive(dir);
     }
 
-    if (this.shouldUseRawAdapter(vaultPath)) {
+    if (shouldUseRawAdapter(vaultPath)) {
       if (!(await this.app.vault.adapter.exists(vaultPath))) {
         const nextContent = fn('');
         await this.app.vault.adapter.write(vaultPath, nextContent);
         return nextContent;
       }
-      return this.app.vault.adapter.process(vaultPath, fn);
+      return await this.app.vault.adapter.process(vaultPath, fn);
     }
 
     const existing = this.app.vault.getAbstractFileByPath(vaultPath);
     if (existing instanceof TFile) {
-      return this.app.vault.process(existing, fn);
+      return await this.app.vault.process(existing, fn);
     }
 
     if (await this.app.vault.adapter.exists(vaultPath)) {
-      return this.app.vault.adapter.process(vaultPath, fn);
+      return await this.app.vault.adapter.process(vaultPath, fn);
     }
 
     const nextContent = fn('');
@@ -115,7 +120,7 @@ export class ObsidianAdapter implements FileSystemAdapter {
 
   async delete(filePath: string): Promise<void> {
     const vaultPath = this.toVaultPath(filePath);
-    if (this.shouldUseRawAdapter(vaultPath)) {
+    if (shouldUseRawAdapter(vaultPath)) {
       if (await this.app.vault.adapter.exists(vaultPath)) {
         await this.app.vault.adapter.remove(vaultPath);
       }
@@ -123,15 +128,15 @@ export class ObsidianAdapter implements FileSystemAdapter {
     }
 
     const existing = this.app.vault.getAbstractFileByPath(vaultPath);
-    if (existing) {
+    if (existing !== null) {
       await this.app.vault.delete(existing, true);
     }
   }
 
   async exists(filePath: string): Promise<boolean> {
     const vaultPath = this.toVaultPath(filePath);
-    if (this.shouldUseRawAdapter(vaultPath)) {
-      return this.app.vault.adapter.exists(vaultPath);
+    if (shouldUseRawAdapter(vaultPath)) {
+      return await this.app.vault.adapter.exists(vaultPath);
     }
 
     return this.app.vault.getAbstractFileByPath(vaultPath) !== null;
@@ -144,35 +149,33 @@ export class ObsidianAdapter implements FileSystemAdapter {
     if (dir instanceof TFolder) {
       this.collectMarkdownFiles(dir, results);
     }
-    return results;
+
+    return await Promise.resolve(results);
   }
 
   async search(query: string, directory?: string): Promise<SearchResult[]> {
     const files = await this.list(directory ?? '/');
-    const results: SearchResult[] = [];
     const queryLower = query.toLowerCase();
-
-    for (const filePath of files) {
+    const results = (await Promise.all(files.map(async (filePath) => {
       try {
         const content = await this.read(filePath);
-        if (content.toLowerCase().includes(queryLower)) {
-          const pattern = new RegExp(
-            query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
-            'gi',
-          );
-          const matches = content.match(pattern);
-          results.push({
-            path: filePath,
-            content,
-            score: matches?.length ?? 1,
-          });
+        if (!content.toLowerCase().includes(queryLower)) {
+          return null;
         }
-      } catch {
-        // Skip unreadable files
-      }
-    }
 
-    return results.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+        const pattern = new RegExp(escapeRegex(query), 'giv');
+        const matches = content.match(pattern);
+        return {
+          path: filePath,
+          content,
+          score: matches?.length ?? 1,
+        };
+      } catch {
+        return null;
+      }
+    }))).filter((result) => result !== null);
+
+    return results.sort((a, b) => b.score - a.score);
   }
 
   async mkdir(filePath: string): Promise<void> {
@@ -186,39 +189,72 @@ export class ObsidianAdapter implements FileSystemAdapter {
       if (child instanceof TFile && child.extension === 'md') {
         // Return absolute paths so MemoryManager's path.resolve comparisons work
         // correctly. toVaultPath() will strip the prefix again on the way back in.
-        out.push(this.vaultBasePath ? `${this.vaultBasePath}/${child.path}` : child.path);
+        out.push(
+          this.vaultBasePath.length > 0
+            ? `${this.vaultBasePath}/${child.path}`
+            : child.path,
+        );
       } else if (child instanceof TFolder) {
         this.collectMarkdownFiles(child, out);
       }
     }
   }
 
-  private shouldUseRawAdapter(vaultPath: string): boolean {
-    return normalizePath(vaultPath)
-      .split('/')
-      .some((segment) => segment.startsWith('.') && segment.length > 1);
-  }
-
   private async mkdirRecursive(path: string): Promise<void> {
     const parts = normalizePath(path).split('/');
-    let current = '';
-    for (const part of parts) {
-      current = current ? `${current}/${part}` : part;
-      if (this.shouldUseRawAdapter(current)) {
-        if (!(await this.app.vault.adapter.exists(current))) {
-          await this.app.vault.adapter.mkdir(current);
-        }
-        continue;
-      }
+    await this.mkdirRecursiveParts(parts, '');
+  }
 
-      const existing = this.app.vault.getAbstractFileByPath(current);
-      if (!existing) {
+  private async mkdirRecursiveParts(parts: string[], current: string): Promise<void> {
+    if (parts.length === 0) {
+      return;
+    }
+
+    const [part, ...rest] = parts;
+    if (part.length === 0) {
+      return;
+    }
+
+    const next = current.length > 0 ? `${current}/${part}` : part;
+    if (shouldUseRawAdapter(next)) {
+      if (!(await this.app.vault.adapter.exists(next))) {
+        await this.app.vault.adapter.mkdir(next);
+      }
+    } else {
+      const existing = this.app.vault.getAbstractFileByPath(next);
+      if (existing === null) {
         try {
-          await this.app.vault.createFolder(current);
+          await this.app.vault.createFolder(next);
         } catch {
           // Folder may already exist on disk but not yet indexed by Obsidian
         }
       }
     }
+
+    await this.mkdirRecursiveParts(rest, next);
   }
+}
+
+function shouldUseRawAdapter(vaultPath: string): boolean {
+  return normalizePath(vaultPath)
+    .split('/')
+    .some((segment) => segment.startsWith('.') && segment.length > 1);
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^$\{\}\(\)\|\[\]\\]/gv, '\\$&');
+}
+
+function getStringProperty(value: unknown, key: string): string | undefined {
+  if (typeof value !== 'object' || value === null) {
+    return undefined;
+  }
+
+  for (const [propertyKey, propertyValue] of Object.entries(value)) {
+    if (propertyKey === key && typeof propertyValue === 'string') {
+      return propertyValue;
+    }
+  }
+
+  return undefined;
 }

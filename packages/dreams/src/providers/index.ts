@@ -10,7 +10,7 @@ export function createDreamsProvider(
     config.apiKey ??
     (providerName === 'openai' ? process.env.OPENAI_API_KEY : process.env.ANTHROPIC_API_KEY);
 
-  if (!apiKey) {
+  if (apiKey === undefined || apiKey.length === 0) {
     throw new Error(
       providerName === 'openai'
         ? 'Missing OpenAI-compatible API key. Pass --api-key or set OPENAI_API_KEY / ENGRAM_DREAMS_API_KEY.'

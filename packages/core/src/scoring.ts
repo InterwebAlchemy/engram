@@ -1,5 +1,5 @@
 import type { VaultNote } from './vault';
-import { tokenizeQuery, escapeRegex } from './utils';
+import { tokenizeQuery } from './utils';
 
 export interface ScoredNote {
   note: VaultNote;
@@ -11,7 +11,7 @@ export interface ScoredNote {
  * Implementations handle their own thresholds and scoring logic.
  */
 export interface SearchProvider {
-  rank(query: string, notes: VaultNote[]): ScoredNote[];
+  rank: (query: string, notes: VaultNote[]) => ScoredNote[];
 }
 
 // ─── Scoring weights ────────────────────────────────────────────────────────
@@ -22,17 +22,30 @@ const WEIGHT_CONTENT = 0.2;
 const WEIGHT_RECENCY = 0.1;
 
 const MIN_SCORE = 0.05;
-const RECENCY_WINDOW_MS = 90 * 24 * 60 * 60 * 1000; // 90 days
+const DAYS_IN_RECENCY_WINDOW = 90;
+const HOURS_PER_DAY = 24;
+const MINUTES_PER_HOUR = 60;
+const SECONDS_PER_MINUTE = 60;
+const MILLISECONDS_PER_SECOND = 1000;
+const MIN_TAG_SEGMENT_LENGTH = 2;
+const RECENCY_WINDOW_MS =
+  DAYS_IN_RECENCY_WINDOW *
+  HOURS_PER_DAY *
+  MINUTES_PER_HOUR *
+  SECONDS_PER_MINUTE *
+  MILLISECONDS_PER_SECOND;
 const CONTENT_FALLBACK_LENGTH = 500;
 
 // ─── KeywordSearchProvider ──────────────────────────────────────────────────
 
 export class KeywordSearchProvider implements SearchProvider {
-  rank(query: string, notes: VaultNote[]): ScoredNote[] {
+  private readonly now = Date.now;
+
+  readonly rank = (query: string, notes: VaultNote[]): ScoredNote[] => {
     const tokens = tokenizeQuery(query);
     if (tokens.length === 0) return [];
 
-    const now = Date.now();
+    const now = this.now();
     const results: ScoredNote[] = [];
 
     for (const note of notes) {
@@ -55,7 +68,7 @@ export class KeywordSearchProvider implements SearchProvider {
     }
 
     return results.sort((a, b) => b.score - a.score);
-  }
+  };
 }
 
 // ─── Scoring functions ──────────────────────────────────────────────────────
@@ -65,7 +78,7 @@ function scoreSummary(tokens: string[], note: VaultNote): number {
     ? note.frontmatter.summary
     : note.content.slice(0, CONTENT_FALLBACK_LENGTH);
 
-  if (!summary) return 0;
+  if (summary.length === 0) return 0;
 
   const lower = summary.toLowerCase();
   let matched = 0;
@@ -86,7 +99,7 @@ function scoreTags(tokens: string[], note: VaultNote): number {
 
   // Split tags on / and - to get individual segments for matching
   const tagSegments = tags.flatMap((tag: string) =>
-    String(tag).toLowerCase().split(/[/-]/).filter((s: string) => s.length > 2),
+    tag.toLowerCase().split(/[\/\-]/v).filter((segment: string) => segment.length > MIN_TAG_SEGMENT_LENGTH),
   );
 
   let matched = 0;
@@ -99,8 +112,8 @@ function scoreTags(tokens: string[], note: VaultNote): number {
 }
 
 function scoreContent(tokens: string[], note: VaultNote): number {
-  const content = note.content;
-  if (!content) return 0;
+  const {content} = note;
+  if (content.length === 0) return 0;
 
   // Token coverage: what fraction of query tokens appear at least once in content
   const lower = content.toLowerCase();
@@ -112,9 +125,9 @@ function scoreContent(tokens: string[], note: VaultNote): number {
 }
 
 function scoreRecency(now: number, note: VaultNote): number {
-  const updated = note.frontmatter.updated ?? note.frontmatter.created;
-  if (typeof updated !== 'string') return 0;
-
+  const {
+    frontmatter: { updated },
+  } = note;
   const age = now - new Date(updated).getTime();
   if (age <= 0) return 1.0;
   if (age >= RECENCY_WINDOW_MS) return 0;

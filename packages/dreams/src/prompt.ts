@@ -1,5 +1,8 @@
-import type { DreamsReport, DreamsReviewNote } from './types';
 import type { DreamsMessage } from './providers';
+import type { DreamsReport, DreamsReviewNote } from './types';
+
+const JSON_INDENT = 2;
+const REVIEW_NOTE_SEPARATOR = '\n\n---\n\n';
 
 /**
  * Identity context for the Engram whose vault is being consolidated.
@@ -17,8 +20,7 @@ export function buildDreamsMessages(
   reviewNotes: DreamsReviewNote[],
   context?: DreamsEngramContext,
 ): DreamsMessage[] {
-  const name = context?.agentName || 'the agent';
-  const nameCapitalized = context?.agentName || 'The agent';
+  const { name, nameCapitalized } = resolveAgentNames(context);
   const identityAnchor = formatIdentityAnchor(context, name);
 
   const system = `You are the Dreamer — the consolidation process for an Engram memory vault.
@@ -128,7 +130,7 @@ Return ONLY the actions. Do not include any other fields or prose.`;
     'Analyze this Engram vault and return the highest-value consolidation actions.',
     '',
     '## Vault analysis report',
-    JSON.stringify(report, null, 2),
+    JSON.stringify(report, null, JSON_INDENT),
     '',
     '## Review contents',
     'These are the memory notes, thread docs, and scratch session summaries that need review. Read each one and decide what to do with it.',
@@ -151,7 +153,7 @@ export function buildDreamNarrativeMessages(
   report: DreamsReport,
   context?: DreamsEngramContext,
 ): DreamsMessage[] {
-  const name = context?.agentName || 'the agent';
+  const { name } = resolveAgentNames(context);
   const identityAnchor = formatIdentityAnchor(context, name);
 
   return [
@@ -182,54 +184,119 @@ Do not summarize actions or list counts. Do not be clinical. Write as oneiromanc
   ];
 }
 
-function formatIdentityAnchor(context: DreamsEngramContext | undefined, name: string): string {
-  const summary = context?.identitySummary?.trim();
-  if (!summary) return '';
+function resolveAgentNames(context?: DreamsEngramContext): {
+  name: string;
+  nameCapitalized: string;
+} {
+  const agentName = context?.agentName;
+  if (agentName !== undefined && agentName.length > 0) {
+    return {
+      name: agentName,
+      nameCapitalized: agentName,
+    };
+  }
 
-  return `\n\n## Identity Anchor\nThis vault belongs to ${name}. Keep this Soul summary in mind as read-only grounding while you consolidate:\n${summary}\n`;
+  return {
+    name: 'the agent',
+    nameCapitalized: 'The agent',
+  };
+}
+
+function formatIdentityAnchor(context: DreamsEngramContext | undefined, name: string): string {
+  const summary = context?.identitySummary;
+  if (summary === undefined) {
+    return '';
+  }
+
+  const trimmedSummary = summary.trim();
+  if (trimmedSummary.length === 0) {
+    return '';
+  }
+
+  return `\n\n## Identity Anchor\nThis vault belongs to ${name}. Keep this Soul summary in mind as read-only grounding while you consolidate:\n${trimmedSummary}\n`;
 }
 
 function formatReviewNotes(notes: DreamsReviewNote[]): string {
-  return notes
-    .map((note) => {
-      const parts =
-        note.kind === 'thread'
-          ? [
-              `Kind: thread`,
-              `Path: ${note.path}`,
-              `Thread ID: ${note.threadId ?? 'unknown'}`,
-              `Status: ${note.state}`,
-              ...(note.description ? [`Description: ${note.description}`] : []),
-              ...(note.paths && note.paths.length > 0 ? [`Paths: ${note.paths.join(', ')}`] : []),
-              ...(note.goals && note.goals.length > 0 ? [`Goals: ${note.goals.join(' | ')}`] : []),
-              ...(note.relatedThreads && note.relatedThreads.length > 0 ? [`Related threads: ${note.relatedThreads.join(', ')}`] : []),
-              'Content:',
-              note.content,
-            ]
-          : note.kind === 'scratch'
-            ? [
-                'Kind: scratch',
-                `Path: ${note.path}`,
-                `Session ID: ${note.sessionId ?? 'unknown'}`,
-                `State: ${note.state}`,
-                ...(note.threadId ? [`Candidate thread: ${note.threadId}`] : []),
-                ...(note.reason ? [`Reason: ${note.reason}`] : []),
-                ...(note.newestEntry ? [`Newest entry: ${note.newestEntry}`] : []),
-                ...(typeof note.entryCount === 'number' ? [`Entry count: ${String(note.entryCount)}`] : []),
-                ...(note.summary ? [`Summary: ${note.summary}`] : []),
-                'Content:',
-                note.content,
-              ]
-          : [
-              `Kind: memory`,
-              `Path: ${note.path}`,
-              `Type: ${note.type}`,
-              `State: ${note.state}`,
-              ...(note.summary ? [`Summary: ${note.summary}`] : []),
-              'Content:',
-              note.content,
-            ];
-      return parts.join('\n');
-    })
-    .join('\n\n---\n\n');
+  return notes.map((note) => formatReviewNote(note)).join(REVIEW_NOTE_SEPARATOR);
+}
+
+function formatReviewNote(note: DreamsReviewNote): string {
+  switch (note.kind) {
+    case 'thread':
+      return formatThreadReviewNote(note);
+    case 'scratch':
+      return formatScratchReviewNote(note);
+    case 'memory':
+      return formatMemoryReviewNote(note);
+  }
+}
+
+function formatThreadReviewNote(note: DreamsReviewNote): string {
+  const parts = [
+    'Kind: thread',
+    `Path: ${note.path}`,
+    `Thread ID: ${note.threadId ?? 'unknown'}`,
+    `Status: ${note.state}`,
+  ];
+
+  pushOptionalLine(parts, 'Description', note.description);
+  pushOptionalJoinedLine(parts, 'Paths', note.paths, ', ');
+  pushOptionalJoinedLine(parts, 'Goals', note.goals, ' | ');
+  pushOptionalJoinedLine(parts, 'Related threads', note.relatedThreads, ', ');
+  parts.push('Content:', note.content);
+
+  return parts.join('\n');
+}
+
+function formatScratchReviewNote(note: DreamsReviewNote): string {
+  const parts = [
+    'Kind: scratch',
+    `Path: ${note.path}`,
+    `Session ID: ${note.sessionId ?? 'unknown'}`,
+    `State: ${note.state}`,
+  ];
+
+  pushOptionalLine(parts, 'Candidate thread', note.threadId);
+  pushOptionalLine(parts, 'Reason', note.reason);
+  pushOptionalLine(parts, 'Newest entry', note.newestEntry);
+
+  if (typeof note.entryCount === 'number') {
+    parts.push(`Entry count: ${note.entryCount}`);
+  }
+
+  pushOptionalLine(parts, 'Summary', note.summary);
+  parts.push('Content:', note.content);
+
+  return parts.join('\n');
+}
+
+function formatMemoryReviewNote(note: DreamsReviewNote): string {
+  const parts = [
+    'Kind: memory',
+    `Path: ${note.path}`,
+    `Type: ${note.type}`,
+    `State: ${note.state}`,
+  ];
+
+  pushOptionalLine(parts, 'Summary', note.summary);
+  parts.push('Content:', note.content);
+
+  return parts.join('\n');
+}
+
+function pushOptionalLine(parts: string[], label: string, value: string | undefined): void {
+  if (value !== undefined && value.length > 0) {
+    parts.push(`${label}: ${value}`);
+  }
+}
+
+function pushOptionalJoinedLine(
+  parts: string[],
+  label: string,
+  values: string[] | undefined,
+  separator: string,
+): void {
+  if (values !== undefined && values.length > 0) {
+    parts.push(`${label}: ${values.join(separator)}`);
+  }
 }

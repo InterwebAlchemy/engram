@@ -55,54 +55,82 @@ export class Ciph3rTextAnimator {
 
   start(): void {
     if (this.intervalId !== null) return;
-    this.intervalId = window.setInterval(() => this.tick(), this.speed);
+    this.intervalId = window.setInterval(() => { this.tick(); }, this.speed);
   }
 
   /** Stops the animation and restores the original target text. Idempotent. */
   stop(): void {
+    const {
+      el,
+      target,
+    } = this;
     if (this.intervalId !== null) {
       window.clearInterval(this.intervalId);
       this.intervalId = null;
     }
-    this.el.textContent = this.target;
-    this.current = this.target;
+    el.textContent = target;
+    this.current = target;
   }
 
   private tick(): void {
-    const chars = this.current.split('');
+    const { current, el } = this;
+    const chars = current.split('');
+    this.current = this.phase === 'encode'
+      ? this.encodeStep(chars)
+      : this.decodeStep(chars);
+    const { current: nextValue } = this;
+    el.textContent = nextValue;
+  }
 
-    if (this.phase === 'encode') {
-      let count = 0;
-      for (let i = 0; i < this.target.length && count < MAX_CHARS_PER_TICK; i++) {
-        if (chars[i] === this.target[i] && Math.random() > REVEAL_PROBABILITY) {
-          chars[i] = randomChar();
-          count++;
-        }
-      }
-      this.current = chars.join('');
+  private encodeStep(chars: string[]): string {
+    const { target } = this;
+    const nextChars = mutateCharacters(chars, target, (currentCharacter, nextCharacter) => (
+      currentCharacter === nextCharacter &&
+      Math.random() > REVEAL_PROBABILITY
+    ), () => randomChar());
 
-      // Switch to decode once every position differs from the target
-      const fullyEncoded = this.current.split('').every((c, i) => c !== this.target[i]);
-      if (fullyEncoded) {
-        this.phase = 'decode';
-        this.current = randomizeText(this.target);
-      }
-    } else {
-      let count = 0;
-      for (let i = 0; i < this.target.length && count < MAX_CHARS_PER_TICK; i++) {
-        if (chars[i] !== this.target[i] && Math.random() > REVEAL_PROBABILITY) {
-          chars[i] = this.target[i];
-          count++;
-        }
-      }
-      this.current = chars.join('');
-
-      // Switch to encode once fully decoded
-      if (this.current === this.target) {
-        this.phase = 'encode';
-      }
+    const nextValue = nextChars.join('');
+    const fullyEncoded = nextValue.split('').every((character, index) => character !== target[index]);
+    if (fullyEncoded) {
+      this.phase = 'decode';
+      return randomizeText(target);
     }
 
-    this.el.textContent = this.current;
+    return nextValue;
   }
+
+  private decodeStep(chars: string[]): string {
+    const { target } = this;
+    const nextChars = mutateCharacters(chars, target, (currentCharacter, nextCharacter) => (
+      currentCharacter !== nextCharacter &&
+      Math.random() > REVEAL_PROBABILITY
+    ), (_currentCharacter, nextCharacter) => nextCharacter);
+
+    const nextValue = nextChars.join('');
+    if (nextValue === target) {
+      this.phase = 'encode';
+    }
+
+    return nextValue;
+  }
+}
+
+function mutateCharacters(
+  chars: string[],
+  target: string,
+  shouldMutate: (currentCharacter: string, nextCharacter: string) => boolean,
+  nextCharacterFor: (currentCharacter: string, nextCharacter: string) => string,
+): string[] {
+  const nextChars = [...chars];
+  let count = 0;
+  for (let index = 0; index < target.length && count < MAX_CHARS_PER_TICK; index += 1) {
+    const currentCharacter = nextChars[index] ?? '';
+    const nextCharacter = target[index] ?? '';
+    if (shouldMutate(currentCharacter, nextCharacter)) {
+      nextChars[index] = nextCharacterFor(currentCharacter, nextCharacter);
+      count += 1;
+    }
+  }
+
+  return nextChars;
 }

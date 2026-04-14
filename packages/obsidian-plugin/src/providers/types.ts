@@ -52,20 +52,21 @@ export interface StreamChunk {
 export interface ProviderAdapter {
   id: string;
   name: string;
+  updateConfig?: (config: Partial<ProviderConfig>) => void;
 
   /** Non-streaming completion. */
-  complete(
+  complete: (
     messages: ChatMessage[],
     config: CompletionConfig,
-  ): Promise<CompletionResult>;
+  ) => Promise<CompletionResult>;
 
   /** Streaming completion. Yields partial content chunks. */
-  stream(
+  stream: (
     messages: ChatMessage[],
     config: CompletionConfig,
     signal?: AbortSignal,
-  ): AsyncIterable<StreamChunk>;
+  ) => AsyncIterable<StreamChunk>;
 
   /** Fetch available models from the provider. */
-  listModels(): Promise<Model[]>;
+  listModels: () => Promise<Model[]>;
 }

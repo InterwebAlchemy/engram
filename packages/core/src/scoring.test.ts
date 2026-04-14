@@ -26,7 +26,7 @@ function makeNote(overrides: {
     } as NoteFrontmatter,
     updateFrontmatter() {},
     serialize() { return ''; },
-    save() { return Promise.resolve(); },
+    async save() { await Promise.resolve(); },
   } as unknown as VaultNote;
 }
 

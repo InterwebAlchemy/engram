@@ -1,1 +1,6 @@
+#!/usr/bin/env sh
+set -e
+
 bash scripts/pre-commit-agent-instructions.sh
+npm run lint
+npm run typecheck

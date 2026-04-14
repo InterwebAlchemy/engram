@@ -28,6 +28,8 @@ source "$REPO_ROOT/scripts/resolve-vault.sh"
 set -- "${_saved_args[@]}"
 unset _saved_args
 
+ENGRAM_ROOT="${ENGRAM_ROOT:-engram}"
+
 # Resolve port: CLI --port arg > MCP_PORT env var > default 3100
 PORT="${MCP_PORT:-0}"
 while [[ $# -gt 0 ]]; do
@@ -44,4 +46,4 @@ if [ ! -f "$DIST" ]; then
   exit 1
 fi
 
-exec node "$DIST" --vault "$VAULT_PATH" --transport http --port "$PORT"
+exec node "$DIST" --vault "$VAULT_PATH" --engram-root "$ENGRAM_ROOT" --transport http --port "$PORT"

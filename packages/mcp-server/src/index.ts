@@ -26,39 +26,67 @@
 
 import { startServer } from './server';
 
-function parseArgs(argv: string[]): Record<string, string> {
-  const result: Record<string, string> = {};
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i];
-    if (arg.startsWith('--')) {
-      const key = arg.slice(2);
-      const value = argv[i + 1];
-      if (value && !value.startsWith('--')) {
+const FLAG_PREFIX = '--';
+const NEXT_ARG_OFFSET = 1;
+const CLI_ARG_START_INDEX = 2;
+
+function parseArgs(argv: string[]): Partial<Record<string, string>> {
+  const result: Partial<Record<string, string>> = {};
+  let index = 0;
+
+  while (index < argv.length) {
+    const arg = argv.at(index);
+    if (arg?.startsWith(FLAG_PREFIX) === true) {
+      const key = arg.slice(FLAG_PREFIX.length);
+      const valueIndex = index + NEXT_ARG_OFFSET;
+      const value = argv.at(valueIndex);
+      if (value !== undefined && !value.startsWith(FLAG_PREFIX)) {
         result[key] = value;
-        i++;
+        index = valueIndex;
       }
     }
+
+    index += NEXT_ARG_OFFSET;
   }
+
   return result;
 }
 
-async function main(): Promise<void> {
-  const args = parseArgs(process.argv.slice(2));
+function parseMode(value: string | undefined): 'integrated' | 'standalone' {
+  return value === 'standalone' ? 'standalone' : 'integrated';
+}
 
-  const vaultPath = args['vault'];
-  if (!vaultPath) {
+function parseTransport(value: string | undefined): 'stdio' | 'http' {
+  return value === 'http' ? 'http' : 'stdio';
+}
+
+async function main(): Promise<void> {
+  const args = parseArgs(process.argv.slice(CLI_ARG_START_INDEX));
+
+  const { vault: vaultPath } = args;
+  if (vaultPath === undefined || vaultPath.length === 0) {
     process.stderr.write('Error: --vault <path> is required\n');
     process.stderr.write('Usage: engram-mcp --vault /path/to/vault [--mode integrated|standalone]\n');
     process.exit(1);
   }
 
-  const mode = (args['mode'] as 'integrated' | 'standalone') ?? 'integrated';
-  const engramRoot = args['engram-root'];
-  const readPaths = args['read-paths']
-    ? args['read-paths'].split(',').map((p) => p.trim()).filter(Boolean)
-    : [];
-  const transport = (args['transport'] as 'stdio' | 'http') ?? 'stdio';
-  const port = args['port'] ? parseInt(args['port'], 10) : undefined;
+  const mode = parseMode(args.mode);
+  const {
+    'engram-root': engramRoot,
+    'read-paths': readPathsArg,
+    port: portValue,
+    transport: transportValue,
+  } = args;
+  const readPaths = readPathsArg === undefined || readPathsArg.length === 0
+    ? []
+    : readPathsArg
+      .split(',')
+      .map((path) => path.trim())
+      .filter((path) => path.length > 0);
+  const transport = parseTransport(transportValue);
+  const port = portValue === undefined || portValue.length === 0
+    ? undefined
+    : parseInt(portValue, 10);
 
   try {
     await startServer({ vaultPath, mode, engramRoot, readPaths, transport, port });
@@ -68,4 +96,4 @@ async function main(): Promise<void> {
   }
 }
 
-main();
+void main();

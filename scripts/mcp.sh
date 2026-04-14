@@ -14,8 +14,18 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
+# Load .env so ENGRAM_ROOT and related config are available.
+if [ -f "$REPO_ROOT/.env" ]; then
+  set -a
+  # shellcheck source=/dev/null
+  source "$REPO_ROOT/.env" || true
+  set +a
+fi
+
 # Load vault path from .env / environment
 source "$REPO_ROOT/scripts/resolve-vault.sh"
+
+ENGRAM_ROOT="${ENGRAM_ROOT:-engram}"
 
 DIST="$REPO_ROOT/packages/mcp-server/dist/index.js"
 
@@ -24,4 +34,4 @@ if [ ! -f "$DIST" ]; then
   exit 1
 fi
 
-exec node "$DIST" --vault "$VAULT_PATH" "$@"
+exec node "$DIST" --vault "$VAULT_PATH" --engram-root "$ENGRAM_ROOT" "$@"

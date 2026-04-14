@@ -15,7 +15,7 @@ export interface DreamsCompletionResult {
 }
 
 export interface DreamsProvider {
-  complete(messages: DreamsMessage[]): Promise<DreamsCompletionResult>;
+  complete: (messages: DreamsMessage[]) => Promise<DreamsCompletionResult>;
 }
 
 export interface DreamsProviderConfig {

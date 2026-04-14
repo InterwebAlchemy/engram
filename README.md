@@ -73,8 +73,8 @@ Cross-device continuity is established by any of the available [synchronization 
 ## Quickstart
 
 1. Clone this repository and run `npm install`
-2. Copy `.env.example` to `.env` and set `ENGRAM_VAULT_PATH` to your Obsidian vault directory
-3. Run `npm run setup` — this builds the MCP server, scaffolds the vault structure, and symlinks build artifacts
+2. Run `npm run cli` for the guided setup flow. It prompts for your Engram name, git identity, vault path, Engram root directory, preferred harness config, and a starter voice preset, then can run setup for you.
+3. If you prefer the manual path, create `.env`, set `ENGRAM_VAULT_PATH` to your Obsidian vault directory, optionally set `ENGRAM_ROOT` if you do not want the default `engram/`, then run `npm run setup`
 
    To auto-configure MCP clients during setup, set the relevant variables in `.env` before running:
    - `MCP_CONFIGURE_CLAUDE_CODE=true` — adds the MCP server to Claude Code and, for global scope, duplicates the reusable bootstrap instructions from `templates/AGENTS.md` into `~/.claude/CLAUDE.md`
@@ -84,7 +84,7 @@ Cross-device continuity is established by any of the available [synchronization 
    Verified bootstrap harnesses today: `Claude Code CLI`, `Claude Code Desktop App`, `Claude Code VS Code extension`, `Claude Desktop`, `Codex Desktop App`, `Codex VS Code extension`, `Cursor`, `GitHub Copilot CLI`, and `GitHub Copilot in VS Code`.
    Other MCP client setup paths may exist in this repo, but they should be treated as configuration helpers until bootstrap behavior is actually verified.
 
-4. Copy [`templates/soul-template.md`](templates/soul-template.md) to `engram/memory/reflections/soul.md` in your vault and fill it in with your agent's identity, working style, values, and relationship context. Each session bootstraps by calling `soul(action: "get")`, then `thread(action: "resolve")` (auto-detects or creates the active Thread from the working directory), then `context(action: "load")`, then `scratch(action: "read", bootstrap: true)`.
+4. Review the generated Soul document at `<vault>/<engram-root>/memory/reflections/soul.md` and make it yours. Each session bootstraps by calling `soul(action: "get")`, then `thread(action: "resolve")` (auto-detects or creates the active Thread from the working directory), then `context(action: "load")`, then `scratch(action: "read", bootstrap: true)`.
 5. Optionally, copy `packages/obsidian-plugin/` into your vault's `.obsidian/plugins/` directory to chat with your Engram directly from Obsidian using various providers
 
 ### Bootstrapping a session

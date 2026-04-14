@@ -1,29 +1,36 @@
+const DEFAULT_SLUG = 'note';
+const MAX_SLUG_LENGTH = 80;
+const DATE_PATH_LENGTH = 10;
+const MIN_QUERY_TOKEN_LENGTH = 2;
+
 /**
  * Convert a string to a filesystem-safe slug.
  * Used for auto-naming memory notes from their content.
  */
 export function slugify(text: string): string {
-  return text
+  const slug = text
     .toLowerCase()
     .trim()
-    .replace(/[^\w\s-]/g, '')
-    .replace(/[\s_]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 80) || 'note';
+    .replace(/[^\w\s\-]/gv, '')
+    .replace(/[\s_]+/gv, '-')
+    .replace(/^-+|-+$/gv, '')
+    .slice(0, MAX_SLUG_LENGTH);
+
+  return slug.length > 0 ? slug : DEFAULT_SLUG;
 }
 
 /**
  * Format a Date as YYYY-MM-DD for use in directory paths.
  */
 export function datePath(date: Date = new Date()): string {
-  return date.toISOString().slice(0, 10);
+  return date.toISOString().slice(0, DATE_PATH_LENGTH);
 }
 
 /**
  * Escape a string for safe use in a RegExp.
  */
 export function escapeRegex(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return str.replace(/[.*+?^$\{\}\(\)\|\[\]\\]/gv, '\\$&');
 }
 
 const STOP_WORDS = new Set([
@@ -40,7 +47,7 @@ const STOP_WORDS = new Set([
 export function tokenizeQuery(query: string): string[] {
   return query
     .toLowerCase()
-    .split(/[\s,;:.!?()\[\]{}"']+/)
-    .map((t) => t.trim())
-    .filter((t) => t.length > 2 && !STOP_WORDS.has(t));
+    .split(/[\s,;:.!?\(\)\[\]\{\}"']+/gv)
+    .map((token) => token.trim())
+    .filter((token) => token.length > MIN_QUERY_TOKEN_LENGTH && !STOP_WORDS.has(token));
 }

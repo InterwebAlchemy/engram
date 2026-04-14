@@ -1,27 +1,38 @@
-import * as fs from 'fs/promises';
-import * as path from 'path';
+import * as fs from 'node:fs/promises';
+import type { Dirent } from 'node:fs';
+import * as path from 'node:path';
 import type { FileSystemAdapter } from './types';
 import type { SearchResult } from '../types';
 import { escapeRegex, tokenizeQuery } from '../utils';
 
+function isErrnoException(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && 'code' in error;
+}
+
 export class NodeAdapter implements FileSystemAdapter {
+  private readonly fs = fs;
+
+  private readonly path = path;
+
+  private readonly markdownExtension = '.md';
+
   async read(filePath: string): Promise<string> {
-    return fs.readFile(filePath, 'utf-8');
+    return await this.fs.readFile(filePath, 'utf-8');
   }
 
   async write(filePath: string, content: string): Promise<void> {
-    await fs.mkdir(path.dirname(filePath), { recursive: true });
-    await fs.writeFile(filePath, content, 'utf-8');
+    await this.fs.mkdir(this.path.dirname(filePath), { recursive: true });
+    await this.fs.writeFile(filePath, content, 'utf-8');
   }
 
   async process(filePath: string, fn: (content: string) => string): Promise<string> {
-    await fs.mkdir(path.dirname(filePath), { recursive: true });
+    await this.fs.mkdir(this.path.dirname(filePath), { recursive: true });
 
     let existing = '';
     try {
-      existing = await fs.readFile(filePath, 'utf-8');
+      existing = await this.fs.readFile(filePath, 'utf-8');
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+      if (!isErrnoException(error) || error.code !== 'ENOENT') {
         throw error;
       }
     }
@@ -30,10 +41,10 @@ export class NodeAdapter implements FileSystemAdapter {
     const tempPath = `${filePath}.tmp-${process.pid}-${Date.now()}`;
 
     try {
-      await fs.writeFile(tempPath, nextContent, 'utf-8');
-      await fs.rename(tempPath, filePath);
+      await this.fs.writeFile(tempPath, nextContent, 'utf-8');
+      await this.fs.rename(tempPath, filePath);
     } catch (error) {
-      await fs.unlink(tempPath).catch(() => undefined);
+      await this.fs.unlink(tempPath).catch(() => undefined);
       throw error;
     }
 
@@ -41,12 +52,12 @@ export class NodeAdapter implements FileSystemAdapter {
   }
 
   async delete(filePath: string): Promise<void> {
-    await fs.unlink(filePath);
+    await this.fs.unlink(filePath);
   }
 
   async exists(filePath: string): Promise<boolean> {
     try {
-      await fs.access(filePath);
+      await this.fs.access(filePath);
       return true;
     } catch {
       return false;
@@ -54,7 +65,7 @@ export class NodeAdapter implements FileSystemAdapter {
   }
 
   async list(directory: string): Promise<string[]> {
-    return this.walkDir(directory);
+    return await this.walkDir(directory);
   }
 
   async search(query: string, directory?: string): Promise<SearchResult[]> {
@@ -67,8 +78,8 @@ export class NodeAdapter implements FileSystemAdapter {
     // Fall back to literal match if no usable tokens
     const patterns =
       tokens.length > 0
-        ? tokens.map((t) => new RegExp(escapeRegex(t), 'gi'))
-        : [new RegExp(escapeRegex(query), 'gi')];
+        ? tokens.map((token) => new RegExp(escapeRegex(token), 'giv'))
+        : [new RegExp(escapeRegex(query), 'giv')];
 
     await Promise.all(
       files.map(async (filePath) => {
@@ -77,7 +88,7 @@ export class NodeAdapter implements FileSystemAdapter {
           let score = 0;
           for (const pattern of patterns) {
             const matches = content.match(pattern);
-            if (matches) score += matches.length;
+            if (matches !== null) score += matches.length;
           }
           if (score > 0) {
             results.push({ path: filePath, content, score });
@@ -92,28 +103,31 @@ export class NodeAdapter implements FileSystemAdapter {
   }
 
   async mkdir(dirPath: string): Promise<void> {
-    await fs.mkdir(dirPath, { recursive: true });
+    await this.fs.mkdir(dirPath, { recursive: true });
   }
 
   private async walkDir(directory: string): Promise<string[]> {
     const results: string[] = [];
-    let entries;
     try {
-      entries = await fs.readdir(directory, { withFileTypes: true });
+      const entries: Dirent[] = await this.fs.readdir(directory, { withFileTypes: true });
+      await Promise.all(
+        entries.map(async (entry) => {
+          const fullPath = this.path.join(directory, entry.name);
+          if (entry.isDirectory()) {
+            const sub = await this.walkDir(fullPath);
+            results.push(...sub);
+          } else if (
+            entry.isFile() &&
+            entry.name.endsWith(this.markdownExtension)
+          ) {
+            results.push(fullPath);
+          }
+        }),
+      );
     } catch {
       return results;
     }
-    await Promise.all(
-      entries.map(async (entry) => {
-        const fullPath = path.join(directory, entry.name);
-        if (entry.isDirectory()) {
-          const sub = await this.walkDir(fullPath);
-          results.push(...sub);
-        } else if (entry.isFile() && entry.name.endsWith('.md')) {
-          results.push(fullPath);
-        }
-      }),
-    );
+
     return results;
   }
 }

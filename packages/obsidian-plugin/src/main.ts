@@ -1,4 +1,4 @@
-import { Plugin, WorkspaceLeaf } from 'obsidian';
+import { Plugin } from 'obsidian';
 import {
   MemoryManager,
   Conversation,
@@ -18,14 +18,17 @@ import {
   MEMORY_VIEW_TYPE,
   DEFAULT_SETTINGS,
 } from './constants';
-import type { EngramSettings } from './constants';
+import type {
+  EngramSettings,
+  ProviderSettings,
+} from './constants';
 
 export default class EngramPlugin extends Plugin {
   settings!: EngramSettings;
   memoryManager!: MemoryManager;
   conversation!: Conversation;
   fileAdapter!: ObsidianAdapter;
-  providers: Map<string, ProviderAdapter> = new Map();
+  providers = new Map<string, ProviderAdapter>();
   private autosaveInterval: ReturnType<typeof setInterval> | null = null;
 
   // ─── Lifecycle ──────────────────────────────────────────────────────────
@@ -38,7 +41,7 @@ export default class EngramPlugin extends Plugin {
     this.fileAdapter = adapter;
 
     // Memory manager scoped to the engram root
-    const basePath = (this.app.vault.adapter as unknown as { basePath?: string }).basePath ?? '';
+    const basePath = this.getVaultBasePath();
     this.memoryManager = new MemoryManager(
       adapter,
       {
@@ -62,25 +65,25 @@ export default class EngramPlugin extends Plugin {
     this.addSettingTab(new EngramSettingTab(this.app, this));
 
     // Ribbon icon to open the chat
-    this.addRibbonIcon('brain', 'Open Engram chat', () => this.activateChatView());
+    this.addRibbonIcon('brain', 'Open Engram chat', async () => { await this.activateChatView(); });
 
     // Command palette entries
     this.addCommand({
       id: 'open-chat',
       name: 'Open chat',
-      callback: () => this.activateChatView(),
+      callback: async () => { await this.activateChatView(); },
     });
 
     this.addCommand({
       id: 'open-memory-manager',
       name: 'Open memory manager',
-      callback: () => this.activateMemoryView(),
+      callback: async () => { await this.activateMemoryView(); },
     });
 
     this.addCommand({
       id: 'open-dreams-dashboard',
       name: 'Open Dreams dashboard',
-      callback: () => this.activateDreamsView(),
+      callback: async () => { await this.activateDreamsView(); },
     });
 
     this.addCommand({
@@ -95,7 +98,7 @@ export default class EngramPlugin extends Plugin {
     this.addCommand({
       id: 'save-conversation',
       name: 'Save conversation',
-      callback: () => this.saveCurrentConversation(),
+      callback: async () => { await this.saveCurrentConversation(); },
     });
 
     // Autosave
@@ -120,8 +123,11 @@ export default class EngramPlugin extends Plugin {
 
   /** Re-initialize a single provider after its config changes (e.g. base URL update). */
   reinitializeProvider(id: string): void {
-    const cfg = this.settings.providers[id];
-    if (!cfg) return;
+    const cfg = this.getProviderSettings(id);
+    if (cfg === null) {
+      return;
+    }
+
     if (id === 'anthropic') {
       this.providers.set(id, new AnthropicAdapter(cfg));
     } else {
@@ -134,8 +140,10 @@ export default class EngramPlugin extends Plugin {
   }
 
   createProviderAdapter(providerId: string): ProviderAdapter | undefined {
-    const cfg = this.settings.providers[providerId];
-    if (!cfg) return undefined;
+    const cfg = this.getProviderSettings(providerId);
+    if (cfg === null) {
+      return undefined;
+    }
 
     const apiKey = this.getProviderApiKey(providerId);
     if (providerId === 'anthropic') {
@@ -152,8 +160,16 @@ export default class EngramPlugin extends Plugin {
   }
 
   getProviderApiKey(providerId: string): string | undefined {
-    const secretId = this.settings.providers[providerId]?.apiKeySecret;
-    if (!secretId) return undefined;
+    const cfg = this.getProviderSettings(providerId);
+    if (cfg === null) {
+      return undefined;
+    }
+
+    const { apiKeySecret: secretId } = cfg;
+    if (secretId === undefined || secretId.length === 0) {
+      return undefined;
+    }
+
     try {
       return this.app.secretStorage.getSecret(secretId) ?? undefined;
     } catch {
@@ -164,42 +180,15 @@ export default class EngramPlugin extends Plugin {
   // ─── View activation ───────────────────────────────────────────────────
 
   async activateChatView(): Promise<void> {
-    const existing = this.app.workspace.getLeavesOfType(CHAT_VIEW_TYPE);
-    if (existing.length > 0) {
-      this.app.workspace.revealLeaf(existing[0]);
-      return;
-    }
-    const leaf = this.app.workspace.getRightLeaf(false);
-    if (leaf) {
-      await leaf.setViewState({ type: CHAT_VIEW_TYPE, active: true });
-      this.app.workspace.revealLeaf(leaf);
-    }
+    await this.activateView(CHAT_VIEW_TYPE);
   }
 
   async activateMemoryView(): Promise<void> {
-    const existing = this.app.workspace.getLeavesOfType(MEMORY_VIEW_TYPE);
-    if (existing.length > 0) {
-      this.app.workspace.revealLeaf(existing[0]);
-      return;
-    }
-    const leaf = this.app.workspace.getRightLeaf(false);
-    if (leaf) {
-      await leaf.setViewState({ type: MEMORY_VIEW_TYPE, active: true });
-      this.app.workspace.revealLeaf(leaf);
-    }
+    await this.activateView(MEMORY_VIEW_TYPE);
   }
 
   async activateDreamsView(): Promise<void> {
-    const existing = this.app.workspace.getLeavesOfType(DREAMS_VIEW_TYPE);
-    if (existing.length > 0) {
-      this.app.workspace.revealLeaf(existing[0]);
-      return;
-    }
-    const leaf = this.app.workspace.getRightLeaf(false);
-    if (leaf) {
-      await leaf.setViewState({ type: DREAMS_VIEW_TYPE, active: true });
-      this.app.workspace.revealLeaf(leaf);
-    }
+    await this.activateView(DREAMS_VIEW_TYPE);
   }
 
   // ─── Conversation persistence ──────────────────────────────────────────
@@ -211,7 +200,7 @@ export default class EngramPlugin extends Plugin {
 
   refreshChatView(): void {
     for (const leaf of this.app.workspace.getLeavesOfType(CHAT_VIEW_TYPE)) {
-      const view = leaf.view;
+      const { view } = leaf;
       if (view instanceof EngramChatView) {
         view.refresh();
       }
@@ -220,7 +209,7 @@ export default class EngramPlugin extends Plugin {
 
   refreshDreamsView(): void {
     for (const leaf of this.app.workspace.getLeavesOfType(DREAMS_VIEW_TYPE)) {
-      const view = leaf.view;
+      const { view } = leaf;
       if (view instanceof EngramDreamsView) {
         void view.refresh();
       }
@@ -228,7 +217,7 @@ export default class EngramPlugin extends Plugin {
   }
 
   getVaultBasePath(): string {
-    return (this.app.vault.adapter as unknown as { basePath?: string }).basePath ?? '';
+    return getStringProperty(this.app.vault.adapter, 'basePath') ?? '';
   }
 
   // ─── Autosave ──────────────────────────────────────────────────────────
@@ -237,32 +226,84 @@ export default class EngramPlugin extends Plugin {
     this.stopAutosave();
     if (this.settings.autosaveEnabled) {
       this.autosaveInterval = setInterval(
-        () => this.saveCurrentConversation(),
+        () => {
+          void this.saveCurrentConversation();
+        },
         this.settings.autosaveIntervalMs,
       );
     }
   }
 
   private stopAutosave(): void {
-    if (this.autosaveInterval) {
+    if (this.autosaveInterval !== null) {
       clearInterval(this.autosaveInterval);
       this.autosaveInterval = null;
     }
   }
 
+  private getProviderSettings(providerId: string): ProviderSettings | null {
+    if (!Object.hasOwn(this.settings.providers, providerId)) {
+      return null;
+    }
+
+    return this.settings.providers[providerId];
+  }
+
+  private async activateView(viewType: string): Promise<void> {
+    const existingLeaves = this.app.workspace.getLeavesOfType(viewType);
+    if (existingLeaves.length > 0) {
+      await this.app.workspace.revealLeaf(existingLeaves[0]);
+      return;
+    }
+
+    const leaf = this.app.workspace.getRightLeaf(false);
+    if (leaf === null) {
+      return;
+    }
+
+    await leaf.setViewState({ type: viewType, active: true });
+    await this.app.workspace.revealLeaf(leaf);
+  }
+
   // ─── Settings ──────────────────────────────────────────────────────────
 
   async loadSettings(): Promise<void> {
-    const loaded = await this.loadData();
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, loaded);
+    const loaded: unknown = await this.loadData();
+    const loadedSettings = isSettingsRecord(loaded) ? loaded : {};
+    this.settings = {
+      ...DEFAULT_SETTINGS,
+      ...loadedSettings,
+      providers: { ...DEFAULT_SETTINGS.providers },
+    };
     // Deep-merge provider configs so new fields (enabledModels, customModels, etc.)
     // are present even when loading an older saved config.
     for (const [id, defaults] of Object.entries(DEFAULT_SETTINGS.providers)) {
-      this.settings.providers[id] = Object.assign({}, defaults, this.settings.providers[id]);
+      this.settings.providers[id] = {
+        ...defaults,
+        ...(loadedSettings.providers?.[id] ?? {}),
+      };
     }
   }
 
   async saveSettings(): Promise<void> {
     await this.saveData(this.settings);
   }
+}
+
+function getStringProperty(value: unknown, key: string): string | undefined {
+  if (typeof value !== 'object' || value === null) {
+    return undefined;
+  }
+
+  for (const [propertyKey, propertyValue] of Object.entries(value)) {
+    if (propertyKey === key && typeof propertyValue === 'string') {
+      return propertyValue;
+    }
+  }
+
+  return undefined;
+}
+
+function isSettingsRecord(value: unknown): value is Partial<EngramSettings> {
+  return typeof value === 'object' && value !== null;
 }

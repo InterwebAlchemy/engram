@@ -7,6 +7,9 @@ import type {
   DreamsProviderConfig,
 } from './types';
 
+const DEFAULT_MAX_TOKENS = 16000;
+const EMPTY_JSON_RESPONSE = 'Return an empty JSON array.';
+
 export class AnthropicProvider implements DreamsProvider {
   private readonly client: Anthropic;
 
@@ -31,11 +34,13 @@ export class AnthropicProvider implements DreamsProvider {
       model: this.config.model,
       system,
       temperature: 0,
-      max_tokens: this.config.maxTokens ?? 16000,
+      max_tokens: this.config.maxTokens ?? DEFAULT_MAX_TOKENS,
       messages: conversation.length > 0
         ? conversation
-        : [{ role: 'user', content: 'Return an empty JSON array.' }],
+        : [{ role: 'user', content: EMPTY_JSON_RESPONSE }],
     });
+
+    const { usage } = response;
 
     return {
       content: response.content
@@ -43,13 +48,11 @@ export class AnthropicProvider implements DreamsProvider {
         .map((block) => block.text)
         .join('\n')
         .trim(),
-      usage: response.usage
-        ? {
-            prompt_tokens: response.usage.input_tokens ?? 0,
-            completion_tokens: response.usage.output_tokens ?? 0,
-            total_tokens: (response.usage.input_tokens ?? 0) + (response.usage.output_tokens ?? 0),
-          }
-        : undefined,
+      usage: {
+        prompt_tokens: usage.input_tokens,
+        completion_tokens: usage.output_tokens,
+        total_tokens: usage.input_tokens + usage.output_tokens,
+      },
     };
   }
 }

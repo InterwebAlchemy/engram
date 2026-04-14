@@ -1,26 +1,19 @@
-import * as path from 'path';
-import { ItemView, Notice, WorkspaceLeaf, setIcon } from 'obsidian';
-import {
-  defaultMemoryConfig,
-  type ChatMessage,
-} from '@interwebalchemy/engram-core';
+import * as path from 'node:path';
+import { ItemView, type WorkspaceLeaf, setIcon } from 'obsidian';
+import { defaultMemoryConfig } from '@interwebalchemy/engram-core';
 import type EngramPlugin from '../main';
-import { DREAMS_VIEW_TYPE, KNOWN_MODELS } from '../constants';
+import { DREAMS_VIEW_TYPE } from '../constants';
 import { DreamsAnalyzer } from '../../../dreams/src/analyzer';
 import {
   appendDreamsRunHistory,
   readDreamsRunHistory,
-  summarizeDreamsUsage,
 } from '../../../dreams/src/history';
 import {
-  estimateDreamMaxTokens,
   executeDreamsActions,
-  planDreams,
   writeDreamStartEntry,
   writeDreamScratchEntry,
 } from '../../../dreams/src/runner';
 import type {
-  DreamsAction,
   DreamsRunHistory,
   DreamsExecutionResult,
   DreamsPlanResult,
@@ -30,16 +23,37 @@ import { SnapshotManager } from '../../../snapshot/src/manager';
 import type { SnapshotRecord } from '../../../snapshot/src/types';
 import { Ciph3rTextAnimator } from '../utils/ciph3r';
 import { DreamCanvas } from '../utils/dream-canvas';
+import {
+  renderDreamResultsSection,
+  renderFindingsSections,
+  renderSnapshotsSection,
+  renderSummarySection,
+  renderUsageHistorySection,
+  showNotice,
+  showSnapshotRestoreConfirm,
+} from './dreams-view-helpers';
+import {
+  buildDreamCompletionNotice,
+  createDreamPlan,
+  createDreamRunRecord,
+  findSelectedOption,
+  formatLatestDreamLabel,
+  getModelOptions,
+  syncModelSelection,
+  type ModelOption,
+} from './dreams-view-support';
 
-interface ModelOption {
-  providerId: string;
-  providerName: string;
-  modelId: string;
-  modelName: string;
-}
+const DREAMS_VIEW_TITLE = 'Engram Dreams';
+const DREAMS_VIEW_ICON = 'moon-star';
+const DREAMING_LABEL = 'Dreaming...';
+const DREAMING_ANIMATION_MS = 250;
+const NARRATIVE_MAX_TOKENS = 512;
 
 export class EngramDreamsView extends ItemView {
   private readonly plugin: EngramPlugin;
+  private readonly viewType = DREAMS_VIEW_TYPE;
+  private readonly displayText = DREAMS_VIEW_TITLE;
+  private readonly iconName = DREAMS_VIEW_ICON;
   private container!: HTMLElement;
   private report: DreamsReport | null = null;
   private snapshots: SnapshotRecord[] = [];
@@ -61,28 +75,32 @@ export class EngramDreamsView extends ItemView {
   }
 
   getViewType(): string {
-    return DREAMS_VIEW_TYPE;
+    return this.viewType;
   }
 
   getDisplayText(): string {
-    return 'Engram Dreams';
+    return this.displayText;
   }
 
   getIcon(): string {
-    return 'moon-star';
+    return this.iconName;
   }
 
   async onOpen(): Promise<void> {
-    const container = this.containerEl.children[1] as HTMLElement;
+    const container = this.containerEl.children.item(1);
+    if (!(container instanceof HTMLElement)) {
+      throw new Error('Dreams view container was not available.');
+    }
     container.empty();
     container.addClass('engram-dreams-container');
     this.container = container;
-    this.ensureSelection();
+    this.syncSelection();
     await this.refresh();
   }
 
   async onClose(): Promise<void> {
     this.cleanupDreamOverlay();
+    await Promise.resolve();
   }
 
   async refresh(): Promise<void> {
@@ -107,7 +125,7 @@ export class EngramDreamsView extends ItemView {
       this.report = report;
       this.snapshots = snapshots;
       this.runHistory = history;
-      this.ensureSelection();
+      this.syncSelection();
     } catch (error) {
       this.error = error instanceof Error ? error.message : String(error);
     } finally {
@@ -137,7 +155,7 @@ export class EngramDreamsView extends ItemView {
       return;
     }
 
-    if (this.error) {
+    if (this.error !== null) {
       this.container.createDiv({
         cls: 'engram-dreams-empty',
         text: `Could not load Dreams dashboard: ${this.error}`,
@@ -145,7 +163,7 @@ export class EngramDreamsView extends ItemView {
       return;
     }
 
-    if (!this.report) {
+    if (this.report === null) {
       this.container.createDiv({
         cls: 'engram-dreams-empty',
         text: 'No Dreams report available yet.',
@@ -153,11 +171,26 @@ export class EngramDreamsView extends ItemView {
       return;
     }
 
-    this.renderSummary(this.container, this.report, this.snapshots);
-    this.renderUsageHistory(this.container);
-    this.renderDreamResults(this.container);
-    this.renderFindings(this.container, this.report);
-    this.renderSnapshots(this.container, this.snapshots);
+    renderSummarySection(this.container, this.report, this.snapshots);
+    renderUsageHistorySection(this.container, this.runHistory);
+    renderDreamResultsSection({
+      parent: this.container,
+      latestPlan: this.latestPlan,
+      latestExecution: this.latestExecution,
+      latestRunSnapshot: this.latestRunSnapshot,
+      selectedLabel: formatLatestDreamLabel(
+        this.getSelectedOption(),
+        this.latestPlan,
+        this.latestExecution,
+      ),
+    });
+    renderFindingsSections(this.container, this.report);
+    renderSnapshotsSection(
+      this.container,
+      this.snapshots,
+      this.getSnapshotsDir(),
+      this.handleRestoreSnapshot.bind(this),
+    );
   }
 
   private renderDreamingOverlay(): void {
@@ -168,17 +201,17 @@ export class EngramDreamsView extends ItemView {
     this.dreamCanvas.start();
 
     const center = overlay.createDiv({ cls: 'engram-dreams-overlay-center' });
-    const label = center.createSpan({ cls: 'engram-dreams-overlay-text', text: 'Dreaming...' });
-    this.dreamAnimator = new Ciph3rTextAnimator(label, 'Dreaming...', 250);
+    const label = center.createSpan({ cls: 'engram-dreams-overlay-text', text: DREAMING_LABEL });
+    this.dreamAnimator = new Ciph3rTextAnimator(label, DREAMING_LABEL, DREAMING_ANIMATION_MS);
     this.dreamAnimator.start();
   }
 
   private cleanupDreamOverlay(): void {
-    if (this.dreamCanvas) {
+    if (this.dreamCanvas !== null) {
       this.dreamCanvas.stop();
       this.dreamCanvas = null;
     }
-    if (this.dreamAnimator) {
+    if (this.dreamAnimator !== null) {
       this.dreamAnimator.stop();
       this.dreamAnimator = null;
     }
@@ -221,8 +254,7 @@ export class EngramDreamsView extends ItemView {
       text: 'Analyze vault health and apply cleanup actions automatically. A snapshot is created before any changes.',
     });
 
-    const options = this.getModelOptions();
-    this.ensureSelection(options);
+    const options = this.syncSelection();
 
     const form = section.createDiv({ cls: 'engram-dreams-controls-form' });
     const modelSelect = form.createEl('select', {
@@ -245,9 +277,9 @@ export class EngramDreamsView extends ItemView {
       }
       modelSelect.value = `${this.selectedProviderId}::${this.selectedModelId}`;
       modelSelect.addEventListener('change', () => {
-        const [providerId, modelId] = modelSelect.value.split('::');
-        this.selectedProviderId = providerId ?? '';
-        this.selectedModelId = modelId ?? '';
+        const [providerId = '', modelId = ''] = modelSelect.value.split('::');
+        this.selectedProviderId = providerId;
+        this.selectedModelId = modelId;
       });
     }
 
@@ -261,435 +293,124 @@ export class EngramDreamsView extends ItemView {
     });
   }
 
-  private renderSummary(parent: HTMLElement, report: DreamsReport, snapshots: SnapshotRecord[]): void {
-    const grid = parent.createDiv({ cls: 'engram-dreams-summary-grid' });
-
-    const rememberedCount = report.stateDistribution.counts.remembered ?? 0;
-    const defaultCount = report.stateDistribution.counts.default ?? 0;
-    const threadPressureCount = new Set([
-      ...report.threadHealth.oversizedThreads,
-      ...report.threadHealth.staleThreads,
-    ]).size;
-
-    this.renderStatCard(grid, 'Memories', String(report.stateDistribution.total), 'Total notes tracked by Dreams.');
-    this.renderStatCard(grid, 'Remembered', String(rememberedCount), 'Auto-loaded context that should stay intentionally small.');
-    this.renderStatCard(grid, 'Default', String(defaultCount), 'Background memories available for search or later semantic retrieval.');
-    this.renderStatCard(grid, 'Threads', String(report.threadHealth.totalCount), 'Workstreams tracked in `engram/threads`.');
-    this.renderStatCard(grid, 'Thread pressure', String(threadPressureCount), 'Threads that look stale or too large and may need consolidation.');
-    this.renderStatCard(grid, 'Thread gaps', String(report.threadCoverageGaps.length), 'Notes tagged to a thread namespace but missing `thread:` frontmatter.');
-    this.renderStatCard(grid, 'Data issues', String(report.dataQualityIssues.length), 'Missing summaries, bootstrap metadata, or type mismatches.');
-    this.renderStatCard(grid, 'Stale scratch', String(report.scratchHealth.staleSessions.length), 'Sessions that still need compaction.');
-    this.renderStatCard(grid, 'Merge candidates', String(report.mergeCandidates.length), 'Potential duplicates worth human or LLM review.');
-    this.renderStatCard(grid, 'Snapshots', String(snapshots.length), 'Recoverable Engram states available from this vault.');
-  }
-
-  private renderStatCard(parent: HTMLElement, label: string, value: string, description: string): void {
-    const card = parent.createDiv({ cls: 'engram-dreams-stat-card' });
-    card.createDiv({ cls: 'engram-dreams-stat-label', text: label });
-    card.createDiv({ cls: 'engram-dreams-stat-value', text: value });
-    card.createDiv({ cls: 'engram-dreams-stat-description', text: description });
-  }
-
-  private renderUsageHistory(parent: HTMLElement): void {
-    const section = parent.createDiv({ cls: 'engram-dreams-section' });
-    section.createEl('h4', { text: 'Token history' });
-
-    const history = this.runHistory;
-    if (!history || history.runs.length === 0) {
-      section.createDiv({
-        cls: 'engram-dreams-empty',
-        text: 'No Dream token history yet. Generate a plan to establish a baseline.',
-      });
-      return;
-    }
-
-    const trend = summarizeDreamsUsage(history);
-    const latest = trend.latest;
-    const baseline = trend.baselineAverageTotalTokens;
-    const recent = trend.recentAverageTotalTokens;
-    const delta = trend.deltaFromBaseline;
-
-    section.createDiv({
-      cls: 'engram-dreams-section-description',
-      text: [
-        latest?.usage
-          ? `Latest: ${latest.usage.total_tokens} total (${latest.usage.prompt_tokens} prompt, ${latest.usage.completion_tokens} completion)`
-          : undefined,
-        baseline !== undefined ? `Baseline avg: ${baseline} total` : undefined,
-        recent !== undefined ? `Recent avg: ${recent} total` : undefined,
-        delta !== undefined ? `Delta from baseline: ${formatSigned(delta)}` : undefined,
-      ].filter(Boolean).join(' · '),
-    });
-
-    const list = section.createEl('ul', { cls: 'engram-dreams-list' });
-    for (const run of history.runs.slice(-5).reverse()) {
-      const item = list.createEl('li');
-      item.createDiv({
-        text: [
-          formatTimestamp(run.timestamp),
-          run.provider,
-          run.model,
-          run.usage?.total_tokens !== undefined ? `${run.usage.total_tokens} total tokens` : 'usage unavailable',
-          `${run.reportSummary.memoryCount} memories`,
-          `${run.actionCount} actions`,
-          run.executionMode,
-        ].join(' · '),
-      });
-      if (run.dream) {
-        item.createDiv({
-          cls: 'engram-dreams-stat-description',
-          text: run.dream,
-        });
-      }
-    }
-  }
-
-  private renderDreamResults(parent: HTMLElement): void {
-    if (!this.latestPlan) return;
-
-    const section = parent.createDiv({ cls: 'engram-dreams-section' });
-    section.createEl('h4', { text: 'Latest Dream' });
-    section.createDiv({
-      cls: 'engram-dreams-section-description',
-      text: this.formatLatestPlanMeta(),
-    });
-
-    const applied = this.latestExecution?.applied ?? 0;
-    const skipped = this.latestExecution?.skipped ?? 0;
-    const snapshotLabel = this.latestRunSnapshot ? ` · snapshot ${this.latestRunSnapshot.id}` : '';
-    section.createDiv({
-      cls: 'engram-dreams-plan-summary engram-dreams-stat-description',
-      text: `${applied} applied · ${skipped} skipped${snapshotLabel}`,
-    });
-
-    if (this.latestPlan.dream) {
-      section.createDiv({
-        cls: 'engram-dreams-stat-description',
-        text: this.latestPlan.dream,
-      });
-    }
-
-    this.renderCoreReviewFlags(section, this.latestPlan.actions);
-
-    if (this.latestExecution && this.latestExecution.details.length > 0) {
-      const executionList = section.createEl('ul', { cls: 'engram-dreams-list' });
-      for (const detail of this.latestExecution.details) {
-        executionList.createEl('li', { text: detail });
-      }
-    }
-
-    const detailsSection = section.createDiv({ cls: 'engram-dreams-plan-details' });
-    const rawOutput = detailsSection.createEl('details');
-    rawOutput.createEl('summary', { text: 'Raw model output' });
-    rawOutput.createEl('pre', {
-      cls: 'engram-dreams-raw-output',
-      text: this.latestPlan.rawResponse,
-    });
-  }
-
-  private renderCoreReviewFlags(parent: HTMLElement, actions: DreamsAction[]): void {
-    const coreFlags = actions.filter(
-      (action): action is Extract<DreamsAction, { action: 'flag_core_review' }> =>
-        action.action === 'flag_core_review',
-    );
-    if (coreFlags.length === 0) return;
-
-    const block = parent.createDiv({ cls: 'engram-dreams-plan-details' });
-    block.createEl('h5', { text: 'Core review for next Fragment' });
-    block.createDiv({
-      cls: 'engram-dreams-section-description',
-      text: 'Dreams used core memories as read-only context. These notes were flagged for manual follow-up instead of automatic mutation.',
-    });
-
-    const list = block.createEl('ul', { cls: 'engram-dreams-list' });
-    for (const flag of coreFlags) {
-      const item = list.createEl('li');
-      item.createDiv({ text: `${baseName(flag.path)} -> ${flag.concern}` });
-      item.createDiv({
-        cls: 'engram-dreams-stat-description',
-        text: `Suggested: ${flag.suggested_change}`,
-      });
-      item.createDiv({
-        cls: 'engram-dreams-stat-description',
-        text: flag.reason,
-      });
-    }
-  }
-
-
-  private renderFindings(parent: HTMLElement, report: DreamsReport): void {
-    const sections = parent.createDiv({ cls: 'engram-dreams-sections' });
-
-    this.renderFindingSection(
-      sections,
-      'Thread pressure',
-      report.threadHealth.threads
-        .filter((thread) => thread.isOversized || thread.isStale)
-        .map((thread) => {
-          const flags = [
-            thread.isOversized ? 'oversized' : '',
-            thread.isStale ? 'stale' : '',
-          ].filter(Boolean).join(', ');
-          const sizeKb = (thread.contentBytes / 1024).toFixed(1);
-          return `${thread.threadId} -> ${thread.status}, ${thread.lineCount} lines, ${sizeKb} KB${flags ? `, ${flags}` : ''}`;
-        }),
-      'Thread docs should stay short, current, and mergeable instead of accreting session history.',
-    );
-
-    this.renderFindingSection(
-      sections,
-      'Thread coverage gaps',
-      report.threadCoverageGaps.map((gap) => `${baseName(gap.path)} -> ${gap.suggestedThreadId ?? 'no suggestion'}`),
-      'Thread tags exist, but scoped retrieval cannot use them until `thread:` is set.',
-    );
-
-    this.renderFindingSection(
-      sections,
-      'Data quality issues',
-      report.dataQualityIssues.map((issue) => `${baseName(issue.path)} -> ${issue.issues.join(', ')}`),
-      'These are the fastest cleanup wins before semantic search lands.',
-    );
-
-    this.renderFindingSection(
-      sections,
-      'Scratch pressure',
-      report.scratchHealth.sessions.map((session) => {
-        const status = session.isCompacted ? 'compacted' : 'active';
-        return `${session.sessionId} -> ${session.entryCount} entries, ${status}`;
-      }),
-      'Long-lived uncompacted sessions are a strong Dreams target.',
-    );
-
-    this.renderFindingSection(
-      sections,
-      'Scratch to thread',
-      report.scratchThreadCandidates.map((candidate) => {
-        const similarity = `${(candidate.similarity * 100).toFixed(0)}%`;
-        const thread = candidate.candidateThreadId ?? 'no clear thread';
-        return `${candidate.sessionId} -> ${thread}, ${candidate.entryCount} entries, ${similarity} overlap`;
-      }),
-      'Recent scratch can be evidence that a thread doc is stale, missing current state, or already up to date.',
-    );
-
-    this.renderFindingSection(
-      sections,
-      'Merge candidates',
-      report.mergeCandidates.map((candidate) => `${candidate.paths.map(baseName).join(' + ')} -> ${(candidate.similarity * 100).toFixed(0)}% similarity`),
-      'These are only heuristics today, so review matters before destructive merges.',
-    );
-  }
-
-  private renderFindingSection(
-    parent: HTMLElement,
-    title: string,
-    items: string[],
-    description: string,
-  ): void {
-    const section = parent.createDiv({ cls: 'engram-dreams-section' });
-    section.createEl('h4', { text: title });
-    section.createDiv({ cls: 'engram-dreams-section-description', text: description });
-
-    if (items.length === 0) {
-      section.createDiv({ cls: 'engram-dreams-empty', text: 'No issues surfaced.' });
-      return;
-    }
-
-    const list = section.createEl('ul', { cls: 'engram-dreams-list' });
-    for (const item of items.slice(0, 8)) {
-      list.createEl('li', { text: item });
-    }
-  }
-
-  private renderSnapshots(parent: HTMLElement, snapshots: SnapshotRecord[]): void {
-    const section = parent.createDiv({ cls: 'engram-dreams-section' });
-    section.createEl('h4', { text: 'Snapshots' });
-    section.createDiv({
-      cls: 'engram-dreams-section-description',
-      text: `Stored in ${this.getSnapshotsDir()}`,
-    });
-
-    if (snapshots.length === 0) {
-      section.createDiv({
-        cls: 'engram-dreams-empty',
-        text: 'No snapshots yet. Create one before running a cleanup pass.',
-      });
-      return;
-    }
-
-    const list = section.createDiv({ cls: 'engram-dreams-snapshot-list' });
-    for (const snapshot of snapshots.slice(0, 8)) {
-      const row = list.createDiv({ cls: 'engram-dreams-snapshot-row' });
-      const copy = row.createDiv({ cls: 'engram-dreams-snapshot-copy' });
-      copy.createDiv({ cls: 'engram-dreams-snapshot-title', text: snapshot.id });
-      copy.createDiv({
-        cls: 'engram-dreams-snapshot-meta',
-        text: [
-          formatTimestamp(snapshot.createdAt),
-          formatBytes(snapshot.sizeBytes),
-          snapshot.source,
-          snapshot.label,
-          snapshot.reason,
-        ].filter(Boolean).join(' · '),
-      });
-
-      const restoreButton = row.createEl('button', { text: 'Restore' });
-      restoreButton.addEventListener('click', () => {
-        void this.handleRestoreSnapshot(snapshot);
-      });
-    }
-  }
-
   private async handleDream(): Promise<void> {
-    if (this.dreaming) return;
+    if (this.dreaming) {
+      return;
+    }
 
     const selection = this.getSelectedOption();
-    if (!selection) {
-      new Notice('No Dreams model is configured yet. Enable one in Settings first.');
+    if (selection === null) {
+      showNotice('No Dreams model is configured yet. Enable one in Settings first.');
       return;
     }
 
+    this.beginDreamRun();
+
+    try {
+      await this.runDream(selection);
+    } catch (error) {
+      this.error = error instanceof Error ? error.message : String(error);
+      showNotice(`Dream failed: ${this.error}`);
+    } finally {
+      this.dreaming = false;
+      this.render();
+    }
+  }
+
+  private beginDreamRun(): void {
     this.dreaming = true;
     this.error = null;
     this.latestPlan = null;
     this.latestExecution = null;
     this.latestRunSnapshot = null;
     this.render();
+  }
 
-    try {
-      const provider = this.plugin.createProviderAdapter(selection.providerId);
-      if (!provider) {
-        throw new Error(`Could not create provider adapter for ${selection.providerName}.`);
-      }
-
-      // Resolve agent name from soul doc for prompt context
-      const soul = await this.plugin.memoryManager.getSoulDocument();
-      const gitIdentity = soul?.frontmatter.git_identity as string | undefined;
-      const agentName = gitIdentity?.split('<')[0]?.trim() || undefined;
-      const identitySummary = typeof soul?.frontmatter.summary === 'string'
-        ? soul.frontmatter.summary.trim()
-        : undefined;
-
-      // Snapshot before any mutations — protects scratch from preCleanup and dream start
-      const snapshot = await this.createSnapshotManager().create({
-        vaultPath: this.plugin.getVaultBasePath(),
-        engramRoot: this.plugin.settings.engramRoot,
-        label: 'Dreams pre-run snapshot',
-        reason: 'obsidian-dreams-run',
-      });
-
-      // Deterministic pre-cleanup
-      const analyzer = new DreamsAnalyzer(this.plugin.memoryManager);
-      await analyzer.preCleanup();
-
-      // Dream start marker — an unmatched start without end signals an interrupted dream
-      await writeDreamStartEntry(this.plugin.memoryManager);
-
-      // Plan
-      const plan = await planDreams(
-        this.plugin.memoryManager,
-        () => analyzer.analyze(),
-        async (messages) => {
-          const maxTokens = estimateDreamMaxTokens(messages);
-          const result = await provider.complete(messages as ChatMessage[], {
-            model: selection.modelId,
-            temperature: 0,
-            maxTokens,
-          });
-          return {
-            content: result.content.trim(),
-            usage: result.usage,
-          };
-        },
-        { agentName, identitySummary },
-        async (messages) => {
-          const result = await provider.complete(messages as ChatMessage[], {
-            model: selection.modelId,
-            temperature: 0.7,
-            maxTokens: 512,
-          });
-          return { content: result.content.trim() };
-        },
-      );
-
-      this.latestPlan = plan;
-      this.report = plan.report;
-
-      // Apply actions
-      if (plan.actions.length > 0) {
-        const basePath = this.plugin.getVaultBasePath();
-        const config = {
-          ...defaultMemoryConfig(basePath, this.plugin.settings.vaultMode),
-          engramRoot: this.plugin.settings.engramRoot,
-          readPaths: this.plugin.settings.readPaths,
-        };
-
-        this.latestExecution = await executeDreamsActions(
-          plan.actions,
-          this.plugin.memoryManager,
-          this.plugin.fileAdapter,
-          config.basePath,
-          config.engramRoot,
-          config.archivePath,
-        );
-        this.latestRunSnapshot = snapshot;
-      }
-
-      // Record history
-      this.runHistory = await appendDreamsRunHistory(
-        this.plugin.fileAdapter,
-        this.plugin.getVaultBasePath(),
-        this.plugin.settings.engramRoot,
-        'working',
-        {
-          id: `dream-${new Date().toISOString().replace(/[:.]/g, '').replace('Z', 'Z')}`,
-          timestamp: new Date().toISOString(),
-          provider: selection.providerId,
-          model: selection.modelId,
-          usage: plan.usage,
-          dream: plan.dream,
-          actionCount: plan.actions.length,
-          reviewNoteCount: plan.reviewNotes.length,
-          executionMode: 'apply',
-          appliedActions: this.latestExecution?.applied,
-          skippedActions: this.latestExecution?.skipped,
-          reportSummary: {
-            memoryCount: plan.report.stateDistribution.total,
-            rememberedCount: plan.report.stateDistribution.counts.remembered ?? 0,
-            defaultCount: plan.report.stateDistribution.counts.default ?? 0,
-            threadCount: plan.report.threadHealth.totalCount,
-            threadGapCount: plan.report.threadCoverageGaps.length,
-            oversizedThreadCount: plan.report.threadHealth.oversizedThreads.length,
-            staleThreadCount: plan.report.threadHealth.staleThreads.length,
-            dataQualityIssueCount: plan.report.dataQualityIssues.length,
-            mergeCandidateCount: plan.report.mergeCandidates.length,
-            scratchEntryCount: plan.report.scratchHealth.entryCount,
-            staleScratchSessionCount: plan.report.scratchHealth.staleSessions.length,
-          },
-        },
-      );
-
-      // Leave a trace in scratch for the next fragment
-      if (this.latestExecution) {
-        await writeDreamScratchEntry(
-          this.plugin.memoryManager,
-          this.latestExecution,
-          plan.actions,
-          plan.report,
-          plan.dream,
-        );
-      }
-
-      this.snapshots = await this.createSnapshotManager().list();
-      const applied = this.latestExecution?.applied ?? 0;
-      const usageLabel = plan.usage?.total_tokens ? ` · ${plan.usage.total_tokens} tokens` : '';
-      new Notice(`Dream complete: ${applied} actions applied${usageLabel}`);
-    } catch (error) {
-      this.error = error instanceof Error ? error.message : String(error);
-      new Notice(`Dream failed: ${this.error}`);
-    } finally {
-      this.dreaming = false;
-      this.render();
+  private async runDream(selection: ModelOption): Promise<void> {
+    const provider = this.plugin.createProviderAdapter(selection.providerId);
+    if (provider === undefined) {
+      throw new Error(`Could not create provider adapter for ${selection.providerName}.`);
     }
+
+    const snapshotManager = this.createSnapshotManager();
+    const analyzer = new DreamsAnalyzer(this.plugin.memoryManager);
+    const snapshot = await snapshotManager.create({
+      vaultPath: this.plugin.getVaultBasePath(),
+      engramRoot: this.plugin.settings.engramRoot,
+      label: 'Dreams pre-run snapshot',
+      reason: 'obsidian-dreams-run',
+    });
+
+    await analyzer.preCleanup();
+    await writeDreamStartEntry(this.plugin.memoryManager);
+
+    const plan = await createDreamPlan({
+      selection,
+      manager: this.plugin.memoryManager,
+      analyzer,
+      provider,
+      narrativeMaxTokens: NARRATIVE_MAX_TOKENS,
+    });
+    this.latestPlan = plan;
+    const { report } = plan;
+    this.report = report;
+    this.latestExecution = await this.applyDreamPlan(plan, snapshot);
+    this.runHistory = await this.recordDreamRun(selection, plan);
+
+    if (this.latestExecution !== null) {
+      await writeDreamScratchEntry({
+        manager: this.plugin.memoryManager,
+        execution: this.latestExecution,
+        actions: plan.actions,
+        report: plan.report,
+        dream: plan.dream,
+      });
+    }
+
+    this.snapshots = await snapshotManager.list();
+    showNotice(buildDreamCompletionNotice(plan, this.latestExecution));
+  }
+
+  private async applyDreamPlan(
+    plan: DreamsPlanResult,
+    snapshot: SnapshotRecord,
+  ): Promise<DreamsExecutionResult | null> {
+    if (plan.actions.length === 0) {
+      return null;
+    }
+
+    const basePath = this.plugin.getVaultBasePath();
+    const config = {
+      ...defaultMemoryConfig(basePath, this.plugin.settings.vaultMode),
+      engramRoot: this.plugin.settings.engramRoot,
+      readPaths: this.plugin.settings.readPaths,
+    };
+
+    const execution = await executeDreamsActions({
+      actions: plan.actions,
+      manager: this.plugin.memoryManager,
+      adapter: this.plugin.fileAdapter,
+      vaultBasePath: config.basePath,
+      engramRoot: config.engramRoot,
+      archivePath: config.archivePath,
+    });
+    this.latestRunSnapshot = snapshot;
+    return execution;
+  }
+
+  private async recordDreamRun(
+    selection: ModelOption,
+    plan: DreamsPlanResult,
+  ): Promise<DreamsRunHistory> {
+    return await appendDreamsRunHistory(
+      this.plugin.fileAdapter,
+      {
+        basePath: this.plugin.getVaultBasePath(),
+        engramRoot: this.plugin.settings.engramRoot,
+        workingPath: 'working',
+        record: createDreamRunRecord(selection, plan, this.latestExecution),
+      },
+    );
   }
 
   private async handleCreateSnapshot(): Promise<void> {
@@ -700,20 +421,21 @@ export class EngramDreamsView extends ItemView {
         label: 'Manual snapshot from Dreams dashboard',
         reason: 'obsidian-dreams-ui',
       });
-      new Notice(`Snapshot created: ${snapshot.id}`);
+      showNotice(`Snapshot created: ${snapshot.id}`);
       await this.refresh();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      new Notice(`Snapshot failed: ${message}`);
+      showNotice(`Snapshot failed: ${message}`);
     }
   }
 
-  private async handleRestoreSnapshot(snapshot: SnapshotRecord): Promise<void> {
-    const confirmed = window.confirm(
-      `Restore ${snapshot.id}? The current Engram state will be replaced after a safety snapshot is created.`,
-    );
-    if (!confirmed) return;
+  private handleRestoreSnapshot(snapshot: SnapshotRecord): void {
+    showSnapshotRestoreConfirm(this.app, snapshot.id, () => {
+      void this.restoreSnapshot(snapshot);
+    });
+  }
 
+  private async restoreSnapshot(snapshot: SnapshotRecord): Promise<void> {
     try {
       const result = await this.createSnapshotManager().restore({
         snapshotIdOrPath: snapshot.id,
@@ -722,10 +444,10 @@ export class EngramDreamsView extends ItemView {
         label: `Pre-restore safety snapshot for ${snapshot.id}`,
         reason: 'obsidian-dreams-ui-restore',
       });
-      new Notice(
-        result.safetySnapshot
-          ? `Restored ${snapshot.id}. Safety snapshot: ${result.safetySnapshot.id}`
-          : `Restored ${snapshot.id}`,
+      showNotice(
+        result.safetySnapshot === undefined
+          ? `Restored ${snapshot.id}`
+          : `Restored ${snapshot.id}. Safety snapshot: ${result.safetySnapshot.id}`,
       );
       this.latestPlan = null;
       this.latestExecution = null;
@@ -734,7 +456,7 @@ export class EngramDreamsView extends ItemView {
       await this.refresh();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      new Notice(`Restore failed: ${message}`);
+      showNotice(`Restore failed: ${message}`);
     }
   }
 
@@ -746,87 +468,27 @@ export class EngramDreamsView extends ItemView {
     return path.join(this.plugin.getVaultBasePath(), '.snapshots', 'engram');
   }
 
-  private ensureSelection(options: ModelOption[] = this.getModelOptions()): void {
-    const currentExists = options.some(
-      (option) =>
-        option.providerId === this.selectedProviderId &&
-        option.modelId === this.selectedModelId,
+  private syncSelection(): ModelOption[] {
+    const options = getModelOptions(this.plugin.settings);
+    const selection = syncModelSelection(
+      this.plugin.settings,
+      {
+        providerId: this.selectedProviderId,
+        modelId: this.selectedModelId,
+      },
+      options,
     );
-    if (currentExists) return;
-
-    const activeProviderId = this.plugin.settings.activeProviderId;
-    const activeModelId = this.plugin.settings.providers[activeProviderId]?.defaultModel ?? '';
-    const preferred = options.find(
-      (option) => option.providerId === activeProviderId && option.modelId === activeModelId,
-    );
-    const fallback = preferred ?? options[0];
-
-    this.selectedProviderId = fallback?.providerId ?? '';
-    this.selectedModelId = fallback?.modelId ?? '';
-  }
-
-  private getModelOptions(): ModelOption[] {
-    const options: ModelOption[] = [];
-
-    for (const [providerId, cfg] of Object.entries(this.plugin.settings.providers)) {
-      const enabledModels = cfg.enabledModels ?? [];
-      for (const modelId of enabledModels) {
-        const modelName =
-          KNOWN_MODELS[providerId]?.find((model) => model.id === modelId)?.name ?? modelId;
-        options.push({
-          providerId,
-          providerName: cfg.name,
-          modelId,
-          modelName,
-        });
-      }
-    }
-
+    const { providerId, modelId } = selection;
+    this.selectedProviderId = providerId;
+    this.selectedModelId = modelId;
     return options;
   }
 
   private getSelectedOption(): ModelOption | null {
-    const options = this.getModelOptions();
-    this.ensureSelection(options);
-    return options.find(
-      (option) =>
-        option.providerId === this.selectedProviderId &&
-        option.modelId === this.selectedModelId,
-    ) ?? null;
+    const options = this.syncSelection();
+    return findSelectedOption(options, {
+      providerId: this.selectedProviderId,
+      modelId: this.selectedModelId,
+    });
   }
-
-  private formatLatestPlanMeta(): string {
-    const selected = this.getSelectedOption();
-    const providerLabel = selected
-      ? `${selected.providerName} · ${selected.modelName}`
-      : 'Unknown model';
-    const usageLabel = this.latestPlan?.usage?.total_tokens
-      ? ` · ${this.latestPlan.usage.total_tokens} tokens`
-      : '';
-    const executionLabel = this.latestExecution
-      ? ` · ${this.latestExecution.applied} actions applied`
-      : '';
-    return `${providerLabel}${usageLabel}${executionLabel}`;
-  }
-}
-
-function baseName(notePath: string): string {
-  return notePath.split('/').pop()?.replace(/\.md$/, '') ?? notePath;
-}
-
-function formatTimestamp(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString();
-}
-
-function formatBytes(value?: number): string {
-  if (!value || value <= 0) return '0 B';
-  if (value < 1024) return `${value} B`;
-  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
-  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function formatSigned(value: number): string {
-  return `${value > 0 ? '+' : ''}${value}`;
 }

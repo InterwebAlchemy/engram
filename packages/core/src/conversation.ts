@@ -1,7 +1,7 @@
 import * as yaml from 'yaml';
 import { MemoryState } from './types';
 import type { Message, ChatMessage, TokenBudget, PruneOptions, ConversationFrontmatter } from './types';
-import { VaultNote } from './vault';
+import type { VaultNote } from './vault';
 import { ContextBuilder } from './context';
 import { pruneMessages } from './prune';
 
@@ -14,12 +14,18 @@ export class Conversation {
   // ─── Mutation ─────────────────────────────────────────────────────────────
 
   addMessage(message: Message): void {
-    this.messages.push(message);
-    this.frontmatter.message_count = this.messages.length;
-    this.frontmatter.updated = new Date().toISOString();
+    const { messages, frontmatter } = this;
+    messages.push(message);
+    const { length: messageCount } = messages;
+    frontmatter.message_count = messageCount;
+    frontmatter.updated = new Date().toISOString();
 
-    if (message.provider && !this.frontmatter.providers.includes(message.provider)) {
-      this.frontmatter.providers.push(message.provider);
+    if (
+      message.provider !== undefined &&
+      message.provider.length > 0 &&
+      !frontmatter.providers.includes(message.provider)
+    ) {
+      frontmatter.providers.push(message.provider);
     }
   }
 
@@ -80,7 +86,11 @@ export class Conversation {
     const body = this.messages
       .map((m) => {
         if (m.role === 'assistant') {
-          const tag = m.model ? ` [${m.model}]` : m.provider ? ` [${m.provider}]` : '';
+          const tag = m.model !== undefined && m.model.length > 0
+            ? ` [${m.model}]`
+            : m.provider !== undefined && m.provider.length > 0
+              ? ` [${m.provider}]`
+              : '';
           return `## Assistant${tag}\n\n${m.content}`;
         }
         if (m.role === 'system') {
@@ -94,26 +104,42 @@ export class Conversation {
   }
 
   static fromVaultNote(note: VaultNote): Conversation {
-    const frontmatter = note.frontmatter as unknown as ConversationFrontmatter;
+    const frontmatter: ConversationFrontmatter = {
+      ...Conversation.defaultFrontmatter(),
+      ...note.frontmatter,
+      type: 'conversation',
+      providers: Array.isArray(note.frontmatter.providers)
+        ? note.frontmatter.providers.filter(
+          (provider): provider is string => typeof provider === 'string' && provider.length > 0,
+        )
+        : [],
+      message_count:
+        typeof note.frontmatter.message_count === 'number' ? note.frontmatter.message_count : 0,
+    };
     const messages: Message[] = [];
 
     // Split on headings, keeping the heading text
-    const sections = note.content.split(/(?=^## )/m).filter((s) => s.trim());
+    const sections = note.content
+      .split(/(?=^## )/mv)
+      .filter((section) => section.trim().length > 0);
 
     for (const section of sections) {
       const newline = section.indexOf('\n');
       if (newline === -1) continue;
 
-      const header = section.slice(0, newline).replace(/^## /, '').trim();
+      const header = section.slice(0, newline).replace(/^## /v, '').trim();
       const content = section.slice(newline + 1).trim();
 
       let role: Message['role'] = 'user';
-      let model: string | undefined;
+      let model: string | undefined = undefined;
 
       if (header.startsWith('Assistant')) {
         role = 'assistant';
-        const m = header.match(/\[([^\]]+)\]/);
-        if (m) model = m[1];
+        const modelMatch = /\[(?<model>[^\]]+)\]/v.exec(header);
+        if (modelMatch !== null) {
+          const [, capturedModel] = modelMatch;
+          model = capturedModel;
+        }
       } else if (header.toLowerCase() === 'system') {
         role = 'system';
       }
@@ -121,7 +147,7 @@ export class Conversation {
       messages.push({
         role,
         content,
-        timestamp: new Date(frontmatter.created ?? Date.now()),
+        timestamp: new Date(frontmatter.created),
         model,
         memoryState: MemoryState.Default,
       });

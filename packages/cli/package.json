@@ -1,0 +1,25 @@
+{
+  "name": "@interwebalchemy/engram-cli",
+  "version": "0.1.0",
+  "description": "Interactive CLI for configuring a new Engram vault and local harness setup",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "engram-cli": "dist/index.js"
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "lint": "eslint src --max-warnings=0",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "typescript": "^5.4.5"
+  },
+  "keywords": ["engram", "cli", "mcp", "obsidian"],
+  "license": "GPL-3.0-only"
+}

@@ -7,6 +7,8 @@ import type {
   DreamsProviderConfig,
 } from './types';
 
+const DEFAULT_MAX_TOKENS = 16000;
+
 export class OpenAICompatProvider implements DreamsProvider {
   private readonly client: OpenAI;
 
@@ -21,22 +23,25 @@ export class OpenAICompatProvider implements DreamsProvider {
     const response = await this.client.chat.completions.create({
       model: this.config.model,
       temperature: 0,
-      max_tokens: this.config.maxTokens ?? 16000,
+      max_tokens: this.config.maxTokens ?? DEFAULT_MAX_TOKENS,
       messages: messages.map<ChatCompletionMessageParam>((message) => ({
         role: message.role,
         content: message.content,
       })),
     });
 
+    const { usage } = response;
+
     return {
       content: response.choices[0]?.message?.content?.trim() ?? '',
-      usage: response.usage
-        ? {
-            prompt_tokens: response.usage.prompt_tokens ?? 0,
-            completion_tokens: response.usage.completion_tokens ?? 0,
-            total_tokens: response.usage.total_tokens ?? 0,
-          }
-        : undefined,
+      usage:
+        usage === undefined
+          ? undefined
+          : {
+              prompt_tokens: usage.prompt_tokens,
+              completion_tokens: usage.completion_tokens,
+              total_tokens: usage.total_tokens,
+            },
     };
   }
 }

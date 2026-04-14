@@ -1,50 +1,60 @@
-import { App, PluginSettingTab, SecretComponent, Setting } from 'obsidian';
+import { type App, PluginSettingTab, SecretComponent, Setting } from 'obsidian';
 import type EngramPlugin from './main';
 import { DEFAULT_SETTINGS, KNOWN_MODELS, BUILTIN_PROVIDER_IDS } from './constants';
 import type { ProviderSettings } from './constants';
 
+const MAX_MEMORY_COUNT = 50;
+const TEMPERATURE_MAX = 2;
+const TEMPERATURE_STEP = 0.1;
+const CONTEXT_WINDOW_DIVISOR = 1000;
+const DEFAULT_CUSTOM_PROVIDER_URL = 'http://localhost:11434';
+
 export class EngramSettingTab extends PluginSettingTab {
-  constructor(app: App, private plugin: EngramPlugin) {
+  constructor(app: App, private readonly plugin: EngramPlugin) {
     super(app, plugin);
   }
 
   display(): void {
-    const { containerEl } = this;
+    const {
+      containerEl,
+      plugin,
+    } = this;
+    const { settings } = plugin;
+    const { providers } = settings;
     containerEl.empty();
 
     // ─── Active Provider ──────────────────────────────────────────────────
 
     containerEl.createEl('h2', { text: 'Providers' });
 
-    const allProviderIds = Object.keys(this.plugin.settings.providers);
+    const allProviderIds = Object.keys(providers);
+    const builtinIds: readonly string[] = BUILTIN_PROVIDER_IDS;
     const customIds = allProviderIds.filter(
-      (id) => !(BUILTIN_PROVIDER_IDS as readonly string[]).includes(id),
+      (id) => !builtinIds.includes(id),
     );
 
     new Setting(containerEl)
       .setName('Active provider / model')
       .setDesc('Sets the default selection in the chat. You can also switch inline from the chat input.')
       .addDropdown((dd) => {
-        for (const id of allProviderIds) {
-          const cfg = this.plugin.settings.providers[id];
+        for (const [id, cfg] of Object.entries(providers)) {
           if (cfg.enabledModels.length === 0) continue;
           const sorted = [...cfg.enabledModels].sort((a, b) => {
-            const nameA = KNOWN_MODELS[id]?.find((m) => m.id === a)?.name ?? a;
-            const nameB = KNOWN_MODELS[id]?.find((m) => m.id === b)?.name ?? b;
+            const nameA = getModelName(id, a);
+            const nameB = getModelName(id, b);
             return nameA.localeCompare(nameB);
           });
           for (const modelId of sorted) {
-            const knownName = KNOWN_MODELS[id]?.find((m) => m.id === modelId)?.name;
-            dd.addOption(`${id}::${modelId}`, `${cfg.name} — ${knownName ?? modelId}`);
+            dd.addOption(`${id}::${modelId}`, `${cfg.name} — ${getModelName(id, modelId)}`);
           }
         }
-        const activeCfg = this.plugin.settings.providers[this.plugin.settings.activeProviderId];
-        dd.setValue(`${this.plugin.settings.activeProviderId}::${activeCfg?.defaultModel ?? ''}`);
+        const { activeProviderId } = settings;
+        const { [activeProviderId]: activeCfg } = providers;
+        dd.setValue(`${activeProviderId}::${activeCfg.defaultModel}`);
         dd.onChange(async (value) => {
-          const [providerId, modelId] = value.split('::');
+          const [providerId = '', modelId = ''] = value.split('::');
           this.plugin.settings.activeProviderId = providerId;
-          const cfg = this.plugin.settings.providers[providerId];
-          if (cfg) cfg.defaultModel = modelId;
+          providers[providerId].defaultModel = modelId;
           await this.plugin.saveSettings();
         });
       });
@@ -54,8 +64,6 @@ export class EngramSettingTab extends PluginSettingTab {
     containerEl.createEl('h3', { text: 'Built-in providers' });
 
     for (const id of BUILTIN_PROVIDER_IDS) {
-      const cfg = this.plugin.settings.providers[id];
-      if (!cfg) continue;
       this.renderProviderSection(containerEl, id, false);
     }
 
@@ -91,7 +99,7 @@ export class EngramSettingTab extends PluginSettingTab {
       )
       .addSlider((slider) =>
         slider
-          .setLimits(0, 50, 1)
+          .setLimits(0, MAX_MEMORY_COUNT, 1)
           .setValue(this.plugin.settings.maxMemoryCount)
           .setDynamicTooltip()
           .onChange(async (value) => {
@@ -111,8 +119,8 @@ export class EngramSettingTab extends PluginSettingTab {
             disabled: 'Disabled',
           })
           .setValue(this.plugin.settings.memoryExtractionMode)
-          .onChange(async (value: string) => {
-            this.plugin.settings.memoryExtractionMode = value as 'auto' | 'manual' | 'disabled';
+          .onChange(async (value) => {
+            this.plugin.settings.memoryExtractionMode = parseExtractionMode(value);
             await this.plugin.saveSettings();
           }),
       );
@@ -131,7 +139,9 @@ export class EngramSettingTab extends PluginSettingTab {
           .setPlaceholder('engram')
           .setValue(this.plugin.settings.engramRoot)
           .onChange(async (value) => {
-            this.plugin.settings.engramRoot = value || DEFAULT_SETTINGS.engramRoot;
+            this.plugin.settings.engramRoot = value.length === 0
+              ? DEFAULT_SETTINGS.engramRoot
+              : value;
             await this.plugin.saveSettings();
           }),
       );
@@ -174,7 +184,7 @@ export class EngramSettingTab extends PluginSettingTab {
       .setDesc('Leave the chat override empty to use this value.')
       .addSlider((slider) =>
         slider
-          .setLimits(0, 2, 0.1)
+          .setLimits(0, TEMPERATURE_MAX, TEMPERATURE_STEP)
           .setValue(this.plugin.settings.temperature)
           .setDynamicTooltip()
           .onChange(async (value) => {
@@ -191,7 +201,7 @@ export class EngramSettingTab extends PluginSettingTab {
           .setValue(String(this.plugin.settings.maxTokens))
           .onChange(async (value) => {
             const parsed = parseInt(value, 10);
-            if (!isNaN(parsed) && parsed > 0) {
+            if (!Number.isNaN(parsed) && parsed > 0) {
               this.plugin.settings.maxTokens = parsed;
               await this.plugin.saveSettings();
             }
@@ -206,8 +216,11 @@ export class EngramSettingTab extends PluginSettingTab {
     id: string,
     canRemove: boolean,
   ): void {
-    const cfg = this.plugin.settings.providers[id];
-    const isActive = id === this.plugin.settings.activeProviderId;
+    const { plugin } = this;
+    const { settings } = plugin;
+    const { providers, activeProviderId } = settings;
+    const { [id]: cfg } = providers;
+    const isActive = id === activeProviderId;
 
     const details = containerEl.createEl('details', { cls: 'engram-provider-details' });
     const summary = details.createEl('summary', { cls: 'engram-provider-summary' });
@@ -226,9 +239,12 @@ export class EngramSettingTab extends PluginSettingTab {
             .setButtonText('Remove')
             .setClass('mod-warning')
             .onClick(async () => {
-              delete this.plugin.settings.providers[id];
+              this.plugin.settings.providers = removeProvider(
+                this.plugin.settings.providers,
+                id,
+              );
               this.plugin.providers.delete(id);
-              if (this.plugin.settings.activeProviderId === id) {
+              if (activeProviderId === id) {
                 this.plugin.settings.activeProviderId = 'openrouter';
               }
               await this.plugin.saveSettings();
@@ -298,13 +314,13 @@ export class EngramSettingTab extends PluginSettingTab {
       )
       .addButton((btn) =>
         btn.setButtonText('Add').onClick(async () => {
-          if (!newName) return;
-          const id = newName.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-          if (this.plugin.settings.providers[id]) return;
+          if (newName.length === 0) return;
+          const id = slugifyProviderId(newName);
+          if (Object.hasOwn(this.plugin.settings.providers, id)) return;
           const newProvider: ProviderSettings = {
             id,
             name: newName,
-            baseUrl: newUrl || 'http://localhost:11434',
+            baseUrl: newUrl.length === 0 ? DEFAULT_CUSTOM_PROVIDER_URL : newUrl,
             defaultModel: '',
             enabledModels: [],
             customModels: [],
@@ -321,10 +337,13 @@ export class EngramSettingTab extends PluginSettingTab {
   // ─── Model management section ──────────────────────────────────────────────
 
   private renderModelSection(containerEl: HTMLElement, id: string): void {
-    const cfg = this.plugin.settings.providers[id];
+    const { plugin } = this;
+    const { settings } = plugin;
+    const { providers } = settings;
+    const { [id]: cfg } = providers;
     const knownModels = KNOWN_MODELS[id] ?? [];
 
-    const getModelName = (mid: string) =>
+    const getModelNameForProvider = (mid: string): string =>
       knownModels.find((m) => m.id === mid)?.name ?? mid;
 
     containerEl.createEl('h4', { text: 'Models' });
@@ -333,9 +352,9 @@ export class EngramSettingTab extends PluginSettingTab {
     const sortedKnown = [...knownModels].sort((a, b) => a.name.localeCompare(b.name));
 
     for (const model of sortedKnown) {
-      const desc = model.contextWindow
-        ? `${model.id} · ${Math.round(model.contextWindow / 1000)}K ctx`
-        : model.id;
+      const desc = model.contextWindow === undefined
+        ? model.id
+        : `${model.id} · ${Math.round(model.contextWindow / CONTEXT_WINDOW_DIVISOR)}K ctx`;
 
       new Setting(containerEl)
         .setName(model.name)
@@ -346,7 +365,7 @@ export class EngramSettingTab extends PluginSettingTab {
               if (!cfg.enabledModels.includes(model.id)) cfg.enabledModels.push(model.id);
             } else {
               cfg.enabledModels = cfg.enabledModels.filter((m) => m !== model.id);
-              if (cfg.defaultModel === model.id) cfg.defaultModel = cfg.enabledModels[0] ?? '';
+              if (cfg.defaultModel === model.id) cfg.defaultModel = firstModelOrEmpty(cfg.enabledModels);
             }
             await this.plugin.saveSettings();
             this.plugin.refreshChatView();
@@ -369,7 +388,7 @@ export class EngramSettingTab extends PluginSettingTab {
             .onClick(async () => {
               cfg.customModels = cfg.customModels.filter((m) => m !== customId);
               cfg.enabledModels = cfg.enabledModels.filter((m) => m !== customId);
-              if (cfg.defaultModel === customId) cfg.defaultModel = cfg.enabledModels[0] ?? '';
+              if (cfg.defaultModel === customId) cfg.defaultModel = firstModelOrEmpty(cfg.enabledModels);
               await this.plugin.saveSettings();
               this.plugin.refreshChatView();
               this.display();
@@ -391,10 +410,12 @@ export class EngramSettingTab extends PluginSettingTab {
       )
       .addButton((btn) =>
         btn.setButtonText('Add').onClick(async () => {
-          if (!newModelId || cfg.customModels.includes(newModelId)) return;
+          if (newModelId.length === 0 || cfg.customModels.includes(newModelId)) return;
           cfg.customModels.push(newModelId);
           cfg.enabledModels.push(newModelId);
-          if (!cfg.defaultModel) cfg.defaultModel = newModelId;
+          if (cfg.defaultModel.length === 0) {
+            cfg.defaultModel = newModelId;
+          }
           newModelId = '';
           await this.plugin.saveSettings();
           this.plugin.refreshChatView();
@@ -404,7 +425,7 @@ export class EngramSettingTab extends PluginSettingTab {
 
     // Default model dropdown (from enabled models, sorted alpha) or text fallback
     const sortedEnabled = [...cfg.enabledModels].sort((a, b) =>
-      getModelName(a).localeCompare(getModelName(b)),
+      getModelNameForProvider(a).localeCompare(getModelNameForProvider(b)),
     );
 
     if (sortedEnabled.length > 0) {
@@ -412,8 +433,8 @@ export class EngramSettingTab extends PluginSettingTab {
         .setName('Default model')
         .setDesc('Pre-selected when switching to this provider in the chat.')
         .addDropdown((dd) => {
-          for (const mid of sortedEnabled) dd.addOption(mid, getModelName(mid));
-          dd.setValue(cfg.defaultModel || sortedEnabled[0]);
+          for (const mid of sortedEnabled) dd.addOption(mid, getModelNameForProvider(mid));
+          dd.setValue(cfg.defaultModel.length > 0 ? cfg.defaultModel : firstModelOrEmpty(sortedEnabled));
           dd.onChange(async (value) => {
             cfg.defaultModel = value;
             await this.plugin.saveSettings();
@@ -435,4 +456,36 @@ export class EngramSettingTab extends PluginSettingTab {
         );
     }
   }
+}
+
+function parseExtractionMode(value: string): 'auto' | 'manual' | 'disabled' {
+  switch (value) {
+    case 'auto':
+    case 'disabled':
+      return value;
+    default:
+      return 'manual';
+  }
+}
+
+function slugifyProviderId(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/gv, '-');
+}
+
+function firstModelOrEmpty(modelIds: string[]): string {
+  return modelIds[0] ?? '';
+}
+
+function getModelName(providerId: string, modelId: string): string {
+  const knownModels = KNOWN_MODELS[providerId] ?? [];
+  return knownModels.find((model) => model.id === modelId)?.name ?? modelId;
+}
+
+function removeProvider(
+  providers: Record<string, ProviderSettings>,
+  providerId: string,
+): Record<string, ProviderSettings> {
+  return Object.fromEntries(
+    Object.entries(providers).filter(([id]) => id !== providerId),
+  );
 }

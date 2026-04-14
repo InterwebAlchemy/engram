@@ -8,9 +8,27 @@ import type {
   StreamChunk,
   Model,
 } from './types';
+import {
+  getNumber,
+  getRecord,
+  getRecords,
+  getString,
+  isRecord,
+  streamSsePayloads,
+} from './provider-utils';
 
 const ANTHROPIC_API_URL = 'https://api.anthropic.com';
 const ANTHROPIC_VERSION = '2023-06-01';
+const THINKING_MIN_TOKENS = 1280;
+const DEFAULT_MAX_TOKENS = 16000;
+const MAX_BUDGET_TOKENS = 10000;
+const BUDGET_RATIO = 0.8;
+
+const ANTHROPIC_MODELS: Model[] = [
+  { id: 'claude-opus-4-6', name: 'Claude Opus 4.6', contextWindow: 200000 },
+  { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6', contextWindow: 200000 },
+  { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5', contextWindow: 200000 },
+];
 
 /**
  * Adapter for the Anthropic Messages API.
@@ -24,15 +42,22 @@ export class AnthropicAdapter implements ProviderAdapter {
   readonly id: string;
   readonly name: string;
   private apiKey: string;
+  private readonly models = ANTHROPIC_MODELS;
 
   constructor(config: ProviderConfig) {
-    this.id = config.id;
-    this.name = config.name;
-    this.apiKey = config.apiKey ?? '';
+    const {
+      id,
+      name,
+      apiKey = '',
+    } = config;
+    this.id = id;
+    this.name = name;
+    this.apiKey = apiKey;
   }
 
   updateConfig(config: Partial<ProviderConfig>): void {
-    if (config.apiKey !== undefined) this.apiKey = config.apiKey;
+    const { apiKey } = config;
+    if (apiKey !== undefined) this.apiKey = apiKey;
   }
 
   // ─── Completion ─────────────────────────────────────────────────────────
@@ -41,7 +66,7 @@ export class AnthropicAdapter implements ProviderAdapter {
     messages: ChatMessage[],
     config: CompletionConfig,
   ): Promise<CompletionResult> {
-    const body = this.buildRequestBody(messages, config, false);
+    const body = buildAnthropicRequestBody(messages, config, false);
     const response = await requestUrl({
       url: `${ANTHROPIC_API_URL}/v1/messages`,
       method: 'POST',
@@ -49,21 +74,7 @@ export class AnthropicAdapter implements ProviderAdapter {
       body: JSON.stringify(body),
     });
 
-    const data = response.json;
-    const content =
-      data.content?.map((b: { text?: string }) => b.text ?? '').join('') ?? '';
-
-    return {
-      content,
-      model: data.model ?? config.model,
-      usage: data.usage
-        ? {
-            prompt_tokens: data.usage.input_tokens,
-            completion_tokens: data.usage.output_tokens,
-            total_tokens: data.usage.input_tokens + data.usage.output_tokens,
-          }
-        : undefined,
-    };
+    return parseAnthropicCompletionResponse(response.json, config.model);
   }
 
   // ─── Streaming ──────────────────────────────────────────────────────────
@@ -73,7 +84,7 @@ export class AnthropicAdapter implements ProviderAdapter {
     config: CompletionConfig,
     signal?: AbortSignal,
   ): AsyncIterable<StreamChunk> {
-    const body = this.buildRequestBody(messages, config, true);
+    const body = buildAnthropicRequestBody(messages, config, true);
 
     const response = await fetch(`${ANTHROPIC_API_URL}/v1/messages`, {
       method: 'POST',
@@ -87,49 +98,21 @@ export class AnthropicAdapter implements ProviderAdapter {
       throw new Error(`Anthropic API error (${response.status}): ${error}`);
     }
 
-    const reader = response.body?.getReader();
-    if (!reader) throw new Error('No response body');
+    if (response.body === null) {
+      throw new Error('No response body');
+    }
 
-    const decoder = new TextDecoder();
-    let buffer = '';
-
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() ?? '';
-
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed.startsWith('data: ')) continue;
-          const payload = trimmed.slice(6);
-
-          try {
-            const event = JSON.parse(payload);
-            if (event.type === 'content_block_delta') {
-              const deltaType = event.delta?.type;
-              if (deltaType === 'thinking_delta') {
-                const thinking = event.delta?.thinking ?? '';
-                if (thinking) yield { content: '', reasoning: thinking, done: false };
-              } else {
-                // text_delta or legacy shape
-                const text = event.delta?.text ?? '';
-                if (text) yield { content: text, done: false };
-              }
-            } else if (event.type === 'message_stop') {
-              yield { content: '', done: true };
-              return;
-            }
-          } catch {
-            // Skip malformed events
-          }
-        }
+    for await (const payload of streamSsePayloads(response.body)) {
+      const chunk = parseAnthropicStreamChunk(payload);
+      if (chunk === null) {
+        continue;
       }
-    } finally {
-      reader.releaseLock();
+      if (chunk.done) {
+        yield chunk;
+        return;
+      }
+
+      yield chunk;
     }
 
     yield { content: '', done: true };
@@ -138,13 +121,7 @@ export class AnthropicAdapter implements ProviderAdapter {
   // ─── Model listing ──────────────────────────────────────────────────────
 
   async listModels(): Promise<Model[]> {
-    // Anthropic doesn't expose a /v1/models endpoint.
-    // Return known models statically; users can override via settings.
-    return [
-      { id: 'claude-opus-4-6', name: 'Claude Opus 4.6', contextWindow: 200000 },
-      { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6', contextWindow: 200000 },
-      { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5', contextWindow: 200000 },
-    ];
+    return await Promise.resolve(this.models);
   }
 
   // ─── Private ────────────────────────────────────────────────────────────
@@ -157,48 +134,127 @@ export class AnthropicAdapter implements ProviderAdapter {
     };
   }
 
-  private buildRequestBody(
-    messages: ChatMessage[],
-    config: CompletionConfig,
-    stream: boolean,
-  ): Record<string, unknown> {
-    // Extract system messages — Anthropic requires them as a top-level field
-    const systemParts: string[] = [];
-    const conversationMessages: Array<{ role: string; content: string }> = [];
+}
 
-    for (const m of messages) {
-      if (m.role === 'system') {
-        systemParts.push(m.content);
-      } else {
-        conversationMessages.push({ role: m.role, content: m.content });
-      }
-    }
+function buildAnthropicRequestBody(
+  messages: ChatMessage[],
+  config: CompletionConfig,
+  stream: boolean,
+): Record<string, unknown> {
+  const {
+    systemMessages,
+    conversationMessages,
+  } = splitAnthropicMessages(messages);
+  const maxTokens = config.maxTokens ?? DEFAULT_MAX_TOKENS;
+  const useThinking = maxTokens >= THINKING_MIN_TOKENS;
+  const budgetTokens = Math.min(MAX_BUDGET_TOKENS, Math.floor(maxTokens * BUDGET_RATIO));
 
-    const maxTokens = config.maxTokens ?? 16000;
-    // Anthropic requires budget_tokens >= 1024 when thinking is enabled.
-    // For small maxTokens (narrative calls, short completions) skip thinking
-    // entirely so the request doesn't 400, and allow a custom temperature.
-    const thinkingMinTokens = 1280;
-    const useThinking = maxTokens >= thinkingMinTokens;
-    const budgetTokens = Math.min(10000, Math.floor(maxTokens * 0.8));
-
-    const body: Record<string, unknown> = {
-      model: config.model,
-      messages: conversationMessages,
-      max_tokens: maxTokens,
-      stream,
-      ...(useThinking
-        ? {
-            thinking: { type: 'enabled', budget_tokens: budgetTokens },
-            // temperature must be 1 (or omitted) when extended thinking is enabled
-            temperature: 1,
-          }
+  const body: Record<string, unknown> = {
+    model: config.model,
+    messages: conversationMessages,
+    max_tokens: maxTokens,
+    stream,
+    ...(useThinking
+      ? {
+          thinking: { type: 'enabled', budget_tokens: budgetTokens },
+          temperature: 1,
+        }
         : {
             temperature: config.temperature ?? 1,
           }),
-    };
-    if (systemParts.length > 0) body.system = systemParts.join('\n\n');
-    if (config.topP !== undefined) body.top_p = config.topP;
-    return body;
+  };
+  if (systemMessages.length > 0) body.system = systemMessages.join('\n\n');
+  const { topP } = config;
+  if (topP !== undefined) body.top_p = topP;
+  return body;
+}
+
+function splitAnthropicMessages(messages: ChatMessage[]): {
+  systemMessages: string[];
+  conversationMessages: Array<{ role: string; content: string }>;
+} {
+  const systemMessages: string[] = [];
+  const conversationMessages: Array<{ role: string; content: string }> = [];
+
+  for (const { role, content } of messages) {
+    if (role === 'system') {
+      systemMessages.push(content);
+    } else {
+      conversationMessages.push({ role, content });
+    }
   }
+
+  return { systemMessages, conversationMessages };
+}
+
+function parseAnthropicCompletionResponse(
+  raw: unknown,
+  fallbackModel: string,
+): CompletionResult {
+  const response = isRecord(raw) ? raw : {};
+  const content = getRecords(response, 'content')
+    .map((block) => getString(block, 'text') ?? '')
+    .join('');
+  const model = getString(response, 'model') ?? fallbackModel;
+  const usageRecord = getRecord(response, 'usage');
+  return {
+    content,
+    model,
+    usage: usageRecord === undefined ? undefined : parseAnthropicUsage(usageRecord),
+  };
+}
+
+function parseAnthropicUsage(
+  usageRecord: Record<string, unknown>,
+): CompletionResult['usage'] | undefined {
+  const promptTokens = getNumber(usageRecord, 'input_tokens');
+  const completionTokens = getNumber(usageRecord, 'output_tokens');
+  if (promptTokens === undefined || completionTokens === undefined) {
+    return undefined;
+  }
+
+  return {
+    prompt_tokens: promptTokens,
+    completion_tokens: completionTokens,
+    total_tokens: promptTokens + completionTokens,
+  };
+}
+
+function parseAnthropicStreamChunk(payload: string): StreamChunk | null {
+  try {
+    const parsed: unknown = JSON.parse(payload);
+    if (!isRecord(parsed)) {
+      return null;
+    }
+
+    const eventType = getString(parsed, 'type');
+    if (eventType === 'message_stop') {
+      return { content: '', done: true };
+    }
+    if (eventType !== 'content_block_delta') {
+      return null;
+    }
+
+    const delta = getRecord(parsed, 'delta');
+    if (delta === undefined) {
+      return null;
+    }
+
+    return parseAnthropicDeltaChunk(delta);
+  } catch {
+    return null;
+  }
+}
+
+function parseAnthropicDeltaChunk(
+  delta: Record<string, unknown>,
+): StreamChunk | null {
+  const deltaType = getString(delta, 'type');
+  if (deltaType === 'thinking_delta') {
+    const thinking = getString(delta, 'thinking') ?? '';
+    return thinking.length === 0 ? null : { content: '', reasoning: thinking, done: false };
+  }
+
+  const text = getString(delta, 'text') ?? '';
+  return text.length === 0 ? null : { content: text, done: false };
 }

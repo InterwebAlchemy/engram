@@ -1,36 +1,38 @@
-import { ItemView, WorkspaceLeaf, setIcon, MarkdownRenderer } from 'obsidian';
+import { ItemView, type WorkspaceLeaf, setIcon, MarkdownRenderer } from 'obsidian';
 import {
   MemoryState,
   Conversation,
-  pruneMessages,
 } from '@interwebalchemy/engram-core';
-import type { Message, ChatMessage } from '@interwebalchemy/engram-core';
+import type { Message } from '@interwebalchemy/engram-core';
 import type EngramPlugin from '../main';
-import type { StreamChunk, CompletionConfig } from '../providers/types';
-import { Ciph3rTextAnimator } from '../utils/ciph3r';
-import { CHAT_VIEW_TYPE, KNOWN_MODELS } from '../constants';
+import type { ProviderAdapter } from '../providers/types';
+import { CHAT_VIEW_TYPE } from '../constants';
+import {
+  CHAT_REFRESH_INTERVAL_MS,
+  CHAT_VIEW_ICON,
+  CHAT_VIEW_TITLE,
+  getModelDisplayName,
+  getReasoning,
+  getRoleLabel,
+  nextMemoryState,
+  parseProviderModelValue,
+} from './chat-view-helpers';
+import {
+  createCompletionRequest,
+  createUserMessage,
+} from './chat-view-request';
+import { streamAssistantReply } from './chat-view-stream';
 
-/** Extract content from inline `<think>` or `<thinking>` blocks in model output. */
-function parseThinkContent(raw: string): { content: string; reasoning: string } {
-  const openRe = /^[\s\S]*?<think(?:ing)?>[ \t]*/i;
-  const openMatch = raw.match(openRe);
-  if (!openMatch) return { content: raw, reasoning: '' };
-
-  const afterOpen = raw.slice(openMatch[0].length);
-  const closeMatch = afterOpen.match(/^([\s\S]*?)<\/think(?:ing)?>[ \t]*/i);
-  if (!closeMatch) {
-    // Tag not yet closed — treat everything after open tag as reasoning, no content yet
-    return { content: '', reasoning: afterOpen };
-  }
-
-  return {
-    content: afterOpen.slice(closeMatch[0].length).trimStart(),
-    reasoning: closeMatch[1].trim(),
-  };
+interface SelectedProvider {
+  readonly provider: ProviderAdapter;
+  readonly selectedModel: string;
 }
 
 export class EngramChatView extends ItemView {
-  private plugin: EngramPlugin;
+  private readonly plugin: EngramPlugin;
+  private readonly viewType = CHAT_VIEW_TYPE;
+  private readonly displayText = CHAT_VIEW_TITLE;
+  private readonly iconName = CHAT_VIEW_ICON;
   private abortController: AbortController | null = null;
   private isStreaming = false;
 
@@ -55,21 +57,24 @@ export class EngramChatView extends ItemView {
   }
 
   getViewType(): string {
-    return CHAT_VIEW_TYPE;
+    return this.viewType;
   }
 
   getDisplayText(): string {
-    return 'Engram Chat';
+    return this.displayText;
   }
 
   getIcon(): string {
-    return 'brain';
+    return this.iconName;
   }
 
   // ─── Lifecycle ────────────────────────────────────────────────────────
 
   async onOpen(): Promise<void> {
-    const container = this.containerEl.children[1] as HTMLElement;
+    const container = this.containerEl.children.item(1);
+    if (!(container instanceof HTMLElement)) {
+      throw new Error('Chat view container was not available.');
+    }
     container.empty();
     container.addClass('engram-chat-container');
 
@@ -77,10 +82,12 @@ export class EngramChatView extends ItemView {
     this.messagesContainer = container.createDiv({ cls: 'engram-messages' });
     this.renderInputArea(container);
     this.renderMessages();
+    await Promise.resolve();
   }
 
   async onClose(): Promise<void> {
     this.cancelStream();
+    await Promise.resolve();
   }
 
   /** Re-render messages and rebuild the model selector. */
@@ -111,13 +118,17 @@ export class EngramChatView extends ItemView {
       attr: { 'aria-label': 'Save conversation' },
     });
     setIcon(saveBtn, 'save');
-    saveBtn.addEventListener('click', () => this.plugin.saveCurrentConversation());
+    saveBtn.addEventListener('click', () => {
+      void this.plugin.saveCurrentConversation();
+    });
   }
 
   // ─── Input area ───────────────────────────────────────────────────────
 
   private renderInputArea(parent: HTMLElement): void {
     const inputContainer = parent.createDiv({ cls: 'engram-input-container' });
+    const { plugin } = this;
+    const { settings } = plugin;
 
     this.inputEl = inputContainer.createEl('textarea', {
       cls: 'engram-input',
@@ -126,7 +137,7 @@ export class EngramChatView extends ItemView {
     this.inputEl.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
-        this.handleSend();
+        void this.handleSend();
       }
     });
 
@@ -155,9 +166,14 @@ export class EngramChatView extends ItemView {
         rows: '3',
       },
     });
-    this.systemPromptEl.value = this.convSystemPrompt;
-    this.systemPromptEl.addEventListener('input', () => {
-      this.convSystemPrompt = this.systemPromptEl.value;
+    const {
+      convSystemPrompt,
+      systemPromptEl,
+    } = this;
+    systemPromptEl.value = convSystemPrompt;
+    systemPromptEl.addEventListener('input', () => {
+      const { value } = systemPromptEl;
+      this.convSystemPrompt = value;
     });
 
     // Temperature + Max tokens side-by-side
@@ -177,12 +193,17 @@ export class EngramChatView extends ItemView {
         step: '0.1',
         min: '0',
         max: '2',
-        placeholder: `default (${this.plugin.settings.temperature})`,
+        placeholder: `default (${settings.temperature})`,
       },
     });
-    this.temperatureEl.value = this.convTemperature;
-    this.temperatureEl.addEventListener('input', () => {
-      this.convTemperature = this.temperatureEl.value;
+    const {
+      convTemperature,
+      temperatureEl,
+    } = this;
+    temperatureEl.value = convTemperature;
+    temperatureEl.addEventListener('input', () => {
+      const { value } = temperatureEl;
+      this.convTemperature = value;
     });
 
     const tokensGroup = numRow.createDiv({ cls: 'engram-params-field' });
@@ -198,12 +219,17 @@ export class EngramChatView extends ItemView {
         type: 'number',
         step: '1',
         min: '1',
-        placeholder: `default (${this.plugin.settings.maxTokens})`,
+        placeholder: `default (${settings.maxTokens})`,
       },
     });
-    this.maxTokensEl.value = this.convMaxTokens;
-    this.maxTokensEl.addEventListener('input', () => {
-      this.convMaxTokens = this.maxTokensEl.value;
+    const {
+      convMaxTokens,
+      maxTokensEl,
+    } = this;
+    maxTokensEl.value = convMaxTokens;
+    maxTokensEl.addEventListener('input', () => {
+      const { value } = maxTokensEl;
+      this.convMaxTokens = value;
     });
 
     // ── Footer: model selector + send/cancel ──────────────────────────
@@ -214,14 +240,18 @@ export class EngramChatView extends ItemView {
       attr: { 'aria-label': 'Provider / model' },
     });
     this.refreshCombinedSelect();
-    this.combinedModelSelect.addEventListener('change', () => {
-      const [providerId, modelId] = this.combinedModelSelect.value.split('::');
-      const cfg = this.plugin.settings.providers[providerId];
-      if (cfg) {
-        this.plugin.settings.activeProviderId = providerId;
-        cfg.defaultModel = modelId;
-        this.plugin.saveSettings();
-      }
+    const { combinedModelSelect } = this;
+    combinedModelSelect.addEventListener('change', () => {
+      const { providerId, modelId } = parseProviderModelValue(combinedModelSelect.value);
+      const { plugin: currentPlugin } = this;
+      const { settings: currentSettings } = currentPlugin;
+      const {
+        providers,
+      } = currentSettings;
+      const { [providerId]: cfg } = providers;
+      currentSettings.activeProviderId = providerId;
+      cfg.defaultModel = modelId;
+      void currentPlugin.saveSettings();
     });
 
     const btnGroup = footer.createDiv({ cls: 'engram-input-buttons' });
@@ -230,20 +260,22 @@ export class EngramChatView extends ItemView {
       cls: 'engram-send-btn',
       text: 'Send',
     });
-    this.sendBtn.addEventListener('click', () => this.handleSend());
+    this.sendBtn.addEventListener('click', () => {
+      void this.handleSend();
+    });
 
     this.cancelBtn = btnGroup.createEl('button', {
       cls: 'engram-cancel-btn',
       text: 'Cancel',
     });
     this.cancelBtn.style.display = 'none';
-    this.cancelBtn.addEventListener('click', () => this.cancelStream());
+    this.cancelBtn.addEventListener('click', () => { this.cancelStream(); });
 
     this.registerInterval(
       window.setInterval(() => {
         this.sendBtn.style.display = this.isStreaming ? 'none' : '';
         this.cancelBtn.style.display = this.isStreaming ? '' : 'none';
-      }, 100),
+      }, CHAT_REFRESH_INTERVAL_MS),
     );
   }
 
@@ -253,44 +285,48 @@ export class EngramChatView extends ItemView {
     this.convSystemPrompt = '';
     this.convTemperature = '';
     this.convMaxTokens = '';
-    if (this.systemPromptEl) this.systemPromptEl.value = '';
-    if (this.temperatureEl) this.temperatureEl.value = '';
-    if (this.maxTokensEl) this.maxTokensEl.value = '';
+    this.systemPromptEl.value = '';
+    this.temperatureEl.value = '';
+    this.maxTokensEl.value = '';
   }
 
   // ─── Combined provider+model select ───────────────────────────────────
 
   refreshCombinedSelect(): void {
-    if (!this.combinedModelSelect) return;
+    const { combinedModelSelect } = this;
+    const { value: currentValue } = combinedModelSelect;
+    combinedModelSelect.empty();
 
-    const currentValue = this.combinedModelSelect.value;
-    this.combinedModelSelect.empty();
-
-    const activeId = this.plugin.settings.activeProviderId;
-    const activeModel = this.plugin.settings.providers[activeId]?.defaultModel ?? '';
-    const preferredValue = currentValue || `${activeId}::${activeModel}`;
+    const { plugin } = this;
+    const { settings } = plugin;
+    const {
+      activeProviderId: activeId,
+      providers,
+    } = settings;
+    const { [activeId]: activeProvider } = providers;
+    const { defaultModel: activeModel } = activeProvider;
+    const preferredValue = currentValue.length > 0 ? currentValue : `${activeId}::${activeModel}`;
 
     let hasAnyModel = false;
     let firstOptionValue = '';
 
-    for (const [id, provider] of this.plugin.providers) {
-      const cfg = this.plugin.settings.providers[id];
-      if (!cfg || cfg.enabledModels.length === 0) continue;
+    for (const [id, provider] of plugin.providers) {
+      const { [id]: cfg } = providers;
+      if (cfg.enabledModels.length === 0) continue;
 
-      const group = this.combinedModelSelect.createEl('optgroup', {
+      const group = combinedModelSelect.createEl('optgroup', {
         attr: { label: provider.name },
       });
 
       // Sort models alphabetically within each provider group
       const sorted = [...cfg.enabledModels].sort((a, b) => {
-        const nameA = KNOWN_MODELS[id]?.find((m) => m.id === a)?.name ?? a;
-        const nameB = KNOWN_MODELS[id]?.find((m) => m.id === b)?.name ?? b;
+        const nameA = getModelDisplayName(id, a);
+        const nameB = getModelDisplayName(id, b);
         return nameA.localeCompare(nameB);
       });
 
       for (const modelId of sorted) {
-        const knownName = KNOWN_MODELS[id]?.find((m) => m.id === modelId)?.name;
-        const displayName = knownName ?? modelId;
+        const displayName = getModelDisplayName(id, modelId);
         const value = `${id}::${modelId}`;
         group.createEl('option', { value, text: displayName });
 
@@ -302,18 +338,18 @@ export class EngramChatView extends ItemView {
     }
 
     if (!hasAnyModel) {
-      this.combinedModelSelect.createEl('option', {
+      combinedModelSelect.createEl('option', {
         value: '',
         text: 'No models — configure in Settings',
       });
-      this.combinedModelSelect.disabled = true;
+      combinedModelSelect.disabled = true;
       return;
     }
 
-    this.combinedModelSelect.disabled = false;
+    combinedModelSelect.disabled = false;
 
     const valueToSelect = this.optionExists(preferredValue) ? preferredValue : firstOptionValue;
-    this.combinedModelSelect.value = valueToSelect;
+    combinedModelSelect.value = valueToSelect;
   }
 
   private optionExists(value: string): boolean {
@@ -323,11 +359,13 @@ export class EngramChatView extends ItemView {
   // ─── Message rendering ────────────────────────────────────────────────
 
   private renderMessages(): void {
-    this.messagesContainer.empty();
-    for (let i = 0; i < this.plugin.conversation.messages.length; i++) {
-      this.renderMessage(this.plugin.conversation.messages[i], i);
+    const { messagesContainer } = this;
+    messagesContainer.empty();
+    for (const [index, message] of this.plugin.conversation.messages.entries()) {
+      this.renderMessage(message, index);
     }
-    this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
+    const { scrollHeight } = messagesContainer;
+    messagesContainer.scrollTop = scrollHeight;
   }
 
   private renderMessage(msg: Message, index: number): void {
@@ -336,223 +374,127 @@ export class EngramChatView extends ItemView {
     });
 
     const header = bubble.createDiv({ cls: 'engram-message-header' });
-    const roleLabel =
-      msg.role === 'assistant'
-        ? `Assistant${msg.model ? ` [${msg.model}]` : ''}`
-        : msg.role === 'system'
-          ? 'System'
-          : 'You';
-    header.createSpan({ cls: 'engram-message-role', text: roleLabel });
+    header.createSpan({ cls: 'engram-message-role', text: getRoleLabel(msg) });
 
     const badge = header.createSpan({
       cls: `engram-memory-badge engram-memory-${msg.memoryState}`,
-      text: msg.memoryState !== MemoryState.Default ? msg.memoryState : '',
+      text: msg.memoryState === MemoryState.Default ? '' : msg.memoryState,
     });
-    badge.addEventListener('click', () => this.cycleMemoryState(index));
+    badge.addEventListener('click', () => {
+      this.cycleMemoryState(index);
+    });
 
-    const reasoning = msg.metadata?.reasoning as string | undefined;
-    if (reasoning) {
+    const reasoning = getReasoning(msg.metadata);
+    if (reasoning !== undefined) {
       const details = bubble.createEl('details', { cls: 'engram-reasoning-details' });
       details.createEl('summary', { cls: 'engram-reasoning-summary', text: 'Reasoning' });
       const reasoningContent = details.createDiv({ cls: 'engram-reasoning-content' });
-      MarkdownRenderer.render(this.app, reasoning, reasoningContent, '', this.plugin);
+      void MarkdownRenderer.render(this.app, reasoning, reasoningContent, '', this.plugin);
     }
 
     const content = bubble.createDiv({ cls: 'engram-message-content' });
-    MarkdownRenderer.render(this.app, msg.content, content, '', this.plugin);
+    void MarkdownRenderer.render(this.app, msg.content, content, '', this.plugin);
   }
 
   private cycleMemoryState(index: number): void {
-    const msg = this.plugin.conversation.messages[index];
-    const states = [
-      MemoryState.Default,
-      MemoryState.Core,
-      MemoryState.Remembered,
-      MemoryState.Forgotten,
-    ];
-    const next = states[(states.indexOf(msg.memoryState) + 1) % states.length];
-    this.plugin.conversation.setMessageState(index, next);
+    const { plugin } = this;
+    const { conversation } = plugin;
+    const msg = conversation.messages.at(index);
+    if (msg === undefined) {
+      return;
+    }
+    const next = nextMemoryState(msg.memoryState);
+    conversation.setMessageState(index, next);
     this.renderMessages();
   }
 
   // ─── Send / stream ────────────────────────────────────────────────────
 
   private async handleSend(): Promise<void> {
-    const text = this.inputEl.value.trim();
-    if (!text || this.isStreaming) return;
+    const { inputEl, isStreaming } = this;
+    const text = inputEl.value.trim();
+    if (text.length === 0 || isStreaming) return;
 
-    const [selectedProviderId, selectedModel] = this.combinedModelSelect.value.split('::');
-    const provider = this.plugin.providers.get(selectedProviderId);
-
-    if (!provider || !selectedModel) {
+    const selection = this.getSelectedProvider();
+    if (selection === null) {
       this.appendSystemMessage('No model selected. Configure providers in Settings.');
       return;
     }
+    const {
+      provider,
+      selectedModel,
+    } = selection;
 
-    const apiKey = this.plugin.getProviderApiKey(provider.id);
-    if (apiKey) {
-      (provider as { updateConfig?: (c: { apiKey: string }) => void }).updateConfig?.({ apiKey });
-    }
-
-    const userMsg: Message = {
-      role: 'user',
-      content: text,
-      timestamp: new Date(),
-      memoryState: MemoryState.Default,
-    };
-    this.plugin.conversation.addMessage(userMsg);
+    const {
+      messagesContainer,
+      plugin,
+    } = this;
+    plugin.conversation.addMessage(createUserMessage(text));
     this.renderMessages();
-    this.inputEl.value = '';
+    inputEl.value = '';
 
-    const settings = this.plugin.settings;
-
-    // Per-conversation overrides: empty → fall back to global setting → undefined (provider default)
-    const temperature = this.convTemperature !== ''
-      ? parseFloat(this.convTemperature)
-      : settings.temperature ?? undefined;
-
-    const maxTokens = this.convMaxTokens !== ''
-      ? parseInt(this.convMaxTokens, 10)
-      : settings.maxTokens ?? undefined;
-
-    const basePrompt = this.convSystemPrompt.trim() || settings.defaultPreamble || '';
-
-    // ── Load vault memory context ─────────────────────────────────────────
-    let memoryBlock = '';
-    try {
-      const sections = await this.plugin.memoryManager.getContext(
-        text,
-        { max: (maxTokens ?? 8192) * 3 },
-      );
-      if (sections.length > 0) {
-        sections.sort((a, b) => b.priority - a.priority);
-        memoryBlock = sections
-          .map((s) => {
-            // Humanise the label: 'soul-document' → 'Soul', 'memory:.../facts/user-name.md' → 'user-name'
-            const label = s.label === 'soul-document'
-              ? 'Soul'
-              : s.label.replace(/^memory:.*[\\/]/, '').replace(/\.md$/, '');
-            return `### ${label}\n\n${s.content.trim()}`;
-          })
-          .join('\n\n---\n\n');
-      }
-    } catch {
-      // Memory context is best-effort — never block the completion
-    }
-
-    const systemPrompt = memoryBlock
-      ? (basePrompt ? `${basePrompt}\n\n## Memories\n\n${memoryBlock}` : `## Memories\n\n${memoryBlock}`)
-      : (basePrompt || undefined);
-
-    const chatMessages = this.plugin.conversation.toChatMessages({
-      maxMessages: settings.maxMemoryCount,
-      systemPrompt,
+    const request = await createCompletionRequest({
+      overrides: {
+        maxTokens: this.convMaxTokens,
+        systemPrompt: this.convSystemPrompt,
+        temperature: this.convTemperature,
+      },
+      plugin,
+      selectedModel,
+      text,
     });
-
-    const completionConfig: CompletionConfig = {
-      model: selectedModel,
-      temperature,
-      maxTokens,
-    };
+    const chatMessages = plugin.conversation.toChatMessages({
+      maxMessages: request.settings.maxMemoryCount,
+      systemPrompt: request.systemPrompt,
+    });
 
     this.isStreaming = true;
-    this.abortController = new AbortController();
-
-    let accumulated = '';
-    let accumulatedReasoning = '';
-    let contentStarted = false;
-
-    const streamingBubble = this.messagesContainer.createDiv({
-      cls: 'engram-message engram-message-assistant engram-message-streaming',
-    });
-    streamingBubble.createDiv({ cls: 'engram-message-header' }).createSpan({
-      cls: 'engram-message-role',
-      text: `Assistant [${selectedModel}]`,
-    });
-
-    // Thinking indicator — shown while waiting/reasoning, may become the persisted reasoning block
-    const thinkingDetails = streamingBubble.createEl('details', {
-      cls: 'engram-reasoning-details engram-reasoning-streaming',
-      attr: { open: '' },
-    });
-    const thinkingSummary = thinkingDetails.createEl('summary', { cls: 'engram-reasoning-summary' });
-    const thinkingLabel = thinkingSummary.createSpan({ text: 'Thinking...' });
-    const thinkingBody = thinkingDetails.createDiv({ cls: 'engram-reasoning-content' });
-
-    const animator = new Ciph3rTextAnimator(thinkingLabel, 'Thinking...');
-    animator.start();
-
-    const streamingContent = streamingBubble.createDiv({ cls: 'engram-message-content' });
+    const abortController = new AbortController();
+    this.abortController = abortController;
 
     try {
-      for await (const chunk of provider.stream(
+      const result = await streamAssistantReply({
+        app: this.app,
         chatMessages,
-        completionConfig,
-        this.abortController.signal,
-      )) {
-        if (chunk.done) break;
-
-        if (chunk.reasoning) {
-          accumulatedReasoning += chunk.reasoning;
-          thinkingBody.empty();
-          MarkdownRenderer.render(this.app, accumulatedReasoning, thinkingBody, '', this.plugin);
-          this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
-        }
-
-        if (chunk.content) {
-          accumulated += chunk.content;
-          if (!contentStarted) {
-            contentStarted = true;
-            animator.stop();
-            thinkingDetails.removeAttribute('open');
-            thinkingDetails.classList.remove('engram-reasoning-streaming');
-          }
-          streamingContent.empty();
-          MarkdownRenderer.render(this.app, accumulated, streamingContent, '', this.plugin);
-          this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
-        }
-      }
-
-      animator.stop();
-      thinkingDetails.classList.remove('engram-reasoning-streaming');
-
-      // Fall back to parsing inline <think>/<thinking> tags if no structured reasoning
-      let finalContent = accumulated;
-      let finalReasoning = accumulatedReasoning;
-      if (!finalReasoning) {
-        const parsed = parseThinkContent(accumulated);
-        finalContent = parsed.content || accumulated;
-        finalReasoning = parsed.reasoning;
-        if (finalReasoning) {
-          thinkingBody.empty();
-          MarkdownRenderer.render(this.app, finalReasoning, thinkingBody, '', this.plugin);
-        }
-      }
-
-      if (!finalReasoning) {
-        thinkingDetails.remove();
-      }
-
-      const assistantMsg: Message = {
-        role: 'assistant',
-        content: finalContent,
-        timestamp: new Date(),
-        provider: provider.id,
-        model: selectedModel,
-        memoryState: MemoryState.Default,
-        metadata: finalReasoning ? { reasoning: finalReasoning } : undefined,
-      };
-      this.plugin.conversation.addMessage(assistantMsg);
-    } catch (err) {
-      animator.stop();
-      if ((err as Error).name !== 'AbortError') {
-        this.appendSystemMessage(`Error: ${(err as Error).message}`);
+        completionConfig: request.completionConfig,
+        messagesContainer,
+        plugin,
+        provider,
+        selectedModel,
+        signal: abortController.signal,
+      });
+      if (result.status === 'ok') {
+        plugin.conversation.addMessage(result.message);
+      } else if (result.status === 'error') {
+        this.appendSystemMessage(`Error: ${result.error}`);
       }
     } finally {
       this.isStreaming = false;
       this.abortController = null;
       this.renderMessages();
     }
+  }
+
+  private getSelectedProvider(): SelectedProvider | null {
+    const {
+      combinedModelSelect,
+      plugin,
+    } = this;
+    const { providerId, modelId: selectedModel } = parseProviderModelValue(combinedModelSelect.value);
+    const provider = plugin.providers.get(providerId);
+    if (provider === undefined || selectedModel.length === 0) {
+      return null;
+    }
+
+    const apiKey = plugin.getProviderApiKey(provider.id);
+    if (apiKey !== undefined && apiKey.length > 0) {
+      provider.updateConfig?.({ apiKey });
+    }
+
+    return {
+      provider,
+      selectedModel,
+    };
   }
 
   private cancelStream(): void {
