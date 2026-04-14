@@ -50,7 +50,8 @@ If you want Claude Code to load the generic Engram bootstrap globally, `npm run 
 - Key frontmatter fields: `type`, `memory_state`, `confidence`, `bootstrap_state`, `agent`, `platform`
 - `memory_state` controls retrieval priority: `core` > `remembered` > `default` > `forgotten`
 - `context` returns core + remembered + query-relevant memories; soul doc is loaded separately via `soul(action: "get")`
-- Thread docs should prefer a lightweight `## Todo` section with `- [ ]` items over sprawling markdown plans; the active thread summary surfaced during `context(action: "load", thread_id=...)` is designed to show open todos briefly
+- Thread docs should prefer a lightweight `## Todo` section with `- [ ]` items over sprawling markdown plans; the active thread summary surfaced during `context(action: "load", thread_id=...)` now loads ahead of core memories and includes open todos
+- Inbox is a single directory at `engram/notes/inbox/`; global items live directly under `inbox/`, thread-scoped items live under `inbox/threads/<thread_id>/` as individual notes; both surface during `context(action: "load")` sorted by `created` date (FIFO); items must be **inside** the `inbox/` directory — a note at path `inbox` creates `inbox.md` which is invisible to the scan
 - Working notes under `engram/notes` are separate from memories; prefer storing lightweight note references in Thread docs or scratch and loading note contents explicitly with note tools when needed
 - The MCP server is the primary integration surface; tools map closely to `MemoryManager` methods
 

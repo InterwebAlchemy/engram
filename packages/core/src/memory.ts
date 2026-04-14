@@ -54,38 +54,195 @@ function normalizeNoteContent(content: string): string {
   return content.replace(/\r\n?/g, '\n');
 }
 
+
 function truncateInline(text: string, maxChars: number): string {
   const normalized = text.replace(/\s+/g, ' ').trim();
   if (normalized.length <= maxChars) return normalized;
   return `${normalized.slice(0, Math.max(0, maxChars - 1)).trimEnd()}…`;
 }
 
-function extractOpenTodos(content: string, limit: number): string[] {
-  const lines = normalizeNoteContent(content).split('\n');
-  const headingPattern = /^\s{0,3}#{1,6}\s+todos?\s*$/i;
-  const anyHeadingPattern = /^\s{0,3}#{1,6}\s+\S/;
+type ChecklistSectionMatch = {
+  headingIndex: number;
+  bodyStartIndex: number;
+  endIndex: number;
+};
 
-  let inTodoSection = false;
-  const todos: string[] = [];
+type ChecklistItem = {
+  text: string;
+  checked: boolean;
+  lineIndex: number;
+};
 
-  for (const line of lines) {
-    if (!inTodoSection) {
-      if (headingPattern.test(line)) {
-        inTodoSection = true;
+const ANY_HEADING_PATTERN = /^\s{0,3}#{1,6}\s+\S/;
+const CHECKLIST_ITEM_PATTERN = /^\s*(?:[-*]|\d+\.)\s+\[([ xX])\]\s+(.+?)\s*$/;
+const TODO_HEADING_PATTERN = /^\s{0,3}#{1,6}\s+todos?\s*$/i;
+const INBOX_HEADING_PATTERN = /^\s{0,3}#{1,6}\s+inbox\s*$/i;
+
+function normalizeChecklistText(text: string): string {
+  return text.replace(/\s+/g, ' ').trim();
+}
+
+function findChecklistSection(
+  lines: string[],
+  headingPattern: RegExp,
+): ChecklistSectionMatch | null {
+  for (let index = 0; index < lines.length; index += 1) {
+    if (!headingPattern.test(lines[index] ?? '')) continue;
+
+    let endIndex = lines.length;
+    for (let cursor = index + 1; cursor < lines.length; cursor += 1) {
+      if (ANY_HEADING_PATTERN.test(lines[cursor] ?? '')) {
+        endIndex = cursor;
+        break;
       }
-      continue;
     }
 
-    if (anyHeadingPattern.test(line)) break;
-
-    const match = line.match(/^\s*(?:[-*]|\d+\.)\s+\[ \]\s+(.+?)\s*$/);
-    if (!match) continue;
-
-    todos.push(truncateInline(match[1], 120));
-    if (todos.length >= limit) break;
+    return {
+      headingIndex: index,
+      bodyStartIndex: index + 1,
+      endIndex,
+    };
   }
 
-  return todos;
+  return null;
+}
+
+function extractChecklistItems(
+  content: string,
+  headingPattern: RegExp,
+  options: {
+    includeCompleted?: boolean;
+    limit?: number;
+  } = {},
+): ChecklistItem[] {
+  const lines = normalizeNoteContent(content).split('\n');
+  const section = findChecklistSection(lines, headingPattern);
+  if (!section) return [];
+
+  const items: ChecklistItem[] = [];
+  for (let index = section.bodyStartIndex; index < section.endIndex; index += 1) {
+    const match = lines[index]?.match(CHECKLIST_ITEM_PATTERN);
+    if (!match) continue;
+    const checked = match[1].toLowerCase() === 'x';
+    if (checked && !options.includeCompleted) continue;
+
+    items.push({
+      text: normalizeChecklistText(match[2]),
+      checked,
+      lineIndex: index,
+    });
+    if (items.length >= (options.limit ?? Number.POSITIVE_INFINITY)) break;
+  }
+
+  return items;
+}
+
+function summarizeChecklist(
+  label: string,
+  items: ChecklistItem[],
+): string | null {
+  if (items.length === 0) return null;
+  return [
+    `${label}:`,
+    ...items.map((item) => `- [ ] ${truncateInline(item.text, 120)}`),
+  ].join('\n');
+}
+
+function ensureChecklistSection(
+  lines: string[],
+  heading: string,
+  headingPattern: RegExp,
+): ChecklistSectionMatch {
+  const existing = findChecklistSection(lines, headingPattern);
+  if (existing) return existing;
+
+  if (lines.length === 1 && lines[0] === '') {
+    lines.splice(0, 1);
+  }
+
+  if (lines.length > 0 && lines[lines.length - 1]?.trim() !== '') {
+    lines.push('');
+  }
+
+  lines.push(`## ${heading}`);
+  return {
+    headingIndex: lines.length - 1,
+    bodyStartIndex: lines.length,
+    endIndex: lines.length,
+  };
+}
+
+function addChecklistItem(
+  content: string,
+  heading: string,
+  headingPattern: RegExp,
+  itemText: string,
+  options: { prepend?: boolean } = {},
+): string {
+  const normalizedContent = normalizeNoteContent(content);
+  const lines = normalizedContent ? normalizedContent.split('\n') : [''];
+  const normalizedTarget = normalizeChecklistText(itemText);
+  const section = ensureChecklistSection(lines, heading, headingPattern);
+  const matches = extractChecklistItems(lines.join('\n'), headingPattern, { includeCompleted: true })
+    .filter((item) => normalizeChecklistText(item.text) === normalizedTarget);
+
+  if (matches.length > 1) {
+    throw new Error(`Multiple checklist items match "${itemText}" in ${heading}.`);
+  }
+
+  if (matches.length === 1) {
+    const [match] = matches;
+    if (!match.checked) return lines.join('\n');
+    lines[match.lineIndex] = `- [ ] ${itemText.trim()}`;
+    return lines.join('\n');
+  }
+
+  const insertionIndex = options.prepend ? section.bodyStartIndex : section.endIndex;
+  lines.splice(insertionIndex, 0, `- [ ] ${itemText.trim()}`);
+  return lines.join('\n');
+}
+
+function updateChecklistItemState(
+  content: string,
+  headingPattern: RegExp,
+  headingLabel: string,
+  itemText: string,
+  checked: boolean,
+): string {
+  const lines = normalizeNoteContent(content).split('\n');
+  const matches = extractChecklistItems(lines.join('\n'), headingPattern, { includeCompleted: true })
+    .filter((item) => normalizeChecklistText(item.text) === normalizeChecklistText(itemText));
+
+  if (matches.length === 0) {
+    throw new Error(`${headingLabel} item not found: ${itemText}`);
+  }
+  if (matches.length > 1) {
+    throw new Error(`Multiple ${headingLabel.toLowerCase()} items match "${itemText}".`);
+  }
+
+  lines[matches[0].lineIndex] = `- [${checked ? 'x' : ' '}] ${itemText.trim()}`;
+  return lines.join('\n');
+}
+
+function removeChecklistItem(
+  content: string,
+  headingPattern: RegExp,
+  headingLabel: string,
+  itemText: string,
+): string {
+  const lines = normalizeNoteContent(content).split('\n');
+  const matches = extractChecklistItems(lines.join('\n'), headingPattern, { includeCompleted: true })
+    .filter((item) => normalizeChecklistText(item.text) === normalizeChecklistText(itemText));
+
+  if (matches.length === 0) {
+    throw new Error(`${headingLabel} item not found: ${itemText}`);
+  }
+  if (matches.length > 1) {
+    throw new Error(`Multiple ${headingLabel.toLowerCase()} items match "${itemText}".`);
+  }
+
+  lines.splice(matches[0].lineIndex, 1);
+  return lines.join('\n');
 }
 
 function summarizeThread(thread: VaultNote): string {
@@ -112,15 +269,49 @@ function summarizeThread(thread: VaultNote): string {
     }
   }
 
-  const todos = extractOpenTodos(thread.content, 5);
-  if (todos.length > 0) {
-    lines.push('Todo:');
-    for (const todo of todos) {
-      lines.push(`- [ ] ${todo}`);
-    }
+  const todoSummary = summarizeChecklist(
+    'Todo',
+    extractChecklistItems(thread.content, TODO_HEADING_PATTERN, { limit: 5 }),
+  );
+  if (todoSummary) {
+    lines.push(todoSummary);
   }
 
   return lines.join('\n');
+}
+
+function firstNonHeadingLine(content: string): string | null {
+  const lines = normalizeNoteContent(content).split('\n');
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    if (/^\s{0,3}#{1,6}\s+/.test(rawLine)) continue;
+    return line;
+  }
+  return null;
+}
+
+function inferInboxNoteTitle(relativePath: string, content: string): string {
+  const heading = normalizeNoteContent(content)
+    .split('\n')
+    .find((line) => /^\s{0,3}#\s+/.test(line))
+    ?.replace(/^\s{0,3}#\s+/, '')
+    .trim();
+  if (heading) return heading;
+
+  const basename = relativePath.split('/').pop() ?? relativePath;
+  return basename.replace(/\.md$/i, '');
+}
+
+function summarizeInboxNote(relativePath: string, content: string): string {
+  const title = inferInboxNoteTitle(relativePath, content);
+  const checklist = extractChecklistItems(content, INBOX_HEADING_PATTERN, { limit: 3 });
+  if (checklist.length > 0) {
+    return `${title} (${relativePath}): ${checklist.map((item) => item.text).join('; ')}`;
+  }
+
+  const preview = firstNonHeadingLine(content) ?? '(empty note)';
+  return `${title} (${relativePath}): ${truncateInline(preview, 140)}`;
 }
 
 export class MemoryManager {
@@ -231,12 +422,95 @@ export class MemoryManager {
     return path.relative(this.notesDir(), filePath);
   }
 
+  /** Directory for per-thread inbox notes: inbox/threads/<threadId>/ */
+  private threadInboxPrefix(threadId: string): string {
+    return `inbox/threads/${threadId}`;
+  }
+
+  /**
+   * List inbox notes under a given prefix, sorted by created date (FIFO).
+   * Parses each note to extract frontmatter `created` and body content.
+   */
+  private async listInboxNotes(
+    prefix: string,
+    options: { excludePrefix?: string; limit?: number } = {},
+  ): Promise<Array<{ path: string; content: string; created: Date }>> {
+    const notes = await this.listNotes({ prefix, limit: options.limit ?? 20 });
+    const filtered = options.excludePrefix
+      ? notes.filter((n) => !n.path.startsWith(options.excludePrefix!))
+      : notes;
+
+    const detailed = await Promise.all(
+      filtered.map(async (note) => {
+        const raw = await this.readNote(note.path);
+        const parsed = VaultNote.parse(note.path, raw);
+        const created = parsed.frontmatter.created
+          ? new Date(parsed.frontmatter.created as string)
+          : new Date(0);
+        return {
+          path: note.path,
+          content: parsed.content || raw,
+          created: isNaN(created.getTime()) ? new Date(0) : created,
+        };
+      }),
+    );
+
+    return detailed.sort((a, b) => a.created.getTime() - b.created.getTime());
+  }
+
   private workingDir(): string {
     return path.join(this.writeRoot, this.config.workingPath);
   }
 
   private archiveDir(): string {
     return path.join(this.writeRoot, this.config.archivePath);
+  }
+
+  private async mutateVaultNote(
+    filePath: string,
+    mutate: (note: VaultNote) => void,
+  ): Promise<VaultNote> {
+    this.assertWriteAllowed(filePath);
+
+    if (supportsProcess(this.adapter)) {
+      let finalSerialized = '';
+
+      await this.adapter.process(filePath, (raw) => {
+        const note = VaultNote.parse(filePath, raw);
+        const before = note.serialize();
+        mutate(note);
+
+        if (note.serialize() === before) {
+          finalSerialized = raw;
+          return raw;
+        }
+
+        note.frontmatter.updated = new Date().toISOString();
+        finalSerialized = note.serialize();
+        return finalSerialized;
+      });
+
+      if (!finalSerialized) {
+        finalSerialized = await this.adapter.read(filePath);
+      }
+
+      return VaultNote.parse(filePath, finalSerialized);
+    }
+
+    const note = await VaultNote.read(this.adapter, filePath);
+    const before = note.serialize();
+    mutate(note);
+    if (note.serialize() === before) {
+      return note;
+    }
+    await note.save(this.adapter);
+    return note;
+  }
+
+  private async requireThread(threadId: string): Promise<VaultNote> {
+    const thread = await this.getThread(threadId);
+    if (!thread) throw new Error(`Thread not found: ${threadId}`);
+    return thread;
   }
 
   // ─── Core memory operations ───────────────────────────────────────────────
@@ -353,7 +627,9 @@ export class MemoryManager {
    * Build context sections for prompt assembly.
    *
    * Loading strategy:
-   *  - Active thread summary: included when threadId is provided (priority 85)
+   *  - Active thread summary: included when threadId is provided (priority 100)
+   *  - Global inbox: included when notes exist under engram/notes/inbox/ (priority 98)
+   *  - Active thread inbox: included when thread inbox notes exist (priority 95)
    *  - Core memories: always included (priority 90), summary preferred
    *  - Remembered memories: included at priority 70 (65 if query-irrelevant)
    *  - Default memories: included only when query-relevant (priority 40-60)
@@ -402,10 +678,20 @@ export class MemoryManager {
 
     const builder = new ContextBuilder();
 
+    const globalInboxSummary = await this.getGlobalInboxSummary(threadId);
+    if (globalInboxSummary) {
+      builder.addSection('inbox:global', globalInboxSummary, 98);
+    }
+
     if (threadId) {
       const thread = await this.getThread(threadId);
       if (thread) {
-        builder.addSection(`thread:${threadId}`, summarizeThread(thread), 85);
+        builder.addSection(`thread:${threadId}`, summarizeThread(thread), 100);
+      }
+
+      const inboxSummary = await this.getThreadInboxSummary(threadId);
+      if (inboxSummary) {
+        builder.addSection(`thread-inbox:${threadId}`, inboxSummary, 95);
       }
     }
 
@@ -578,6 +864,185 @@ export class MemoryManager {
       files.map((f) => VaultNote.read(this.adapter, f).catch(() => null)),
     );
     return notes.filter((n): n is VaultNote => n !== null);
+  }
+
+  async listThreadTodos(
+    threadId: string,
+    options: { includeCompleted?: boolean } = {},
+  ): Promise<Array<{ text: string; checked: boolean }>> {
+    const thread = await this.requireThread(threadId);
+
+    return extractChecklistItems(thread.content, TODO_HEADING_PATTERN, {
+      includeCompleted: options.includeCompleted,
+    }).map((item) => ({
+      text: item.text,
+      checked: item.checked,
+    }));
+  }
+
+  async addThreadTodo(
+    threadId: string,
+    itemText: string,
+    options: { prepend?: boolean } = {},
+  ): Promise<VaultNote> {
+    await this.requireThread(threadId);
+    return this.mutateVaultNote(this.threadPath(threadId), (note) => {
+      note.content = addChecklistItem(
+        note.content,
+        'Todo',
+        TODO_HEADING_PATTERN,
+        itemText,
+        options,
+      );
+    });
+  }
+
+  async completeThreadTodo(threadId: string, itemText: string): Promise<VaultNote> {
+    await this.requireThread(threadId);
+    return this.mutateVaultNote(this.threadPath(threadId), (note) => {
+      note.content = updateChecklistItemState(
+        note.content,
+        TODO_HEADING_PATTERN,
+        'Todo',
+        itemText,
+        true,
+      );
+    });
+  }
+
+  async reopenThreadTodo(threadId: string, itemText: string): Promise<VaultNote> {
+    await this.requireThread(threadId);
+    return this.mutateVaultNote(this.threadPath(threadId), (note) => {
+      note.content = updateChecklistItemState(
+        note.content,
+        TODO_HEADING_PATTERN,
+        'Todo',
+        itemText,
+        false,
+      );
+    });
+  }
+
+  async removeThreadTodo(threadId: string, itemText: string): Promise<VaultNote> {
+    await this.requireThread(threadId);
+    return this.mutateVaultNote(this.threadPath(threadId), (note) => {
+      note.content = removeChecklistItem(
+        note.content,
+        TODO_HEADING_PATTERN,
+        'Todo',
+        itemText,
+      );
+    });
+  }
+
+  async listThreadInbox(
+    threadId: string,
+  ): Promise<Array<{ path: string; content: string; created: string }>> {
+    const prefix = this.threadInboxPrefix(threadId);
+    const notes = await this.listInboxNotes(prefix);
+
+    if (notes.length > 0) return notes.map((n) => ({
+      path: n.path,
+      content: n.content,
+      created: n.created.getTime() === 0 ? '' : n.created.toISOString(),
+    }));
+
+    // Legacy fallback: single file at inbox/threads/<threadId>.md or inbox/<threadId>.md
+    const legacyCandidates = [
+      this.normalizeNotePath(path.join('inbox', 'threads', threadId)),
+      this.normalizeNotePath(path.join('inbox', threadId)),
+    ];
+    for (const legacyPath of legacyCandidates) {
+      if (await this.adapter.exists(legacyPath)) {
+        const raw = await this.adapter.read(legacyPath);
+        const parsed = VaultNote.parse(legacyPath, raw);
+        const created = parsed.frontmatter.created
+          ? new Date(parsed.frontmatter.created as string)
+          : new Date(0);
+        return [{
+          path: this.noteRelativePath(legacyPath),
+          content: parsed.content || raw,
+          created: isNaN(created.getTime()) ? '' : created.toISOString(),
+        }];
+      }
+    }
+
+    return [];
+  }
+
+  async addThreadInboxItem(
+    threadId: string,
+    itemText: string,
+  ): Promise<string> {
+    const slug = slugify(itemText.slice(0, 60));
+    const notePath = path.join('inbox', 'threads', threadId, slug);
+    const now = new Date().toISOString();
+    const noteContent = `---\ncreated: ${now}\n---\n\n${itemText}`;
+    return this.createNote(notePath, noteContent);
+  }
+
+  async completeThreadInboxItem(threadId: string, item: string): Promise<string> {
+    return this.removeThreadInboxItem(threadId, item);
+  }
+
+  async removeThreadInboxItem(threadId: string, item: string): Promise<string> {
+    const items = await this.listThreadInbox(threadId);
+    const itemSlug = slugify(item.slice(0, 60));
+    const match = items.find((i) => {
+      const filename = i.path.split('/').pop()?.replace(/\.md$/, '') ?? '';
+      return (
+        i.path === item ||
+        i.path.endsWith(`/${item}`) ||
+        i.path.endsWith(`/${item}.md`) ||
+        i.path.replace(/\.md$/, '') === item ||
+        filename === itemSlug
+      );
+    });
+    if (!match) throw new Error(`Inbox item not found: ${item}`);
+    return this.deleteNote(match.path);
+  }
+
+  async getThreadInboxSummary(threadId: string): Promise<string | null> {
+    const items = await this.listThreadInbox(threadId).catch(() => []);
+    if (items.length === 0) return null;
+    return [
+      `Thread Inbox (${threadId}):`,
+      ...items.slice(0, 5).map((item) => `- ${summarizeInboxNote(item.path, item.content)}`),
+    ].join('\n');
+  }
+
+  async listGlobalInbox(): Promise<Array<{ path: string; content: string; created: string }>> {
+    const notes = await this.listInboxNotes('inbox', {
+      excludePrefix: 'inbox/threads/',
+      limit: 20,
+    });
+    return notes.map((n) => ({
+      path: n.path,
+      content: n.content,
+      created: n.created.getTime() === 0 ? '' : n.created.toISOString(),
+    }));
+  }
+
+  async addGlobalInboxItem(content: string, name?: string): Promise<string> {
+    const slug = name ?? slugify(content.slice(0, 60));
+    const notePath = path.join('inbox', slug);
+    const now = new Date().toISOString();
+    const noteContent = `---\ncreated: ${now}\n---\n\n${content}`;
+    return this.createNote(notePath, noteContent);
+  }
+
+  async removeInboxItem(itemPath: string): Promise<string> {
+    return this.deleteNote(itemPath);
+  }
+
+  async getGlobalInboxSummary(activeThreadId?: string): Promise<string | null> {
+    const notes = await this.listGlobalInbox();
+    if (notes.length === 0) return null;
+
+    return [
+      'Global Inbox:',
+      ...notes.slice(0, 5).map((note) => `- ${summarizeInboxNote(note.path, note.content)}`),
+    ].join('\n');
   }
 
   /**

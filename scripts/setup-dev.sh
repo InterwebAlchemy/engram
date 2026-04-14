@@ -70,6 +70,7 @@ mkdir -p "$VAULT_PATH/.obsidian/plugins/engram"
 for dir in engram/memory/facts engram/memory/entities engram/memory/reflections \
            engram/memory/skill engram/conversations/2026-03-20 engram/working \
            engram/archive engram/templates \
+           engram/notes/inbox/threads \
            "Daily Notes" "Journal"; do
   mkdir -p "$VAULT_PATH/$dir"
 done

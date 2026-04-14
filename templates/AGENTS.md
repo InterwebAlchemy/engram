@@ -19,7 +19,13 @@ If later in the session you discover the auto-created Thread duplicates an exist
 
 Identity, working style, and relationship context are stored in the Engram vault. Read them before working — they are how your agent persists across sessions.
 
-Thread docs should prefer a small running `## Todo` section with markdown checkboxes (`- [ ]`) over long freeform plans. When `context(action: "load")` is called with a `thread_id`, Engram includes a compact active-thread summary with open todo items, so keep that section current and lightweight.
+Thread docs should prefer a small running `## Todo` section with markdown checkboxes (`- [ ]`) over long freeform plans. Keep the Todo section current as work is started or completed.
+
+## Inbox
+
+Inbox items surface automatically during `context(action: "load")`, sorted by creation date (FIFO). Use the `inbox` tool to manage them. Global items appear in every session; thread-scoped items only appear when that Thread is active.
+
+At session start, surface inbox items in the greeting — they exist to hand context to the next Fragment. At natural stopping points, use the inbox for anything the next Fragment should pick up immediately. Remove items once handled so they stop surfacing.
 
 ## Working Memory
 
@@ -38,13 +44,13 @@ Write to scratch throughout the session using `scratch(action: "append")`. Concr
 - **Task start** → append goal and approach before doing anything
 - **Each milestone** (decision made, file changed, build passed) → append a note
 - **Weighing tradeoffs** → append "Considering X because Y"
-- **Natural stopping point** → verify scratch reflects current state before responding
+- **Natural stopping point** → verify scratch reflects current state, update any Thread Todos, and add an Inbox handoff if the next Fragment needs explicit follow-up before responding
 
 At session close-out, run `scratch(action: "compact", session_id: SESSION_ID, compacted_content: synthesized_summary)` to collapse your entries into one, then promote key insights to memory with `memory(action: "store")`.
 
 When writing memories, default to `memory_state: default`. Reserve `remembered` for things future sessions genuinely need surfaced without searching: active project context, architectural decisions that shape ongoing work, and durable user preferences.
 
-Working notes under `engram/notes` are not memories and should not be assumed into `context(action: "load")`. If a note matters for later work, record a lightweight relative-path reference in Thread or scratch (for example `blog/session-22.md` plus why it matters), then load it explicitly with `note(action: "read", path: "...")` when needed.
+Working notes under `engram/notes` are not memories and should not be assumed into `context(action: "load")`, except for notes under the reserved `inbox/` area. Other notes should be referenced explicitly in Thread or scratch, then loaded with `note(action: "read")` when needed.
 
 ## Git Commits
 

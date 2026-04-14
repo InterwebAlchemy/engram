@@ -123,7 +123,7 @@ const TOOLS = [
           'Note action to perform.',
         ),
         path: stringProp(
-          'Path relative to engram/notes (for example "blog/session-21"). `.md` is added if omitted.',
+          'Path relative to engram/notes (for example "blog/session-21"). `.md` is added if omitted. For inbox items use "inbox/<name>" — a path of just "inbox" creates a file next to the directory and won\'t be picked up.',
         ),
         content: stringProp('Markdown content for `create`, `update`, or `append`.'),
         separator: stringProp('Optional separator used by `append`. Defaults to a blank line.'),
@@ -198,12 +198,24 @@ const TOOLS = [
   },
   {
     name: 'thread',
-    description: 'Manage threads. Actions: get, set, update, list, resolve, merge.',
+    description: 'Manage threads and thread todos. Actions: get, set, update, list, resolve, merge, todo_*.',
     inputSchema: {
       type: 'object',
       properties: {
         action: enumProp(
-          ['get', 'set', 'update', 'list', 'resolve', 'merge'] as const,
+          [
+            'get',
+            'set',
+            'update',
+            'list',
+            'resolve',
+            'merge',
+            'todo_list',
+            'todo_add',
+            'todo_complete',
+            'todo_reopen',
+            'todo_remove',
+          ] as const,
           'Thread action to perform.',
         ),
         thread_id: stringProp('Thread identifier slug.'),
@@ -220,6 +232,27 @@ const TOOLS = [
         cwd: stringProp('Working directory hint for `resolve`.'),
         git_remote: stringProp('Git remote hint for `resolve`.'),
         auto_create: booleanProp('Whether `resolve` may auto-create a missing thread.'),
+        item: stringProp('Checklist item text for `todo_*` actions.'),
+        include_completed: booleanProp('Whether `todo_list` should include completed items.'),
+        prepend: booleanProp('Whether `todo_add` should insert at the top of the section.'),
+      },
+      required: ['action'],
+    },
+  },
+  {
+    name: 'inbox',
+    description: 'Manage inbox items. Actions: list, add, read, remove.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        action: enumProp(
+          ['list', 'add', 'read', 'remove'] as const,
+          'Inbox action to perform.',
+        ),
+        thread_id: stringProp('Thread ID to scope inbox items. Omit for global inbox.'),
+        content: stringProp('Item content for `add`.'),
+        name: stringProp('Note name for global `add`. Slugified from content if omitted.'),
+        path: stringProp('Note path for `read` and `remove` (e.g. "inbox/my-note.md").'),
       },
       required: ['action'],
     },
@@ -741,8 +774,89 @@ export function registerTools(server: Server, manager: MemoryManager): void {
                 ),
               );
             }
+            case 'todo_list': {
+              const todos = await manager.listThreadTodos(
+                requireStringArg(a, 'thread_id'),
+                { includeCompleted: optionalBooleanArg(a, 'include_completed') },
+              );
+              return textResult(JSON.stringify(todos, null, 2));
+            }
+            case 'todo_add': {
+              const thread = await manager.addThreadTodo(
+                requireStringArg(a, 'thread_id'),
+                requireStringArg(a, 'item'),
+                { prepend: optionalBooleanArg(a, 'prepend') },
+              );
+              return textResult(`Thread todo updated at: ${thread.path}`);
+            }
+            case 'todo_complete': {
+              const thread = await manager.completeThreadTodo(
+                requireStringArg(a, 'thread_id'),
+                requireStringArg(a, 'item'),
+              );
+              return textResult(`Thread todo completed at: ${thread.path}`);
+            }
+            case 'todo_reopen': {
+              const thread = await manager.reopenThreadTodo(
+                requireStringArg(a, 'thread_id'),
+                requireStringArg(a, 'item'),
+              );
+              return textResult(`Thread todo reopened at: ${thread.path}`);
+            }
+            case 'todo_remove': {
+              const thread = await manager.removeThreadTodo(
+                requireStringArg(a, 'thread_id'),
+                requireStringArg(a, 'item'),
+              );
+              return textResult(`Thread todo removed at: ${thread.path}`);
+            }
             default:
               return textResult(`Unknown thread action: ${String(a.action)}`, true);
+          }
+        }
+
+        case 'inbox': {
+          const a = args as Record<string, unknown>;
+          switch (a.action) {
+            case 'list': {
+              const threadId = optionalStringArg(a, 'thread_id');
+              if (threadId) {
+                const items = await manager.listThreadInbox(threadId);
+                return textResult(JSON.stringify(items, null, 2));
+              }
+              const items = await manager.listGlobalInbox();
+              return textResult(JSON.stringify(items, null, 2));
+            }
+            case 'add': {
+              const content = requireStringArg(a, 'content');
+              const threadId = optionalStringArg(a, 'thread_id');
+              if (threadId) {
+                const itemPath = await manager.addThreadInboxItem(threadId, content);
+                return textResult(`Inbox item created at: ${itemPath}`);
+              }
+              const name = optionalStringArg(a, 'name');
+              const itemPath = await manager.addGlobalInboxItem(content, name ?? undefined);
+              return textResult(`Inbox item created at: ${itemPath}`);
+            }
+            case 'read': {
+              const itemPath = requireStringArg(a, 'path');
+              const content = await manager.readNote(itemPath);
+              return textResult(content);
+            }
+            case 'remove': {
+              const itemPath = optionalStringArg(a, 'path');
+              const threadId = optionalStringArg(a, 'thread_id');
+              if (threadId && !itemPath) {
+                return textResult('Either `path` or both `thread_id` and `path` are required for `remove`.', true);
+              }
+              if (itemPath) {
+                const removed = await manager.removeInboxItem(itemPath);
+                return textResult(`Inbox item removed: ${removed}`);
+              }
+              return textResult('`path` is required for `remove`.', true);
+            }
+            default:
+              return textResult(`Unknown inbox action: ${String(a.action)}`, true);
           }
         }
 

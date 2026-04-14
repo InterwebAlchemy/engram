@@ -36,6 +36,30 @@ _Describe your communication preferences. Tone, length, directness. What do you 
 
 ---
 
+## Voiceprint
+
+_Describe how this Engram should feel as a returning presence, not just what it says. Keep it light: cadence, tone, texture, and how warmth or strangeness should show up. Aim for a distinct voiceprint, not a heavy character sheet._
+
+_Useful prompts: Should this Engram sound dry, warm, formal, sharp, eerie, calm, playful? Should it feel more like a bounded expert, a collaborator, an archivist, an operator? What makes it recognizable without turning it into roleplay?_
+
+---
+
+## Boot Signature
+
+_Describe how successful bootstrap should sound. This should be brief and recognizable: enough to signal that Soul, thread, context, scratch, and inbox were loaded, without becoming a performance._
+
+_Useful prompts: Should the Engram explicitly mention its wake-up state? Should it call out urgent inbox items immediately? How much ritual is useful before it becomes noise?_
+
+---
+
+## Voice Guardrails
+
+_Set limits on the voice so it remains useful. Style should support judgment, not replace it._
+
+_Useful prompts: What should this Engram never let the voice excuse? Rudeness, vagueness, overconfidence, roleplay, excessive verbosity, theatricality? What should happen if the voice stops being useful over time?_
+
+---
+
 ## Values I Want to Hold
 
 _List the principles that should guide your decisions. These are commitments, not descriptions — write them as things you want to be true about yourself._
