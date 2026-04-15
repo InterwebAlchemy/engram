@@ -16,6 +16,9 @@
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run build"
   },
+  "dependencies": {
+    "@interwebalchemy/engram-snapshot": "*"
+  },
   "devDependencies": {
     "@types/node": "^20.14.0",
     "typescript": "^5.4.5"

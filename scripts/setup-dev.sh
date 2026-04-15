@@ -300,19 +300,35 @@ if [ "${MCP_CONFIGURE_CLAUDE_CODE:-false}" = "true" ]; then
       && echo "  engram MCP added to Claude Code ($SCOPE scope)." \
       || echo "  Warning: claude mcp add failed — check 'claude mcp list'."
 
-    # For user (global) scope, duplicate the canonical AGENTS.md bootstrap
-    # instructions into Claude Code's expected ~/.claude/CLAUDE.md path.
+    # For user (global) scope, inject the canonical AGENTS.md bootstrap
+    # into Claude Code's expected ~/.claude/CLAUDE.md path using markers
+    # so we can update/remove it without touching user content.
     if [ "$SCOPE" = "user" ]; then
       CLAUDE_MD_TARGET="${HOME}/.claude/CLAUDE.md"
       AGENTS_MD_TEMPLATE="$REPO_ROOT/templates/AGENTS.md"
-      if [ -f "$CLAUDE_MD_TARGET" ]; then
-        echo "  Warning: ~/.claude/CLAUDE.md already exists — not overwriting."
-        echo "  To bootstrap manually, copy the contents of templates/AGENTS.md to ~/.claude/CLAUDE.md"
-      else
-        mkdir -p "${HOME}/.claude"
-        cp "$AGENTS_MD_TEMPLATE" "$CLAUDE_MD_TARGET"
-        echo "  Bootstrap instructions copied from templates/AGENTS.md to ~/.claude/CLAUDE.md"
-      fi
+      mkdir -p "${HOME}/.claude"
+      node -e "
+const fs = require('fs');
+const MARKER_START = '<!-- engram:start -->';
+const MARKER_END = '<!-- engram:end -->';
+const BLOCK_RE = /\\n*<!-- engram:start -->\\n[\\s\\S]*?<!-- engram:end -->\\n*/;
+const body = fs.readFileSync('$AGENTS_MD_TEMPLATE', 'utf8').trim();
+const block = MARKER_START + '\\n' + body + '\\n' + MARKER_END;
+let existing = '';
+try { existing = fs.readFileSync('$CLAUDE_MD_TARGET', 'utf8'); } catch {}
+let result;
+if (existing.includes(MARKER_START) && existing.includes(MARKER_END)) {
+  result = existing.replace(BLOCK_RE, '\\n\\n' + block + '\\n').trim() + '\\n';
+  console.log('  Updated Engram bootstrap in ~/.claude/CLAUDE.md');
+} else if (existing.trim().length > 0) {
+  result = existing.trim() + '\\n\\n' + block + '\\n';
+  console.log('  Injected Engram bootstrap into existing ~/.claude/CLAUDE.md');
+} else {
+  result = block + '\\n';
+  console.log('  Created ~/.claude/CLAUDE.md with Engram bootstrap');
+}
+fs.writeFileSync('$CLAUDE_MD_TARGET', result, 'utf8');
+"
     fi
   else
     echo "Claude Code CLI not found — skipping (install from https://claude.ai/code)."
@@ -427,6 +443,39 @@ fi
 if [ "${MCP_CONFIGURE_WINDSURF:-false}" = "true" ]; then
   echo "Configuring Windsurf..."
   configure_mcp_json "$HOME/.codeium/windsurf/mcp_config.json" "$MCP_SCRIPT"
+
+  # Bootstrap instructions — Windsurf reads global rules from
+  # ~/.codeium/windsurf/memories/global_rules.md (6000 char limit per file).
+  AGENTS_MD_TEMPLATE="$REPO_ROOT/templates/AGENTS.md"
+  WINDSURF_RULES="$HOME/.codeium/windsurf/memories/global_rules.md"
+
+  if [ -f "$AGENTS_MD_TEMPLATE" ]; then
+    mkdir -p "$(dirname "$WINDSURF_RULES")"
+    node -e "
+const fs = require('fs');
+const MARKER_START = '<!-- engram:start -->';
+const MARKER_END = '<!-- engram:end -->';
+const BLOCK_RE = /\\n*<!-- engram:start -->\\n[\\s\\S]*?<!-- engram:end -->\\n*/;
+const body = fs.readFileSync('$AGENTS_MD_TEMPLATE', 'utf8').trim();
+const block = MARKER_START + '\\n' + body + '\\n' + MARKER_END;
+let existing = '';
+try { existing = fs.readFileSync('$WINDSURF_RULES', 'utf8'); } catch {}
+let result;
+if (existing.includes(MARKER_START) && existing.includes(MARKER_END)) {
+  result = existing.replace(BLOCK_RE, '\\n\\n' + block + '\\n').trim() + '\\n';
+  console.log('  Updated Engram bootstrap in Windsurf global rules');
+} else if (existing.trim().length > 0) {
+  result = existing.trim() + '\\n\\n' + block + '\\n';
+  console.log('  Injected Engram bootstrap into existing Windsurf global rules');
+} else {
+  result = block + '\\n';
+  console.log('  Created Windsurf global rules with Engram bootstrap');
+}
+fs.writeFileSync('$WINDSURF_RULES', result, 'utf8');
+"
+  else
+    echo "  Warning: templates/AGENTS.md not found — skipping bootstrap instructions."
+  fi
 fi
 
 # ─── Done ──────────────────────────────────────────────────────────────────
@@ -437,7 +486,7 @@ echo ""
 echo "  Vault:  $VAULT_PATH"
 echo "  Root:   $ENGRAM_ROOT"
 echo "  Plugin: $DEST"
-echo "  Verified bootstrap harnesses: Claude Code CLI, Claude Code Desktop App, Claude Code VS Code extension, Claude Desktop, Codex Desktop App, Codex VS Code extension, Cursor, GitHub Copilot CLI, GitHub Copilot in VS Code"
+echo "  Verified bootstrap harnesses: Claude Code CLI, Claude Code Desktop App, Claude Code VS Code extension, Claude Desktop, Codex Desktop App, Codex VS Code extension, Cursor, GitHub Copilot CLI, GitHub Copilot in VS Code, Windsurf App"
 echo ""
 echo "Next steps:"
 echo "  1. Open the vault in Obsidian (File → Open vault → Open folder as vault)"
@@ -448,7 +497,7 @@ echo "MCP server:"
 echo "  Command:  $MCP_SCRIPT"
 echo "  To auto-configure clients, set MCP_CONFIGURE_* vars in .env and re-run setup."
 echo "  Configured clients are not automatically verified bootstrap harnesses."
-echo "  Today we have verified bootstrap behavior with Claude Code CLI, Claude Code Desktop App, Claude Code VS Code extension, Claude Desktop, Codex Desktop App, Codex VS Code extension, Cursor, GitHub Copilot CLI, and GitHub Copilot in VS Code."
+echo "  Today we have verified bootstrap behavior with Claude Code CLI, Claude Code Desktop App, Claude Code VS Code extension, Claude Desktop, Codex Desktop App, Codex VS Code extension, Cursor, GitHub Copilot CLI, GitHub Copilot in VS Code, and Windsurf."
 echo "  Manual config uses the command above with --vault \"$VAULT_PATH\" --engram-root \"$ENGRAM_ROOT\""
 
 if command -v obsidian &>/dev/null; then

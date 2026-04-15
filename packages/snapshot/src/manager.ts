@@ -11,6 +11,7 @@ import type {
   SnapshotManagerOptions,
   SnapshotRecord,
 } from './types';
+import { resolveSnapshotsDir } from './snapshots-dir';
 
 const MANIFEST_FILE = 'manifest.json';
 const DEFAULT_ENGRAM_ROOT = 'engram';
@@ -18,10 +19,10 @@ const MANIFEST_VERSION = 1;
 const JSON_INDENT = 2;
 const SNAPSHOT_ARCHIVE_EXTENSION = '.tar.gz';
 const TAR_EXTRACT_ARGS = ['-xzf', '-C'] as const;
-const TIMESTAMP_REPLACEMENT_PATTERN = /[:.]/gv;
+const TIMESTAMP_REPLACEMENT_PATTERN = /[:.]/gu;
 const SNAPSHOT_ID_PATTERN =
-  /^engram-(?<date>\d{4}-\d{2}-\d{2})T(?<hour>\d{2})(?<minute>\d{2})(?<second>\d{2})/v;
-const LEADING_PATH_SEPARATOR_PATTERN = /^(?:[\/\\])+/v;
+  /^engram-(?<date>\d{4}-\d{2}-\d{2})T(?<hour>\d{2})(?<minute>\d{2})(?<second>\d{2})/u;
+const LEADING_PATH_SEPARATOR_PATTERN = /^(?:[/\\])+/u;
 const extractArchiveAsync = promisify((
   snapshotPath: string,
   vaultPath: string,
@@ -40,7 +41,7 @@ export class SnapshotManager {
   private readonly snapshotsDir: string;
 
   constructor(options: SnapshotManagerOptions = {}) {
-    this.snapshotsDir = path.resolve(options.snapshotsDir ?? path.join(process.cwd(), '.snapshots'));
+    this.snapshotsDir = resolveSnapshotsDir(options.snapshotsDir);
   }
 
   getSnapshotsDir(): string {
@@ -339,7 +340,7 @@ async function readManagedSnapshot(snapshotDir: string): Promise<SnapshotRecord 
 
 async function readLegacyArchive(archivePath: string): Promise<SnapshotRecord | null> {
   const stat = await fs.stat(archivePath);
-  const id = path.basename(archivePath).replace(/\.tar\.gz$/v, '');
+  const id = path.basename(archivePath).replace(/\.tar\.gz$/u, '');
 
   return {
     id,

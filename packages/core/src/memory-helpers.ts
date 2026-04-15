@@ -3,16 +3,16 @@ import { ThreadStatus } from './types';
 import type { FileSystemAdapter } from './adapters/types';
 import type { VaultNote } from './vault';
 
-const NORMALIZED_LINE_ENDINGS_PATTERN = /\r\n?/gv;
-const WHITESPACE_PATTERN = /\s+/gv;
-const ANY_HEADING_PATTERN = /^\s{0,3}#{1,6}\s+\S/v;
-const ANY_MARKDOWN_HEADING_PATTERN = /^\s{0,3}#{1,6}\s+/v;
-const PRIMARY_HEADING_PATTERN = /^\s{0,3}#\s+/v;
+const NORMALIZED_LINE_ENDINGS_PATTERN = /\r\n?/gu;
+const WHITESPACE_PATTERN = /\s+/gu;
+const ANY_HEADING_PATTERN = /^\s{0,3}#{1,6}\s+\S/u;
+const ANY_MARKDOWN_HEADING_PATTERN = /^\s{0,3}#{1,6}\s+/u;
+const PRIMARY_HEADING_PATTERN = /^\s{0,3}#\s+/u;
 const CHECKLIST_ITEM_PATTERN =
-  /^\s*(?:[\-*]|\d+\.)\s+\[(?<checked>[ xX])\]\s+(?<text>.+?)\s*$/v;
-const TODO_HEADING_PATTERN = /^\s{0,3}#{1,6}\s+todos?\s*$/iv;
-const INBOX_HEADING_PATTERN = /^\s{0,3}#{1,6}\s+inbox\s*$/iv;
-const MARKDOWN_EXTENSION_PATTERN = /\.md$/iv;
+  /^\s*(?:[*-]|\d+\.)\s+\[(?<checked>[ xX])\]\s+(?<text>.+?)\s*$/u;
+const TODO_HEADING_PATTERN = /^\s{0,3}#{1,6}\s+todos?\s*$/iu;
+const INBOX_HEADING_PATTERN = /^\s{0,3}#{1,6}\s+inbox\s*$/iu;
+const MARKDOWN_EXTENSION_PATTERN = /\.md$/iu;
 
 const MAX_TRUNCATION_ELLIPSIS_WIDTH = 1;
 const THREAD_DESCRIPTION_PREVIEW_LENGTH = 180;

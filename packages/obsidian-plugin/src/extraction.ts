@@ -101,8 +101,8 @@ function parseExtractedMemories(rawContent: string): ExtractedMemory[] {
 
 function stripMarkdownFences(content: string): string {
   return content
-    .replace(/^```json?\s*/iv, '')
-    .replace(/```\s*$/v, '')
+    .replace(/^```json?\s*/iu, '')
+    .replace(/```\s*$/u, '')
     .trim();
 }
 

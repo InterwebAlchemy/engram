@@ -35,6 +35,18 @@ The `dev:clean` script will reset the temporary vault to the initial seed state 
 
 > **Note:** `setup` and `dev` will never seed a user-configured vault (one set via `ENGRAM_VAULT_PATH` in `.env`). Seeding only runs against the default `./tmp/vault`. To opt in explicitly, set `ENGRAM_SEED_VAULT=true` in `.env`.
 
+### JavaScript target
+
+Engram uses a consistent `ES2022` target across the repo.
+
+This is an intentional policy choice:
+
+- We target current Obsidian-era runtime/tooling without taking on legacy-version support work.
+- We prefer one fixed, predictable target over a moving `ESNext` baseline.
+- `ES2022` is the highest repo-wide target we currently use without build-tool friction, especially in the Obsidian plugin bundling path.
+
+If you want to raise the target later, update the repo consistently and verify `npm run build` stays clean across all workspaces.
+
 ### Temporary Development Vault
 
 The `setup` script scaffolds the vault structure and symlinks build artifacts into a temporary Obsidian Vault you can test at `./tmp/vault`. This Vault has the Engram plugin and the [Hot Reload](https://github.com/pjeby/hot-reload) plugin installed.

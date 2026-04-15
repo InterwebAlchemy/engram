@@ -39,7 +39,7 @@ const MINUTES_PER_HOUR = 60;
 const SECONDS_PER_MINUTE = 60;
 const MILLISECONDS_PER_SECOND = 1000;
 export const MILLISECONDS_PER_HOUR = MINUTES_PER_HOUR * SECONDS_PER_MINUTE * MILLISECONDS_PER_SECOND;
-export const MARKDOWN_SUFFIX_PATTERN = /\.md$/v;
+export const MARKDOWN_SUFFIX_PATTERN = /\.md$/u;
 
 export const CONFIDENCE_VALUES = ['high', 'medium', 'low'] as const;
 export const BOOTSTRAP_STATES = ['full', 'partial', 'none'] as const;

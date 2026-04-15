@@ -3,9 +3,9 @@ import type { FileSystemAdapter } from './adapters/types';
 import { supportsProcess, normalizeNoteContent } from './memory-helpers';
 import { VaultNote } from './vault';
 
-const BACKSLASH_PATTERN = /\\/gv;
-const LEADING_OR_TRAILING_SLASHES_PATTERN = /^\/+|\/+$/gv;
-const MARKDOWN_EXTENSION_PATTERN = /\.md$/v;
+const BACKSLASH_PATTERN = /\\/gu;
+const LEADING_OR_TRAILING_SLASHES_PATTERN = /^\/+|\/+$/gu;
+const MARKDOWN_EXTENSION_PATTERN = /\.md$/u;
 
 const EMPTY_CONTENT = '';
 const DEFAULT_LIST_LIMIT = 20;

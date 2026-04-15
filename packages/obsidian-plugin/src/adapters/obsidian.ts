@@ -31,7 +31,7 @@ export class ObsidianAdapter implements FileSystemAdapter {
       this.vaultBasePath.length > 0 &&
       filePath.startsWith(this.vaultBasePath)
     ) {
-      return normalizePath(filePath.slice(this.vaultBasePath.length).replace(/^[\\\/]/v, ''));
+      return normalizePath(filePath.slice(this.vaultBasePath.length).replace(/^[\\/]/u, ''));
     }
 
     return normalizePath(filePath);
@@ -163,7 +163,7 @@ export class ObsidianAdapter implements FileSystemAdapter {
           return null;
         }
 
-        const pattern = new RegExp(escapeRegex(query), 'giv');
+        const pattern = new RegExp(escapeRegex(query), 'giu');
         const matches = content.match(pattern);
         return {
           path: filePath,
@@ -242,7 +242,7 @@ function shouldUseRawAdapter(vaultPath: string): boolean {
 }
 
 function escapeRegex(value: string): string {
-  return value.replace(/[.*+?^$\{\}\(\)\|\[\]\\]/gv, '\\$&');
+  return value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
 }
 
 function getStringProperty(value: unknown, key: string): string | undefined {

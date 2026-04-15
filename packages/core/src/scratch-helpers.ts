@@ -8,8 +8,8 @@ import type {
 } from './types';
 
 const SCRATCH_ENTRY_PATTERN =
-  /^\[(?<sessionId>[^\]]+) \| (?<timestamp>[^\]]+)\] (?<content>.+)$/v;
-const NEWLINES_PATTERN = /\n+/gv;
+  /^\[(?<sessionId>[^\]]+) \| (?<timestamp>[^\]]+)\] (?<content>.+)$/u;
+const NEWLINES_PATTERN = /\n+/gu;
 
 const MIN_ENTRIES_TO_COMPACT = 2;
 const SCRATCH_BOOTSTRAP_RETENTION_DAYS = 7;
@@ -120,7 +120,7 @@ function findDreamSequence(
 
 function dreamSummaryEntry(dreamEnd: ScratchEntry): ScratchEntry | null {
   const stats = dreamEnd.content
-    .replace(/^\[DREAM END\]\s*/v, '')
+    .replace(/^\[DREAM END\]\s*/u, '')
     .split('|')[0]
     ?.trim();
   if (typeof stats !== 'string' || stats.length === 0) {

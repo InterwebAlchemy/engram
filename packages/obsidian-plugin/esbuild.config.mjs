@@ -59,6 +59,15 @@ const ctx = await esbuild.context({
   bundle: true,
   platform: 'node',
   format: 'cjs',
+  // Keep the repo on TS's newer target/lib support while giving esbuild
+  // a compatible view of the plugin's compiler settings.
+  tsconfigRaw: {
+    compilerOptions: {
+      jsx: 'react-jsx',
+      target: 'es2022',
+      lib: ['es2022', 'dom', 'dom.iterable'],
+    },
+  },
   target: 'es2022',
   outfile: resolve(__dirname, 'main.js'),
   sourcemap: prod ? false : 'inline',

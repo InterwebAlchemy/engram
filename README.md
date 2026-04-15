@@ -81,7 +81,7 @@ Cross-device continuity is established by any of the available [synchronization 
    - `MCP_CONFIGURE_CLAUDE_DESKTOP=true` — adds the MCP server to Claude Desktop
    - `MCP_CONFIGURE_CURSOR=true` — adds the MCP server to Cursor and copies bootstrap instructions to clipboard for pasting into Cursor Settings
 
-   Verified bootstrap harnesses today: `Claude Code CLI`, `Claude Code Desktop App`, `Claude Code VS Code extension`, `Claude Desktop`, `Codex Desktop App`, `Codex VS Code extension`, `Cursor`, `GitHub Copilot CLI`, and `GitHub Copilot in VS Code`.
+   Verified bootstrap harnesses today: `Claude Code CLI`, `Claude Code Desktop App`, `Claude Code VS Code extension`, `Claude Desktop`, `Codex Desktop App`, `Codex VS Code extension`, `Cursor`, `GitHub Copilot CLI`, `GitHub Copilot in VS Code`, `Windsurf App`.
    Other MCP client setup paths may exist in this repo, but they should be treated as configuration helpers until bootstrap behavior is actually verified.
 
 4. Review the generated Soul document at `<vault>/<engram-root>/memory/reflections/soul.md` and make it yours. Each session bootstraps by calling `soul(action: "get")`, then `thread(action: "resolve")` (auto-detects or creates the active Thread from the working directory), then `context(action: "load")`, then `scratch(action: "read", bootstrap: true)`.
@@ -89,7 +89,7 @@ Cross-device continuity is established by any of the available [synchronization 
 
 ### Bootstrapping a session
 
-Verified bootstrap harnesses today are `Claude Code CLI`, `Claude Code Desktop App`, `Claude Code VS Code extension`, `Claude Desktop`, `Codex Desktop App`, `Codex VS Code extension`, `Cursor`, `GitHub Copilot CLI`, and `GitHub Copilot in VS Code`.
+Verified bootstrap harnesses today are `Claude Code CLI`, `Claude Code Desktop App`, `Claude Code VS Code extension`, `Claude Desktop`, `Codex Desktop App`, `Codex VS Code extension`, `Cursor`, `GitHub Copilot CLI`, `GitHub Copilot in VS Code`, and `Windsurf App`.
 
 The reusable bootstrap instructions live in [`templates/AGENTS.md`](templates/AGENTS.md). Harness-specific files like `CLAUDE.md` should be treated as duplicates of that template, and project-level `AGENTS.md` files can carry repo-specific contributor instructions. As more harnesses are verified, they should be added here explicitly rather than implied.
 
@@ -122,6 +122,7 @@ Verified bootstrap harnesses:
 - `Cursor`
 - `GitHub Copilot CLI`
 - `GitHub Copilot in VS Code`
+- `Windsurf App`
 
 Other clients may be configurable via MCP, but they should be considered unverified until they are tested end-to-end and added to the list above.
 
@@ -129,7 +130,7 @@ Current focus areas are:
 
 - **Semantic search** for more precise context retrieval and lower token overhead.
 - **Context-specific memories** that allow the Engram to load some non-Threaded memories only when they are relevant, for example: only loading context about another person when you are working on a project with them or writing them an email.
-- **Harness verification** for additional MCP clients such as Aider, Windsurf, and other MCP-capable tools.
+- **Harness verification** for additional MCP clients such as OpenCode, Pi, Aider and other MCP-capable tools.
 - **Streamlined setup** with guided onboarding and a single installation command via `brew` or `npx`.
 
 ## Harness Limitations

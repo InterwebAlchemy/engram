@@ -213,8 +213,6 @@ async function createSnapshot(vaultPath: string, engramRoot?: string): Promise<v
     'create',
     '--vault',
     vaultPath,
-    '--snapshots-dir',
-    path.join(repoRoot, '.snapshots'),
     '--label',
     SNAPSHOT_LABEL,
     '--reason',

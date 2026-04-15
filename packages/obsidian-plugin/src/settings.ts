@@ -469,7 +469,7 @@ function parseExtractionMode(value: string): 'auto' | 'manual' | 'disabled' {
 }
 
 function slugifyProviderId(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9]+/gv, '-');
+  return value.toLowerCase().replace(/[^a-z0-9]+/gu, '-');
 }
 
 function firstModelOrEmpty(modelIds: string[]): string {

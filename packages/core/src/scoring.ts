@@ -99,7 +99,7 @@ function scoreTags(tokens: string[], note: VaultNote): number {
 
   // Split tags on / and - to get individual segments for matching
   const tagSegments = tags.flatMap((tag: string) =>
-    tag.toLowerCase().split(/[\/\-]/v).filter((segment: string) => segment.length > MIN_TAG_SEGMENT_LENGTH),
+    tag.toLowerCase().split(/[/-]/u).filter((segment: string) => segment.length > MIN_TAG_SEGMENT_LENGTH),
   );
 
   let matched = 0;

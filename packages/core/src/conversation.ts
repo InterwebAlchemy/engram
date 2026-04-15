@@ -120,14 +120,14 @@ export class Conversation {
 
     // Split on headings, keeping the heading text
     const sections = note.content
-      .split(/(?=^## )/mv)
+      .split(/(?=^## )/mu)
       .filter((section) => section.trim().length > 0);
 
     for (const section of sections) {
       const newline = section.indexOf('\n');
       if (newline === -1) continue;
 
-      const header = section.slice(0, newline).replace(/^## /v, '').trim();
+      const header = section.slice(0, newline).replace(/^## /u, '').trim();
       const content = section.slice(newline + 1).trim();
 
       let role: Message['role'] = 'user';
@@ -135,7 +135,7 @@ export class Conversation {
 
       if (header.startsWith('Assistant')) {
         role = 'assistant';
-        const modelMatch = /\[(?<model>[^\]]+)\]/v.exec(header);
+        const modelMatch = /\[(?<model>[^\]]+)\]/u.exec(header);
         if (modelMatch !== null) {
           const [, capturedModel] = modelMatch;
           model = capturedModel;

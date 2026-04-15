@@ -13,61 +13,38 @@ import {
   stdout as output,
 } from 'node:process';
 import {
-  isVoicePreset,
   VOICE_PRESET_IDS,
-  VOICE_PRESETS,
-  type VoicePresetId,
   voicePresetEntries,
 } from './voice-presets';
 import {
-  buildGitIdentity,
   expandHome,
   isChoice,
-  isEnvKey,
   normalizeEngramRoot,
-  parseGitIdentity,
-  quoteForShell,
-  replaceSection,
-  stripQuotes,
 } from './utils';
+import type { Placement } from './markers';
+import {
+  getBootstrapFileInfo,
+  injectBootstrap,
+  writeCopilotInstructions,
+  configureWindsurfMcp,
+  injectWindsurfGlobalRules,
+} from './harness-config';
+import { buildEnvUpdates } from './env-file';
+import {
+  loadExistingConfig,
+  getDefaultSnapshotDir,
+  isRepoContext,
+} from './config';
+import { runRemove } from './remove';
+import {
+  detectShellProfile,
+} from './shell-profile';
+import { maybeCreatePreflightSnapshot } from './init-preflight-snapshot';
+import { persistInitState, printInitMode } from './init-state';
+import { syncSoulDocument } from './soul-sync';
+import type { ExistingConfig, HarnessOption, InitAnswers } from './types';
 
-type HarnessKey =
-  | 'claudeCode'
-  | 'claudeDesktop'
-  | 'cursor'
-  | 'vscode'
-  | 'copilot'
-  | 'windsurf';
-
-interface HarnessOption {
-  key: HarnessKey;
-  label: string;
-  envKey: string;
-  description: string;
-}
-
-interface ExistingConfig {
-  vaultPath: string;
-  engramRoot: string;
-  agentName: string;
-  gitName: string;
-  gitEmail: string;
-  harnesses: Record<HarnessKey, boolean>;
-  claudeCodeScope: 'local' | 'user';
-  voicePreset: VoicePresetId;
-}
-
-interface CliAnswers {
-  agentName: string;
-  gitName: string;
-  gitEmail: string;
-  vaultPath: string;
-  engramRoot: string;
-  harnesses: Record<HarnessKey, boolean>;
-  claudeCodeScope: 'local' | 'user';
-  voicePreset: VoicePresetId;
-  runSetup: boolean;
-}
+// ── Constants ───────────────────────────────────────────────────────────────
 
 const HARNESSES: HarnessOption[] = [
   {
@@ -110,14 +87,8 @@ const HARNESSES: HarnessOption[] = [
 
 const CLI_ARG_START_INDEX = 2;
 const REPO_ROOT_SEGMENTS_UP = '../../..';
-const NOTE_PREVIEW_SEPARATOR = '\n';
-const DEFAULT_ENGRAM_ROOT = 'engram';
-const DEFAULT_AGENT_NAME = 'gl1tch';
-const DEFAULT_CLAUDE_CODE_SCOPE = 'local';
-const TRUE_VALUE = 'true';
-const FALSE_VALUE = 'false';
-const ENV_ASSIGNMENT_SEPARATOR = '=';
-const CARRIAGE_RETURN_PATTERN = /\r?\n/gv;
+
+// ── Output helpers ──────────────────────────────────────────────────────────
 
 function writeLine(message = ''): void {
   output.write(`${message}\n`);
@@ -127,80 +98,130 @@ function writeError(message: string): void {
   stderr.write(`${message}\n`);
 }
 
-function createEmptyHarnessSelections(): Record<HarnessKey, boolean> {
-  return {
-    claudeCode: false,
-    claudeDesktop: false,
-    cursor: false,
-    vscode: false,
-    copilot: false,
-    windsurf: false,
-  };
+// ── Subcommand dispatch ─────────────────────────────────────────────────────
+
+function parseArgs(args: string[]): 'init' | 'remove' | 'help' {
+  if (args.includes('--help') || args.includes('-h') || args.includes('help')) return 'help';
+  if (args.includes('remove') || args.includes('uninstall')) return 'remove';
+  return 'init';
 }
 
 async function main(): Promise<void> {
-  const args = parseArgs(argv.slice(CLI_ARG_START_INDEX));
-  if (args.help) {
-    printHelp();
-    return;
-  }
-
+  const command = parseArgs(argv.slice(CLI_ARG_START_INDEX));
   const repoRoot = path.resolve(__dirname, REPO_ROOT_SEGMENTS_UP);
   const envPath = path.join(repoRoot, '.env');
+  const repoContext = await isRepoContext(repoRoot);
+
+  switch (command) {
+    case 'help':
+      printHelp();
+      break;
+    case 'init':
+      await runInit(repoRoot, envPath, repoContext);
+      break;
+    case 'remove': {
+      const existing = await loadExistingConfig(envPath, repoRoot);
+      const rl = readline.createInterface({ input, output });
+      try {
+        await runRemove({ rl, existing, harnesses: HARNESSES, repoRoot, envPath, repoContext });
+      } finally {
+        rl.close();
+      }
+      break;
+    }
+  }
+}
+
+// ── Init command ────────────────────────────────────────────────────────────
+
+async function runInit(repoRoot: string, envPath: string, repoContext: boolean): Promise<void> {
   const templatePath = path.join(repoRoot, 'templates', 'soul-template.md');
+  const agentsTemplatePath = path.join(repoRoot, 'templates', 'AGENTS.md');
   const existing = await loadExistingConfig(envPath, repoRoot);
   const rl = readline.createInterface({ input, output });
 
   try {
-    writeLine('Engram CLI');
+    writeLine('Engram CLI — init');
     writeLine();
-    writeLine('This will write local setup values to .env, scaffold a Soul document, and optionally run setup.');
+    printInitMode(existing, repoContext);
     writeLine();
 
-    const answers = await askQuestions(rl, existing);
-    const envUpdates = buildEnvUpdates(answers);
-
-    await upsertEnvFile(envPath, envUpdates);
-    const envDisplayPath = path.relative(repoRoot, envPath);
-    writeLine(`Updated ${envDisplayPath.length > 0 ? envDisplayPath : '.env'}`);
+    const answers = await askInitQuestions(rl, existing, repoContext);
+    await maybeCreatePreflightSnapshot(repoRoot, existing, answers, rl);
+    const envUpdates = buildEnvUpdates(answers, HARNESSES);
+    await persistInitState({ answers, envPath, existing, repoContext, repoRoot, harnesses: HARNESSES });
 
     if (answers.runSetup) {
-      await runSetup(repoRoot, answers.vaultPath, answers.engramRoot);
+      await runSetup(repoRoot, answers.vaultPath, answers.engramRoot, envUpdates);
     }
 
-    await writeSoulDocument(templatePath, answers);
+    await syncSoulDocument(templatePath, answers, rl);
+    const mcpScriptPath = path.join(repoRoot, 'scripts', 'mcp.sh');
+    await injectBootstrapFiles(agentsTemplatePath, mcpScriptPath, answers);
 
     writeLine();
-    writeLine('CLI scaffold complete.');
+    writeLine('Init complete.');
     writeLine(`Vault: ${answers.vaultPath}`);
     writeLine(`Engram root: ${answers.engramRoot}`);
     writeLine(`Soul: ${path.join(answers.vaultPath, answers.engramRoot, 'memory', 'reflections', 'soul.md')}`);
     writeLine();
     writeLine('Next steps:');
     writeLine('1. Review the generated Soul document and make it yours.');
-    writeLine('2. Open the vault in Obsidian and enable the Engram plugin if you have not already.');
+    if (repoContext && answers.runSetup) {
+      writeLine('2. Open the vault in Obsidian and enable the Engram plugin if you have not already.');
+    } else if (repoContext) {
+      writeLine('2. Run the repo setup later when you are ready to scaffold the dev vault and plugin wiring.');
+    } else {
+      writeLine('2. If you want shell-level access to the saved env vars later, rerun init and enable shell profile exports.');
+    }
     writeLine('3. Start a session in a configured harness and use "load your engram" if bootstrap does not happen on greeting.');
   } finally {
     rl.close();
   }
 }
 
-function parseArgs(argv: string[]): { help: boolean } {
-  return {
-    help: argv.includes('--help') || argv.includes('-h'),
-  };
+async function injectBootstrapFiles(
+  agentsTemplatePath: string,
+  mcpScriptPath: string,
+  answers: InitAnswers,
+): Promise<void> {
+  const agentsTemplate = await fs.readFile(agentsTemplatePath, 'utf8').catch(() => null);
+  if (agentsTemplate === null) return;
+
+  if (answers.harnesses.claudeCode && answers.claudeCodeScope === 'user') {
+    const result = await injectBootstrap(agentsTemplate, answers.bootstrapPlacement);
+    writeLine(`Bootstrap → ${result.path} (${result.action})`);
+  }
+
+  if (answers.harnesses.copilot) {
+    const instrPath = await writeCopilotInstructions(agentsTemplate);
+    writeLine(`Bootstrap → ${instrPath}`);
+  }
+
+  if (answers.harnesses.windsurf) {
+    const mcpPath = await configureWindsurfMcp(mcpScriptPath);
+    writeLine(`MCP config → ${mcpPath}`);
+    const rulesResult = await injectWindsurfGlobalRules(agentsTemplate);
+    writeLine(`Bootstrap → ${rulesResult.path} (${rulesResult.action})`);
+  }
 }
 
-async function askQuestions(
+// ── Init questions ──────────────────────────────────────────────────────────
+
+async function askInitQuestions(
   rl: readline.Interface,
   existing: ExistingConfig,
-): Promise<CliAnswers> {
+  repoContext: boolean,
+): Promise<InitAnswers> {
   const agentName = await askRequired(rl, 'Engram name', existing.agentName);
   const gitName = await ask(rl, 'Git identity name (optional)', existing.gitName);
   const gitEmail = await ask(rl, 'Git identity email (optional)', existing.gitEmail);
   const vaultPath = await askRequired(rl, 'Obsidian vault path', existing.vaultPath);
   const engramRoot = normalizeEngramRoot(
     await askRequired(rl, 'Engram folder inside the vault', existing.engramRoot),
+  );
+  const snapshotDir = expandHome(
+    await askRequired(rl, 'Snapshot directory', existing.snapshotDir.length > 0 ? existing.snapshotDir : getDefaultSnapshotDir()),
   );
 
   writeLine();
@@ -209,27 +230,40 @@ async function askQuestions(
 
   let claudeCodeScope: 'local' | 'user' = existing.claudeCodeScope;
   if (harnesses.claudeCode) {
-    claudeCodeScope = await askChoice(
-      rl,
-      'Claude Code scope',
-      ['local', 'user'],
-      existing.claudeCodeScope,
-    );
+    claudeCodeScope = await askChoice(rl, 'Claude Code scope', ['local', 'user'], existing.claudeCodeScope);
   }
+
+  const bootstrapPlacement = await askBootstrapPlacement(rl, harnesses, claudeCodeScope);
 
   writeLine();
   writeLine('Voice preset');
   for (const [id, preset] of voicePresetEntries()) {
     writeLine(`- ${id}: ${preset.label} — ${preset.description}`);
   }
-  const voicePreset = await askChoice(
-    rl,
-    'Starter voice preset',
-    VOICE_PRESET_IDS,
-    existing.voicePreset,
-  );
+  const voicePreset = await askChoice(rl, 'Starter voice preset', VOICE_PRESET_IDS, existing.voicePreset);
 
-  const runSetup = await askYesNo(rl, 'Run setup now?', true);
+  let { shellProfilePath } = existing;
+  if (!repoContext) {
+    const detection = await detectShellProfile(existing.shellProfilePath);
+    const { path: detectedShellProfilePath } = detection;
+    writeLine();
+    writeLine('Shell profile exports');
+    writeLine('Instead of writing a project-local .env, Engram can manage exports in your shell profile.');
+    const shouldWriteShellExports = await askYesNo(
+      rl,
+      `Write Engram exports to ${detectedShellProfilePath}?`,
+      existing.shellProfilePath !== null,
+    );
+    if (shouldWriteShellExports) {
+      shellProfilePath = expandHome(await askRequired(rl, 'Shell profile path', detectedShellProfilePath));
+    } else {
+      shellProfilePath = null;
+    }
+  }
+
+  const runSetup = repoContext
+    ? await askYesNo(rl, 'Run repo setup now?', true)
+    : false;
 
   return {
     agentName,
@@ -237,200 +271,78 @@ async function askQuestions(
     gitEmail,
     vaultPath: expandHome(vaultPath),
     engramRoot,
+    snapshotDir,
     harnesses,
     claudeCodeScope,
+    bootstrapPlacement,
     voicePreset,
+    shellProfilePath,
     runSetup,
   };
+}
+
+async function askBootstrapPlacement(
+  rl: readline.Interface,
+  harnesses: Record<string, boolean>,
+  claudeCodeScope: string,
+): Promise<Placement> {
+  const needsFile = harnesses.claudeCode && claudeCodeScope === 'user';
+  if (!needsFile) return 'bottom';
+
+  const info = await getBootstrapFileInfo();
+  if (!info.exists || info.hasMarkers) return 'bottom';
+
+  writeLine();
+  writeLine(`Your ${info.path} already has content.`);
+  writeLine('The Engram bootstrap will be wrapped in markers so it can be updated or removed later.');
+  return await askChoice(rl, 'Bootstrap placement', ['top', 'bottom'], 'bottom');
 }
 
 async function askHarnesses(
   rl: readline.Interface,
   existing: ExistingConfig,
   index = 0,
-  selections: Record<HarnessKey, boolean> = createEmptyHarnessSelections(),
-): Promise<Record<HarnessKey, boolean>> {
+  selections = createEmptyHarnessSelections(),
+): Promise<Record<string, boolean>> {
   const harness = HARNESSES.at(index);
-  if (harness === undefined) {
-    return selections;
-  }
+  if (harness === undefined) return selections;
 
   writeLine(`- ${harness.label}: ${harness.description}`);
   const enabled = await askYesNo(rl, `Configure ${harness.label}?`, existing.harnesses[harness.key]);
-  return await askHarnesses(rl, existing, index + 1, {
-    ...selections,
-    [harness.key]: enabled,
-  });
+  return await askHarnesses(rl, existing, index + 1, { ...selections, [harness.key]: enabled });
 }
 
-async function loadExistingConfig(envPath: string, repoRoot: string): Promise<ExistingConfig> {
-  const env = await readEnvFile(envPath);
-  const gitIdentity = parseGitIdentity(env.GIT_IDENTITY ?? env.ENGRAM_GIT_IDENTITY ?? '');
-  const vaultPath = env.ENGRAM_VAULT_PATH ?? path.join(repoRoot, 'tmp', 'vault');
-  const engramRoot = env.ENGRAM_ROOT ?? DEFAULT_ENGRAM_ROOT;
-  const agentName = env.ENGRAM_NAME ?? DEFAULT_AGENT_NAME;
-
-  return {
-    vaultPath: expandHome(vaultPath),
-    engramRoot: normalizeEngramRoot(engramRoot),
-    agentName,
-    gitName: gitIdentity.name,
-    gitEmail: gitIdentity.email,
-    harnesses: {
-      claudeCode: env.MCP_CONFIGURE_CLAUDE_CODE === TRUE_VALUE,
-      claudeDesktop: env.MCP_CONFIGURE_CLAUDE_DESKTOP === TRUE_VALUE,
-      cursor: env.MCP_CONFIGURE_CURSOR === TRUE_VALUE,
-      vscode: env.MCP_CONFIGURE_VSCODE === TRUE_VALUE,
-      copilot: env.MCP_CONFIGURE_COPILOT === TRUE_VALUE,
-      windsurf: env.MCP_CONFIGURE_WINDSURF === TRUE_VALUE,
-    },
-    claudeCodeScope: env.MCP_CLAUDE_CODE_SCOPE === 'user' ? 'user' : DEFAULT_CLAUDE_CODE_SCOPE,
-    voicePreset: isVoicePreset(env.ENGRAM_VOICE_PRESET) ? env.ENGRAM_VOICE_PRESET : 'collaborator',
-  };
+function createEmptyHarnessSelections(): Record<string, boolean> {
+  return { claudeCode: false, claudeDesktop: false, cursor: false, vscode: false, copilot: false, windsurf: false };
 }
 
-async function readEnvFile(envPath: string): Promise<Partial<Record<string, string>>> {
-  try {
-    const raw = await fs.readFile(envPath, 'utf8');
-    const entries: Partial<Record<string, string>> = {};
+// ── Setup + Soul ────────────────────────────────────────────────────────────
 
-    for (const line of raw.split(CARRIAGE_RETURN_PATTERN)) {
-      const trimmed = line.trim();
-      if (trimmed.length === 0 || trimmed.startsWith('#')) continue;
-
-      const index = trimmed.indexOf(ENV_ASSIGNMENT_SEPARATOR);
-      if (index === -1) continue;
-
-      const key = trimmed.slice(0, index).trim();
-      const value = trimmed.slice(index + 1).trim();
-      entries[key] = stripQuotes(value);
-    }
-
-    return entries;
-  } catch {
-    return {};
-  }
-}
-
-function buildEnvUpdates(answers: CliAnswers): Record<string, string> {
-  const gitIdentity = buildGitIdentity(answers.gitName, answers.gitEmail);
-  const updates: Record<string, string> = {
-    ENGRAM_NAME: answers.agentName,
-    ENGRAM_VAULT_PATH: answers.vaultPath,
-    ENGRAM_ROOT: answers.engramRoot,
-    ENGRAM_VOICE_PRESET: answers.voicePreset,
-    GIT_IDENTITY: gitIdentity,
-    ENGRAM_GIT_IDENTITY: gitIdentity,
-    MCP_CLAUDE_CODE_SCOPE: answers.claudeCodeScope,
-  };
-
-  for (const harness of HARNESSES) {
-    updates[harness.envKey] = answers.harnesses[harness.key] ? TRUE_VALUE : FALSE_VALUE;
-  }
-
-  return updates;
-}
-
-async function upsertEnvFile(envPath: string, updates: Record<string, string>): Promise<void> {
-  const existing = await fs.readFile(envPath, 'utf8').catch(() => '');
-  const lines = existing.length > 0 ? existing.split(CARRIAGE_RETURN_PATTERN) : [];
-  const pending = new Map(Object.entries(updates));
-  const nextLines = lines.map((line) => {
-    const separatorIndex = line.indexOf(ENV_ASSIGNMENT_SEPARATOR);
-    if (separatorIndex === -1) return line;
-    const key = line.slice(0, separatorIndex);
-    if (!isEnvKey(key)) return line;
-    if (!pending.has(key)) return line;
-
-    const value = pending.get(key) ?? '';
-    pending.delete(key);
-    return `${key}=${quoteForShell(value)}`;
-  });
-
-  if (nextLines.length > 0 && nextLines[nextLines.length - 1] !== '') {
-    nextLines.push('');
-  }
-
-  for (const [key, value] of pending) {
-    nextLines.push(`${key}=${quoteForShell(value)}`);
-  }
-
-  const outputContent = `${nextLines.join(NOTE_PREVIEW_SEPARATOR).replace(/\n{3,}/gv, '\n\n').trimEnd()}\n`;
-  await fs.writeFile(envPath, outputContent, 'utf8');
-}
-
-async function runSetup(repoRoot: string, vaultPath: string, engramRoot: string): Promise<void> {
+async function runSetup(
+  repoRoot: string,
+  vaultPath: string,
+  engramRoot: string,
+  envUpdates: Record<string, string>,
+): Promise<void> {
   const child = spawn('bash', ['scripts/setup-dev.sh', vaultPath], {
     cwd: repoRoot,
     stdio: 'inherit',
-    env: {
-      ...process.env,
-      ENGRAM_VAULT_PATH: vaultPath,
-      ENGRAM_ROOT: engramRoot,
-    },
+    env: { ...process.env, ...envUpdates, ENGRAM_VAULT_PATH: vaultPath, ENGRAM_ROOT: engramRoot },
   });
-
   const exitPromise = once(child, 'exit');
-  const errorPromise = once(child, 'error').then(([error]) => {
-    throw error instanceof Error ? error : new Error(String(error));
+  const errorPromise = once(child, 'error').then(([err]: unknown[]) => {
+    throw err instanceof Error ? err : new Error(String(err));
   });
-  const exitResult: unknown = await Promise.race([exitPromise, errorPromise]);
-  const code = exitCodeFromResult(exitResult);
+  const result: unknown = await Promise.race([exitPromise, errorPromise]);
+  if (!Array.isArray(result)) throw new Error('setup-dev.sh exited without an exit result');
+  const code: unknown = result.at(0);
   if (code !== 0) {
-    throw new Error(`setup-dev.sh exited with code ${code ?? 'unknown'}`);
+    const codeStr = typeof code === 'number' ? String(code) : 'unknown';
+    throw new Error(`setup-dev.sh exited with code ${codeStr}`);
   }
 }
 
-async function writeSoulDocument(
-  templatePath: string,
-  answers: CliAnswers,
-): Promise<void> {
-  const template = await fs.readFile(templatePath, 'utf8');
-  const soulPath = path.join(
-    answers.vaultPath,
-    answers.engramRoot,
-    'memory',
-    'reflections',
-    'soul.md',
-  );
-  const {
-    agentName,
-    gitEmail,
-    gitName,
-    voicePreset,
-  } = answers;
-  const { [voicePreset]: preset } = VOICE_PRESETS;
-  const {
-    bootSignature,
-    howIApproachProblems,
-    howICommunicate,
-    values,
-    voiceGuardrails,
-    voiceprint,
-  } = preset;
-  const gitIdentity = buildGitIdentity(gitName, gitEmail);
-
-  let content = template.replaceAll('[your agent name]', agentName);
-  content = gitIdentity.length > 0
-    ? content.replace(
-      /# git_identity: your-agent-name <your-agent@example\.com>/v,
-      `git_identity: ${gitIdentity}`,
-    )
-    : content;
-  content = replaceSection(content, 'How I Approach Problems', howIApproachProblems);
-  content = replaceSection(content, 'How I Communicate', howICommunicate);
-  content = replaceSection(content, 'Voiceprint', voiceprint);
-  content = replaceSection(content, 'Boot Signature', bootSignature);
-  content = replaceSection(content, 'Voice Guardrails', voiceGuardrails);
-  content = replaceSection(
-    content,
-    'Values I Want to Hold',
-    values.map((value) => `- ${value}`).join('\n'),
-  );
-
-  await fs.mkdir(path.dirname(soulPath), { recursive: true });
-  await fs.writeFile(soulPath, content, 'utf8');
-}
+// ── Prompt helpers ──────────────────────────────────────────────────────────
 
 async function ask(rl: readline.Interface, label: string, defaultValue = ''): Promise<string> {
   const suffix = defaultValue.length > 0 ? ` [${defaultValue}]` : '';
@@ -438,20 +350,12 @@ async function ask(rl: readline.Interface, label: string, defaultValue = ''): Pr
   return answer.length > 0 ? answer : defaultValue;
 }
 
-async function askRequired(
-  rl: readline.Interface,
-  label: string,
-  defaultValue = '',
-): Promise<string> {
+async function askRequired(rl: readline.Interface, label: string, defaultValue = ''): Promise<string> {
   const answer = await ask(rl, label, defaultValue);
   return answer.trim().length > 0 ? answer.trim() : await askRequired(rl, label, defaultValue);
 }
 
-async function askYesNo(
-  rl: readline.Interface,
-  label: string,
-  defaultValue: boolean,
-): Promise<boolean> {
+async function askYesNo(rl: readline.Interface, label: string, defaultValue: boolean): Promise<boolean> {
   const suffix = defaultValue ? ' [Y/n]' : ' [y/N]';
   const answer = (await rl.question(`${label}${suffix}: `)).trim().toLowerCase();
   if (answer.length === 0) return defaultValue;
@@ -465,30 +369,14 @@ async function askChoice<T extends string>(
   defaultValue: T,
 ): Promise<T> {
   const defaultSuffix = defaultValue.length > 0 ? ` (${defaultValue})` : '';
-  const answer = (await rl.question(
-    `${label} [${options.join('/')}]${defaultSuffix}: `,
-  )).trim().toLowerCase();
+  const answer = (await rl.question(`${label} [${options.join('/')}]${defaultSuffix}: `)).trim().toLowerCase();
   if (answer.length === 0) return defaultValue;
   return isChoice(options, answer) ? answer : await askChoice(rl, label, options, defaultValue);
 }
 
-function exitCodeFromResult(result: unknown): number | null {
-  if (!isUnknownArray(result)) {
-    throw new Error('setup-dev.sh exited without an exit result');
-  }
-  const rawCode = result.at(0);
-  return typeof rawCode === 'number' || rawCode === null ? rawCode : null;
-}
-
-function isUnknownArray(value: unknown): value is unknown[] {
-  return Array.isArray(value);
-}
-
 function printHelp(): void {
-  writeLine('Usage: npm run cli');
-  writeLine('       engram-cli');
+  for (const line of ['Usage: engram-cli [command]', '', 'Commands:', '  init      Set up a new Engram (default)', '  remove    Remove Engram integrations and optionally delete vault data', '  help      Show this help message']) writeLine(line);
 }
-
 main().catch((error: unknown) => {
   const message = error instanceof Error ? error.message : String(error);
   writeError(`CLI failed: ${message}`);

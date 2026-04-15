@@ -428,7 +428,7 @@ function formatRunSummary(run: DreamsRunHistory['runs'][number]): string {
 
 function baseName(notePath: string): string {
   const fileName = notePath.split('/').at(-1);
-  return fileName?.replace(/\.md$/v, '') ?? notePath;
+  return fileName?.replace(/\.md$/u, '') ?? notePath;
 }
 
 function formatTimestamp(value: string): string {

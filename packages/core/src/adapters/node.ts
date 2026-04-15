@@ -78,8 +78,8 @@ export class NodeAdapter implements FileSystemAdapter {
     // Fall back to literal match if no usable tokens
     const patterns =
       tokens.length > 0
-        ? tokens.map((token) => new RegExp(escapeRegex(token), 'giv'))
-        : [new RegExp(escapeRegex(query), 'giv')];
+        ? tokens.map((token) => new RegExp(escapeRegex(token), 'giu'))
+        : [new RegExp(escapeRegex(query), 'giu')];
 
     await Promise.all(
       files.map(async (filePath) => {

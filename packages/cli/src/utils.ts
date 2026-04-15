@@ -1,10 +1,10 @@
 import * as path from 'node:path';
 import { env } from 'node:process';
 
-const BACKSLASH_PATTERN = /\\/gv;
-const WRAPPED_QUOTES_PATTERN = /^['"]|['"]$/gv;
-const ESCAPE_REG_EXP_PATTERN = /[.*+?^$\{\}\(\)\|\[\]\\]/gv;
-const ENV_KEY_PATTERN = /^[A-Z0-9_]+$/v;
+const BACKSLASH_PATTERN = /\\/gu;
+const WRAPPED_QUOTES_PATTERN = /^['"]|['"]$/gu;
+const ESCAPE_REG_EXP_PATTERN = /[.*+?^${}()|[\]\\]/gu;
+const ENV_KEY_PATTERN = /^[A-Z0-9_]+$/u;
 const DEFAULT_ENGRAM_ROOT = 'engram';
 const SECTION_BODY_PATTERN = '[\\s\\S]*?';
 
@@ -15,19 +15,19 @@ export function isEnvKey(value: string): boolean {
 export function replaceSection(markdown: string, heading: string, body: string): string {
   const pattern = new RegExp(
     `(?<prefix>## ${escapeRegExp(heading)}\\n\\n)(?<body>${SECTION_BODY_PATTERN})(?=\\n## |$)`,
-    'v',
+    'u',
   );
   return markdown.replace(pattern, `$<prefix>${body.trim()}\n\n`);
 }
 
 export function quoteForShell(value: string): string {
   if (value.length === 0) return '""';
-  if (/^[A-Za-z0-9_.\/:\-]+$/v.test(value)) return value;
+  if (/^[-A-Za-z0-9_./:]+$/u.test(value)) return value;
   return `"${value
     .replace(BACKSLASH_PATTERN, '\\\\')
-    .replace(/"/gv, '\\"')
-    .replace(/\$/gv, '\\$')
-    .replace(/`/gv, '\\`')}"`;
+    .replace(/"/gu, '\\"')
+    .replace(/\$/gu, '\\$')
+    .replace(/`/gu, '\\`')}"`;
 }
 
 export function stripQuotes(value: string): string {
@@ -57,7 +57,7 @@ export function parseGitIdentity(value: string): { name: string; email: string }
 }
 
 export function normalizeEngramRoot(value: string): string {
-  const normalized = value.replace(BACKSLASH_PATTERN, '/').replace(/^\/+|\/+$/gv, '');
+  const normalized = value.replace(BACKSLASH_PATTERN, '/').replace(/^\/+|\/+$/gu, '');
   return normalized.length > 0 ? normalized : DEFAULT_ENGRAM_ROOT;
 }
 
@@ -71,6 +71,6 @@ export function isChoice<T extends string>(options: readonly T[], value: string)
   return options.some((option) => option === value);
 }
 
-function escapeRegExp(value: string): string {
+export function escapeRegExp(value: string): string {
   return value.replace(ESCAPE_REG_EXP_PATTERN, '\\$&');
 }

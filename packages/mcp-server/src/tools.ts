@@ -42,6 +42,7 @@ const TOOL_HANDLERS = {
   inbox: handleInboxTool,
 } as const satisfies Record<string, ToolHandler>;
 
+// eslint-disable-next-line @typescript-eslint/no-deprecated -- Tool registration still targets the low-level MCP Server API used by current transports.
 export function registerTools(server: Server, manager: MemoryManager): void {
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     await Promise.resolve();

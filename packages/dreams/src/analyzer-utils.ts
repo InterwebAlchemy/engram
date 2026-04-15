@@ -13,8 +13,8 @@ const MILLISECONDS_PER_SECOND = 1000;
 const TOKEN_MIN_LENGTH = 4;
 const EMPTY_STRING = '';
 const COMPACTED_MARKER = '[COMPACTED]';
-const MEMORY_DIRECTORY_PATTERN = /\/memory\/(?<directory>[^\/]+)\//v;
-const TOKEN_SPLIT_PATTERN = /[^a-z0-9]+/iv;
+const MEMORY_DIRECTORY_PATTERN = /\/memory\/(?<directory>[^/]+)\//u;
+const TOKEN_SPLIT_PATTERN = /[^a-z0-9]+/iu;
 
 export const DAY_MS =
   HOURS_PER_DAY * MINUTES_PER_HOUR * SECONDS_PER_MINUTE * MILLISECONDS_PER_SECOND;

@@ -4,8 +4,8 @@ import type {
   DreamsReport,
 } from './types';
 
-const CODE_FENCE_PATTERN = /^```(?:json)?\s*(?<body>[\s\S]*?)\s*```$/iv;
-const ACTIONS_ARRAY_START_PATTERN = /"actions"\s*:\s*\[/v;
+const CODE_FENCE_PATTERN = /^```(?:json)?\s*(?<body>[\s\S]*?)\s*```$/iu;
+const ACTIONS_ARRAY_START_PATTERN = /"actions"\s*:\s*\[/u;
 
 export interface ParsedDreamsResponse {
   actions: DreamsAction[];

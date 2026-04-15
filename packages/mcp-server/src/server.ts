@@ -69,6 +69,7 @@ export async function startServer(cfg: ServerConfig): Promise<void> {
     const sessions = new Map<string, StreamableTransportLike>();
 
     const createSession = async (): Promise<StreamableTransportLike> => {
+      // eslint-disable-next-line @typescript-eslint/no-deprecated -- Low-level Server is still needed for the current transport/session wiring.
       const server = new Server(
         { name: 'engram', version: '0.1.0' },
         { capabilities: { tools: {}, resources: {} } },
@@ -113,6 +114,7 @@ export async function startServer(cfg: ServerConfig): Promise<void> {
       `  vault: ${cfg.vaultPath} (${mode} mode)\n`,
     );
   } else {
+    // eslint-disable-next-line @typescript-eslint/no-deprecated -- Low-level Server is still needed for the stdio transport path.
     const server = new Server(
       { name: 'engram', version: '0.1.0' },
       { capabilities: { tools: {}, resources: {} } },

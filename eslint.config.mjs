@@ -24,6 +24,7 @@ export default [
     },
     rules: {
       ...love.rules,
+      'require-unicode-regexp': ['error', { requireFlag: 'u' }],
       '@typescript-eslint/no-magic-numbers': [
         'error',
         {

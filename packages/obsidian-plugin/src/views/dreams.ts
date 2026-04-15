@@ -1,4 +1,3 @@
-import * as path from 'node:path';
 import { ItemView, type WorkspaceLeaf, setIcon } from 'obsidian';
 import { defaultMemoryConfig } from '@interwebalchemy/engram-core';
 import type EngramPlugin from '../main';
@@ -110,7 +109,7 @@ export class EngramDreamsView extends ItemView {
 
     try {
       const analyzer = new DreamsAnalyzer(this.plugin.memoryManager);
-      const snapshotManager = this.createSnapshotManager();
+      const snapshotManager = EngramDreamsView.createSnapshotManager();
       const basePath = this.plugin.getVaultBasePath();
       const [report, snapshots, history] = await Promise.all([
         analyzer.analyze(),
@@ -188,7 +187,7 @@ export class EngramDreamsView extends ItemView {
     renderSnapshotsSection(
       this.container,
       this.snapshots,
-      this.getSnapshotsDir(),
+      EngramDreamsView.getSnapshotsDir(),
       this.handleRestoreSnapshot.bind(this),
     );
   }
@@ -332,7 +331,7 @@ export class EngramDreamsView extends ItemView {
       throw new Error(`Could not create provider adapter for ${selection.providerName}.`);
     }
 
-    const snapshotManager = this.createSnapshotManager();
+    const snapshotManager = EngramDreamsView.createSnapshotManager();
     const analyzer = new DreamsAnalyzer(this.plugin.memoryManager);
     const snapshot = await snapshotManager.create({
       vaultPath: this.plugin.getVaultBasePath(),
@@ -415,7 +414,7 @@ export class EngramDreamsView extends ItemView {
 
   private async handleCreateSnapshot(): Promise<void> {
     try {
-      const snapshot = await this.createSnapshotManager().create({
+      const snapshot = await EngramDreamsView.createSnapshotManager().create({
         vaultPath: this.plugin.getVaultBasePath(),
         engramRoot: this.plugin.settings.engramRoot,
         label: 'Manual snapshot from Dreams dashboard',
@@ -437,7 +436,7 @@ export class EngramDreamsView extends ItemView {
 
   private async restoreSnapshot(snapshot: SnapshotRecord): Promise<void> {
     try {
-      const result = await this.createSnapshotManager().restore({
+      const result = await EngramDreamsView.createSnapshotManager().restore({
         snapshotIdOrPath: snapshot.id,
         vaultPath: this.plugin.getVaultBasePath(),
         engramRoot: this.plugin.settings.engramRoot,
@@ -460,12 +459,12 @@ export class EngramDreamsView extends ItemView {
     }
   }
 
-  private createSnapshotManager(): SnapshotManager {
-    return new SnapshotManager({ snapshotsDir: this.getSnapshotsDir() });
+  private static createSnapshotManager(): SnapshotManager {
+    return new SnapshotManager();
   }
 
-  private getSnapshotsDir(): string {
-    return path.join(this.plugin.getVaultBasePath(), '.snapshots', 'engram');
+  private static getSnapshotsDir(): string {
+    return EngramDreamsView.createSnapshotManager().getSnapshotsDir();
   }
 
   private syncSelection(): ModelOption[] {

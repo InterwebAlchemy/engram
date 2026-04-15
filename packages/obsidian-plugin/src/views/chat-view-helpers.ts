@@ -10,10 +10,10 @@ export const THINKING_LABEL = 'Thinking...';
 export const CHAT_REFRESH_INTERVAL_MS = 100;
 export const MEMORY_CONTEXT_TOKEN_FALLBACK = 8192;
 export const MEMORY_CONTEXT_TOKEN_MULTIPLIER = 3;
-const THINK_OPEN_PATTERN = /^[\s\S]*?<think(?:ing)?>[ \t]*/iv;
-const THINK_CLOSE_PATTERN = /^(?<reasoning>[\s\S]*?)<\/think(?:ing)?>[ \t]*/iv;
-const MEMORY_LABEL_PATTERN = /^memory:.*[\\\/]/v;
-const MARKDOWN_SUFFIX_PATTERN = /\.md$/v;
+const THINK_OPEN_PATTERN = /^[\s\S]*?<think(?:ing)?>[ \t]*/iu;
+const THINK_CLOSE_PATTERN = /^(?<reasoning>[\s\S]*?)<\/think(?:ing)?>[ \t]*/iu;
+const MEMORY_LABEL_PATTERN = /^memory:.*[\\/]/u;
+const MARKDOWN_SUFFIX_PATTERN = /\.md$/u;
 
 export function parseThinkContent(raw: string): { content: string; reasoning: string } {
   const openMatch = THINK_OPEN_PATTERN.exec(raw);

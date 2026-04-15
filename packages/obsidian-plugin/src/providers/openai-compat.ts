@@ -18,7 +18,7 @@ import {
 } from './provider-utils';
 
 const OPENAI_API_URL = 'https://api.openai.com';
-const TRAILING_SLASH_PATTERN = /\/$/v;
+const TRAILING_SLASH_PATTERN = /\/$/u;
 const OPENAI_DONE_PAYLOAD = '[DONE]';
 
 /**

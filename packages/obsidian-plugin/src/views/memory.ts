@@ -172,7 +172,7 @@ export class EngramMemoryView extends ItemView {
     const fileName = note.path.split('/').pop() ?? note.path;
     const nameEl = header.createSpan({
       cls: 'engram-memory-name',
-      text: fileName.replace(/\.md$/v, ''),
+      text: fileName.replace(/\.md$/u, ''),
     });
     // Click to open in editor
     nameEl.addEventListener('click', () => {

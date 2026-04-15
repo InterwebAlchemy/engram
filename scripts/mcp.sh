@@ -25,6 +25,21 @@ fi
 # Load vault path from .env / environment
 source "$REPO_ROOT/scripts/resolve-vault.sh"
 
+if [ -z "${ENGRAM_ROOT:-}" ] && [ -f "$HOME/.engram/config.json" ]; then
+  _engram_root_from_config="$(node -e "
+const fs = require('fs');
+try {
+  const raw = fs.readFileSync(process.argv[1], 'utf8');
+  const parsed = JSON.parse(raw);
+  if (typeof parsed.engramRoot === 'string' && parsed.engramRoot.trim().length > 0) {
+    process.stdout.write(parsed.engramRoot.trim());
+  }
+} catch {}
+" "$HOME/.engram/config.json")" || true
+  [ -n "$_engram_root_from_config" ] && ENGRAM_ROOT="$_engram_root_from_config"
+  unset _engram_root_from_config
+fi
+
 ENGRAM_ROOT="${ENGRAM_ROOT:-engram}"
 
 DIST="$REPO_ROOT/packages/mcp-server/dist/index.js"

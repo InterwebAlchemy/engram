@@ -11,9 +11,9 @@ export function slugify(text: string): string {
   const slug = text
     .toLowerCase()
     .trim()
-    .replace(/[^\w\s\-]/gv, '')
-    .replace(/[\s_]+/gv, '-')
-    .replace(/^-+|-+$/gv, '')
+    .replace(/[^\w\s-]/gu, '')
+    .replace(/[\s_]+/gu, '-')
+    .replace(/^-+|-+$/gu, '')
     .slice(0, MAX_SLUG_LENGTH);
 
   return slug.length > 0 ? slug : DEFAULT_SLUG;
@@ -30,7 +30,7 @@ export function datePath(date: Date = new Date()): string {
  * Escape a string for safe use in a RegExp.
  */
 export function escapeRegex(str: string): string {
-  return str.replace(/[.*+?^$\{\}\(\)\|\[\]\\]/gv, '\\$&');
+  return str.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
 }
 
 const STOP_WORDS = new Set([
@@ -47,7 +47,7 @@ const STOP_WORDS = new Set([
 export function tokenizeQuery(query: string): string[] {
   return query
     .toLowerCase()
-    .split(/[\s,;:.!?\(\)\[\]\{\}"']+/gv)
+    .split(/[\s,;:.!?()[\]{}"']+/gu)
     .map((token) => token.trim())
     .filter((token) => token.length > MIN_QUERY_TOKEN_LENGTH && !STOP_WORDS.has(token));
 }

@@ -23,9 +23,9 @@ const DECIMAL_RADIX = 10;
 const JSON_INDENT = 2;
 const BYTES_PER_KILOBYTE = 1024;
 const KILOBYTES_PER_MEGABYTE = 1024;
-const CARRIAGE_RETURN_PATTERN = /\r?\n/gv;
-const WRAPPED_QUOTES_PATTERN = /^['"]|['"]$/gv;
-const BACKSLASH_PATTERN = /\\/gv;
+const CARRIAGE_RETURN_PATTERN = /\r?\n/gu;
+const WRAPPED_QUOTES_PATTERN = /^['"]|['"]$/gu;
+const BACKSLASH_PATTERN = /\\/gu;
 
 function writeLine(message = ''): void {
   output.write(`${message}\n`);
@@ -328,7 +328,7 @@ function stripQuotes(value: string): string {
 }
 
 function normalizeEngramRoot(value: string): string {
-  const normalized = value.replace(BACKSLASH_PATTERN, '/').replace(/^\/+|\/+$/gv, '');
+  const normalized = value.replace(BACKSLASH_PATTERN, '/').replace(/^\/+|\/+$/gu, '');
   return normalized.length > 0 ? normalized : DEFAULT_ENGRAM_ROOT;
 }
 

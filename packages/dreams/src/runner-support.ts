@@ -114,7 +114,7 @@ export async function writeDreamScratchEntry(options: {
 }
 
 export function buildDreamRunId(): string {
-  return `dream-${new Date().toISOString().replace(/[:.]/gv, '').replace('Z', 'Z')}`;
+  return `dream-${new Date().toISOString().replace(/[:.]/gu, '').replace('Z', 'Z')}`;
 }
 
 export function estimateDreamMaxTokens(messages: DreamsMessage[]): number {
