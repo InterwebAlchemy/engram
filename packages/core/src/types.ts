@@ -248,6 +248,15 @@ export interface ScratchPruneOptions {
   thresholdMs: number;
 }
 
+export interface ScratchDeleteOptions {
+  /** Filter by session ID when provided. */
+  sessionId?: string;
+  /** Filter by content substring when provided. */
+  matchText?: string;
+  /** Only delete entries older than this many milliseconds when provided. */
+  thresholdMs?: number;
+}
+
 // ─── Search ───────────────────────────────────────────────────────────────────
 
 export interface SearchResult {

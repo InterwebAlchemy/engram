@@ -226,19 +226,20 @@ export const TOOLS = [
   },
   {
     name: 'scratch',
-    description: 'Manage the shared scratch log. Actions: append, read, compact, clear.',
+    description: 'Manage the shared scratch log. Actions: append, read, compact, delete, clear.',
     inputSchema: {
       type: 'object',
       properties: {
-        action: enumProp(['append', 'read', 'compact', 'clear'] as const, 'Scratch action to perform.'),
+        action: enumProp(['append', 'read', 'compact', 'delete', 'clear'] as const, 'Scratch action to perform.'),
         content: stringProp('Scratch content for `append`.'),
         session_id: stringProp(
-          'Session UUID for `read` filtering or `compact` targeting.',
+          'Session UUID for `read` filtering, `compact` targeting, or `delete` filtering.',
         ),
+        match_text: stringProp('Substring content filter for `delete`.'),
         limit: numberProp('Maximum number of scratch entries to return.'),
         since: stringProp('ISO 8601 timestamp filter for `read`.'),
         bootstrap: booleanProp('Apply bootstrap pruning and dream-sequence compaction for `read`.'),
-        threshold_hours: numberProp('Age threshold in hours for `compact`. Defaults to 1.'),
+        threshold_hours: numberProp('Age threshold in hours for `compact` or `delete`. Defaults to 1.'),
         compacted_content: stringProp('Replacement summary content for `compact`.'),
       },
       required: ['action'],
@@ -311,6 +312,6 @@ export function buildCheckpointReminder(threadId?: string): string {
   return [
     '---',
     threadId === undefined ? `Session ID: ${SESSION_ID}` : `Session ID: ${SESSION_ID} | Thread: ${threadId}`,
-    'Scratch: append at milestones. Close-out: scratch compact then memory store.',
+    'Scratch: append at milestones. Close-out: scratch compact/delete then memory store.',
   ].join('\n');
 }

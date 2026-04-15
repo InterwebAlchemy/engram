@@ -19,6 +19,7 @@ export type {
   ScratchEntry,
   ScratchReadOptions,
   ScratchCompactOptions,
+  ScratchDeleteOptions,
 } from './types';
 
 export { VaultNote } from './vault';

@@ -37,7 +37,7 @@ const SOUL_ACTIONS = ['get', 'set'] as const;
 const NOTE_ACTIONS = ['create', 'read', 'update', 'append', 'list', 'search', 'delete'] as const;
 const CONVERSATION_ACTIONS = ['save'] as const;
 const SKILL_ACTIONS = ['store', 'get', 'list'] as const;
-const SCRATCH_ACTIONS = ['append', 'read', 'compact', 'clear'] as const;
+const SCRATCH_ACTIONS = ['append', 'read', 'compact', 'delete', 'clear'] as const;
 
 export async function handleMemoryTool(
   manager: MemoryManager,
@@ -204,38 +204,63 @@ export async function handleScratchTool(
     case 'append':
       await manager.appendScratch(SESSION_ID, requireStringArg(args, 'content'));
       return textResult('Appended to scratch log.');
-    case 'read': {
-      const entries = await manager.readScratch({
-        sessionId: optionalStringArg(args, 'session_id'),
-        limit: optionalNumberArg(args, 'limit'),
-        since: optionalStringArg(args, 'since'),
-        bootstrap: optionalBooleanArg(args, 'bootstrap'),
-      });
-      if (entries.length === 0) {
-        return textResult('Scratch log is empty.');
-      }
-
-      return textResult(
-        entries
-          .map((entry) => `[${entry.sessionId} | ${entry.timestamp}] ${entry.content}`)
-          .join('\n'),
-      );
-    }
-    case 'compact': {
-      const sessionId = requireStringArg(args, 'session_id');
-      await manager.compactScratch({
-        sessionId,
-        thresholdMs:
-          (optionalNumberArg(args, 'threshold_hours') ?? DEFAULT_SCRATCH_THRESHOLD_HOURS)
-          * MILLISECONDS_PER_HOUR,
-        compactedContent: requireStringArg(args, 'compacted_content'),
-      });
-      return textResult(`Compacted scratch entries for session ${sessionId}.`);
-    }
+    case 'read':
+      return await handleScratchRead(manager, args);
+    case 'compact':
+      return await handleScratchCompact(manager, args);
+    case 'delete':
+      return await handleScratchDelete(manager, args);
     case 'clear':
       await manager.clearScratch();
       return textResult('Cleared scratch log.');
   }
+}
+
+async function handleScratchRead(manager: MemoryManager, args: ToolArgs): Promise<ToolResponse> {
+  const entries = await manager.readScratch({
+    sessionId: optionalStringArg(args, 'session_id'),
+    limit: optionalNumberArg(args, 'limit'),
+    since: optionalStringArg(args, 'since'),
+    bootstrap: optionalBooleanArg(args, 'bootstrap'),
+  });
+  if (entries.length === 0) {
+    return textResult('Scratch log is empty.');
+  }
+
+  return textResult(
+    entries
+      .map((entry) => `[${entry.sessionId} | ${entry.timestamp}] ${entry.content}`)
+      .join('\n'),
+  );
+}
+
+async function handleScratchCompact(manager: MemoryManager, args: ToolArgs): Promise<ToolResponse> {
+  const sessionId = requireStringArg(args, 'session_id');
+  await manager.compactScratch({
+    sessionId,
+    thresholdMs:
+      (optionalNumberArg(args, 'threshold_hours') ?? DEFAULT_SCRATCH_THRESHOLD_HOURS)
+      * MILLISECONDS_PER_HOUR,
+    compactedContent: requireStringArg(args, 'compacted_content'),
+  });
+  return textResult(`Compacted scratch entries for session ${sessionId}.`);
+}
+
+async function handleScratchDelete(manager: MemoryManager, args: ToolArgs): Promise<ToolResponse> {
+  const sessionId = optionalStringArg(args, 'session_id');
+  const matchText = optionalStringArg(args, 'match_text');
+  if ((sessionId?.length ?? 0) === 0 && (matchText?.length ?? 0) === 0) {
+    throw new Error('scratch delete requires at least one filter: session_id or match_text');
+  }
+
+  const removed = await manager.deleteScratch({
+    sessionId,
+    matchText,
+    thresholdMs:
+      (optionalNumberArg(args, 'threshold_hours') ?? DEFAULT_SCRATCH_THRESHOLD_HOURS)
+      * MILLISECONDS_PER_HOUR,
+  });
+  return textResult(`Deleted ${removed} scratch entr${removed === 1 ? 'y' : 'ies'}.`);
 }
 
 async function handleMemoryStore(

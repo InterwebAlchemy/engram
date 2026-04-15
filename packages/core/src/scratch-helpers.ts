@@ -2,6 +2,7 @@ import type { FileSystemAdapter } from './adapters/types';
 import { supportsProcess } from './memory-helpers';
 import type {
   ScratchCompactOptions,
+  ScratchDeleteOptions,
   ScratchEntry,
   ScratchReadOptions,
   ScratchPruneOptions,
@@ -10,7 +11,6 @@ import type {
 const SCRATCH_ENTRY_PATTERN =
   /^\[(?<sessionId>[^\]]+) \| (?<timestamp>[^\]]+)\] (?<content>.+)$/u;
 const NEWLINES_PATTERN = /\n+/gu;
-
 const MIN_ENTRIES_TO_COMPACT = 2;
 const SCRATCH_BOOTSTRAP_RETENTION_DAYS = 7;
 const HOURS_PER_DAY = 24;
@@ -70,6 +70,28 @@ function shouldKeepEntry(
   }
 
   return new Date(parsed.timestamp).getTime() > cutoff;
+}
+
+function shouldDeleteEntry(
+  parsed: ParsedScratchLine | null,
+  options: ScratchDeleteOptions,
+  now: number,
+): boolean {
+  if (parsed === null) return false;
+  if (typeof options.sessionId === 'string' && options.sessionId.length > 0 && parsed.sessionId !== options.sessionId) {
+    return false;
+  }
+  if (typeof options.matchText === 'string' && options.matchText.length > 0 && !parsed.content.includes(options.matchText)) {
+    return false;
+  }
+  if (typeof options.thresholdMs === 'number') {
+    const cutoff = now - options.thresholdMs;
+    if (new Date(parsed.timestamp).getTime() > cutoff) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 function entryIsVisible(
@@ -331,6 +353,29 @@ export function pruneScratchLog(
   };
 }
 
+export function deleteScratchLog(
+  raw: string,
+  options: ScratchDeleteOptions,
+): { content: string; removed: number } {
+  if (raw.trim().length === 0) return { content: raw, removed: 0 };
+
+  const now = Date.now();
+  const lines = raw.split('\n');
+  let removed = 0;
+
+  const kept = lines.filter((line) => {
+    const parsed = parseScratchLine(line);
+    if (!shouldDeleteEntry(parsed, options, now)) {
+      return true;
+    }
+
+    removed += 1;
+    return false;
+  });
+
+  return { content: kept.join('\n'), removed };
+}
+
 export async function appendScratchEntry(
   adapter: FileSystemAdapter,
   logPath: string,
@@ -444,6 +489,33 @@ export async function pruneScratchFile(
     return 0;
   }
 
+  await adapter.write(logPath, result.content);
+  return result.removed;
+}
+
+export async function deleteScratchFile(
+  adapter: FileSystemAdapter,
+  logPath: string,
+  options: ScratchDeleteOptions,
+): Promise<number> {
+  if (supportsProcess(adapter)) {
+    const exists = await adapter.exists(logPath);
+    if (!exists) return 0;
+
+    let removed = 0;
+    await adapter.process(logPath, (raw) => {
+      const result = deleteScratchLog(raw, options);
+      ({ removed } = result);
+      return result.content;
+    });
+    return removed;
+  }
+
+  const raw = await adapter.read(logPath).catch(() => EMPTY_LOG);
+  if (raw.trim().length === 0) return 0;
+
+  const result = deleteScratchLog(raw, options);
+  if (result.removed === 0) return 0;
   await adapter.write(logPath, result.content);
   return result.removed;
 }

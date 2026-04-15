@@ -12,6 +12,7 @@ import type {
   ScratchEntry,
   ScratchReadOptions,
   ScratchCompactOptions,
+  ScratchDeleteOptions,
   ScratchPruneOptions,
   Message,
 } from './types';
@@ -33,6 +34,7 @@ import {
 import {
   appendScratchEntry,
   compactScratchFile,
+  deleteScratchFile,
   pruneScratchFile,
   readScratchEntries,
 } from './scratch-helpers';
@@ -100,9 +102,7 @@ export class MemoryManager {
       mutateThread: async (filePath, transform) => await this.mutateVaultNoteContent(filePath, transform),
     });
   }
-
   // ─── Write-scope enforcement ──────────────────────────────────────────────
-
   private assertWriteAllowed(filePath: string): void {
     const target = path.resolve(filePath);
     const isAllowed =
@@ -115,9 +115,7 @@ export class MemoryManager {
       );
     }
   }
-
   // ─── Path helpers ─────────────────────────────────────────────────────────
-
   /**
    * Normalize a user-provided path:
    * - Absolute paths are returned as-is.
@@ -194,9 +192,7 @@ export class MemoryManager {
       vaultNote.content = transform(vaultNote.content);
     });
   }
-
   // ─── Core memory operations ───────────────────────────────────────────────
-
   /**
    * Store a new memory note in the vault.
    * The note is created under engram/<memoryPath>/<type>/<slug>.md.
@@ -573,21 +569,12 @@ export class MemoryManager {
    * Returns entries sorted oldest-first. Applies limit after filtering.
    */
   async readScratch(options: ScratchReadOptions = {}): Promise<ScratchEntry[]> {
-    return await readScratchEntries(this.adapter, this.scratchFilePath, options, {
-      bootstrapLimit: DEFAULT_NOTE_SEARCH_LIMIT,
-      defaultLimit: DEFAULT_SCRATCH_READ_LIMIT,
-    });
+    return await readScratchEntries(this.adapter, this.scratchFilePath, options, { bootstrapLimit: DEFAULT_NOTE_SEARCH_LIMIT, defaultLimit: DEFAULT_SCRATCH_READ_LIMIT });
   }
 
-  /**
-   * Compact scratch entries for a session. Finds entries for the given session
-   * older than thresholdMs, removes them, and inserts a single replacement entry
-   * containing the agent-provided synthesized content.
-   */
+  /** Compact scratch entries for a session into one synthesized entry. */
   async compactScratch(options: ScratchCompactOptions): Promise<void> {
-    const { scratchFilePath: logPath } = this;
-    this.assertWriteAllowed(logPath);
-    await compactScratchFile(this.adapter, logPath, options);
+    const { scratchFilePath: logPath } = this; this.assertWriteAllowed(logPath); await compactScratchFile(this.adapter, logPath, options);
   }
 
   /**
@@ -595,19 +582,14 @@ export class MemoryManager {
    * Returns the number of entries deleted.
    */
   async pruneScratch(options: ScratchPruneOptions): Promise<number> {
-    const { scratchFilePath: logPath } = this;
-    this.assertWriteAllowed(logPath);
-    return await pruneScratchFile(this.adapter, logPath, options);
+    const { scratchFilePath: logPath } = this; this.assertWriteAllowed(logPath); return await pruneScratchFile(this.adapter, logPath, options);
   }
-
-  /**
-   * Hard-delete the scratch log.
-   * Scratch is explicitly ephemeral — deletion is permanent with no archiving.
-   */
+  async deleteScratch(options: ScratchDeleteOptions): Promise<number> {
+    const { scratchFilePath: logPath } = this; this.assertWriteAllowed(logPath); return await deleteScratchFile(this.adapter, logPath, options);
+  }
+  /** Hard-delete the scratch log. */
   async clearScratch(): Promise<void> {
-    const { scratchFilePath: logPath } = this;
-    this.assertWriteAllowed(logPath);
-    await this.adapter.delete(logPath).catch(() => undefined);
+    const { scratchFilePath: logPath } = this; this.assertWriteAllowed(logPath); await this.adapter.delete(logPath).catch(() => undefined);
   }
 
   /**

@@ -625,3 +625,63 @@ test('readScratch bootstrap defaults to the 10 most recent entries', async (t) =
     Array.from({ length: 10 }, (_, index) => `Entry ${index + 2}`),
   );
 });
+
+test('deleteScratch removes entries by session id', async (t) => {
+  const vaultRoot = await createTempVault();
+  t.after(async () => {
+    await fs.rm(vaultRoot, { recursive: true, force: true });
+  });
+
+  const manager = new MemoryManager(new NodeAdapter(), defaultMemoryConfig(vaultRoot, 'integrated'));
+  const scratchPath = path.join(vaultRoot, 'engram', '.scratch');
+
+  await fs.mkdir(path.dirname(scratchPath), { recursive: true });
+  await fs.writeFile(
+    scratchPath,
+    [
+      `[dreams | ${new Date(Date.now() - 10_000).toISOString()}] [DREAM START] Falling asleep...`,
+      `[dreams | ${new Date(Date.now() - 9_000).toISOString()}] [DREAM END] 3 actions applied.`,
+      `[session-a | ${new Date(Date.now() - 8_000).toISOString()}] Keep me`,
+    ].join('\n'),
+  );
+
+  const removed = await manager.deleteScratch({ sessionId: 'dreams', thresholdMs: 0 });
+  assert.equal(removed, 2);
+
+  const remaining = await manager.readScratch();
+  assert.deepEqual(remaining.map((entry) => entry.sessionId), ['session-a']);
+  assert.deepEqual(remaining.map((entry) => entry.content), ['Keep me']);
+});
+
+test('deleteScratch filters by match text and threshold age', async (t) => {
+  const vaultRoot = await createTempVault();
+  t.after(async () => {
+    await fs.rm(vaultRoot, { recursive: true, force: true });
+  });
+
+  const manager = new MemoryManager(new NodeAdapter(), defaultMemoryConfig(vaultRoot, 'integrated'));
+  const scratchPath = path.join(vaultRoot, 'engram', '.scratch');
+
+  await fs.mkdir(path.dirname(scratchPath), { recursive: true });
+  await fs.writeFile(
+    scratchPath,
+    [
+      `[dreams | ${new Date(Date.now() - 7_200_000).toISOString()}] [DREAM END] old summary`,
+      `[dreams | ${new Date(Date.now() - 60_000).toISOString()}] [DREAM END] recent summary`,
+      `[session-a | ${new Date(Date.now() - 7_200_000).toISOString()}] unrelated entry`,
+    ].join('\n'),
+  );
+
+  const removed = await manager.deleteScratch({
+    sessionId: 'dreams',
+    matchText: '[DREAM END]',
+    thresholdMs: 3_600_000,
+  });
+  assert.equal(removed, 1);
+
+  const remaining = await manager.readScratch();
+  assert.deepEqual(remaining.map((entry) => entry.content), [
+    'unrelated entry',
+    '[DREAM END] recent summary',
+  ]);
+});
