@@ -1,3 +1,5 @@
+// TODO: revisit what can be extracted to reduce file size
+/* eslint-disable max-lines -- too long; see TODO above */
 import type { MemoryManager } from '@interwebalchemy/engram-core';
 import {
   DEFAULT_CONTEXT_TOKEN_BUDGET,
@@ -8,7 +10,9 @@ import {
   MARKDOWN_SUFFIX_PATTERN,
   MEMORY_STATE_MAP,
   MEMORY_TYPE_MAP,
+  MILLISECONDS_PER_DAY,
   MILLISECONDS_PER_HOUR,
+  MILLISECONDS_PER_MINUTE,
   SESSION_ID,
   SHORT_PREVIEW_LENGTH,
   buildCheckpointReminder,
@@ -37,7 +41,7 @@ const SOUL_ACTIONS = ['get', 'set'] as const;
 const NOTE_ACTIONS = ['create', 'read', 'update', 'append', 'list', 'search', 'delete'] as const;
 const CONVERSATION_ACTIONS = ['save'] as const;
 const SKILL_ACTIONS = ['store', 'get', 'list'] as const;
-const SCRATCH_ACTIONS = ['append', 'read', 'compact', 'delete', 'clear'] as const;
+const SCRATCH_ACTIONS = ['append', 'read', 'compact', 'prune', 'delete', 'clear'] as const;
 
 export async function handleMemoryTool(
   manager: MemoryManager,
@@ -208,6 +212,10 @@ export async function handleScratchTool(
       return await handleScratchRead(manager, args);
     case 'compact':
       return await handleScratchCompact(manager, args);
+    case 'prune': {
+      const removed = await manager.sweepScratch();
+      return textResult(`Pruned ${removed} stale scratch entries.`);
+    }
     case 'delete':
       return await handleScratchDelete(manager, args);
     case 'clear':
@@ -216,22 +224,61 @@ export async function handleScratchTool(
   }
 }
 
+const BOOTSTRAP_ENTRY_MAX_CHARS = 400;
+const CHARS_PER_TOKEN = 4;
+
 async function handleScratchRead(manager: MemoryManager, args: ToolArgs): Promise<ToolResponse> {
+  const isBootstrap = optionalBooleanArg(args, 'bootstrap') === true;
+  const tokenBudget = optionalNumberArg(args, 'token_budget');
   const entries = await manager.readScratch({
     sessionId: optionalStringArg(args, 'session_id'),
     limit: optionalNumberArg(args, 'limit'),
     since: optionalStringArg(args, 'since'),
-    bootstrap: optionalBooleanArg(args, 'bootstrap'),
+    bootstrap: isBootstrap,
   });
   if (entries.length === 0) {
     return textResult('Scratch log is empty.');
   }
 
-  return textResult(
-    entries
-      .map((entry) => `[${entry.sessionId} | ${entry.timestamp}] ${entry.content}`)
-      .join('\n'),
-  );
+  // Bootstrap mode: drop session UUID, replace timestamp with relative age,
+  // strip [COMPACTED] prefix, and truncate long entries.
+  // Full metadata is available via scratch(action: "read") without bootstrap.
+  const now = Date.now();
+  const formatEntry = isBootstrap
+    ? (entry: { sessionId: string; timestamp: string; content: string }) => {
+        const ageMs = now - new Date(entry.timestamp).getTime();
+        const ageMinutes = Math.floor(ageMs / MILLISECONDS_PER_MINUTE);
+        const ageHours = Math.floor(ageMs / MILLISECONDS_PER_HOUR);
+        const ageDays = Math.floor(ageMs / MILLISECONDS_PER_DAY);
+        const rel =
+          ageDays >= 1 ? `${ageDays}d ago`
+          : ageHours >= 1 ? `${ageHours}h ago`
+          : `${ageMinutes}m ago`;
+        const content = entry.content.startsWith('[COMPACTED] ')
+          ? entry.content.slice('[COMPACTED] '.length)
+          : entry.content;
+        const truncated =
+          content.length > BOOTSTRAP_ENTRY_MAX_CHARS
+            ? `${content.slice(0, BOOTSTRAP_ENTRY_MAX_CHARS)}…`
+            : content;
+        return `[${rel}] ${truncated}`;
+      }
+    : (entry: { sessionId: string; timestamp: string; content: string }) =>
+        `[${entry.sessionId} | ${entry.timestamp}] ${entry.content}`;
+
+  // Entries are oldest-first. If a token budget is set, drop from the front
+  // (oldest) until the rendered output fits within the budget.
+  let formatted = entries.map(formatEntry);
+  if (isBootstrap && typeof tokenBudget === 'number') {
+    const charBudget = tokenBudget * CHARS_PER_TOKEN;
+    while (formatted.length > 1) {
+      const total = formatted.reduce((sum, line) => sum + line.length + 1, 0);
+      if (total <= charBudget) break;
+      formatted = formatted.slice(1);
+    }
+  }
+
+  return textResult(formatted.join('\n'));
 }
 
 async function handleScratchCompact(manager: MemoryManager, args: ToolArgs): Promise<ToolResponse> {

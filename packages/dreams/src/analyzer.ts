@@ -374,7 +374,7 @@ function buildSessionScratchCleanupOperation(
       sessionId,
       scratchEntriesPurged: group.length - 1,
       orphanedDreamStartsResolved: 0,
-      compactedContent: `[AUTO-COMPACTED by Dreams] ${summarizeScratchEntries(group, AUTO_COMPACT_SUMMARY_LENGTH)}`,
+      compactedContent: summarizeScratchEntries(group, AUTO_COMPACT_SUMMARY_LENGTH),
     };
   }
 

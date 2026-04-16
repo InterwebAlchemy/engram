@@ -38,7 +38,9 @@ export const DEFAULT_SCRATCH_THRESHOLD_HOURS = 1;
 const MINUTES_PER_HOUR = 60;
 const SECONDS_PER_MINUTE = 60;
 const MILLISECONDS_PER_SECOND = 1000;
-export const MILLISECONDS_PER_HOUR = MINUTES_PER_HOUR * SECONDS_PER_MINUTE * MILLISECONDS_PER_SECOND;
+export const MILLISECONDS_PER_MINUTE = SECONDS_PER_MINUTE * MILLISECONDS_PER_SECOND;
+export const MILLISECONDS_PER_HOUR = MINUTES_PER_HOUR * MILLISECONDS_PER_MINUTE;
+export const MILLISECONDS_PER_DAY = MINUTES_PER_HOUR * MILLISECONDS_PER_HOUR;
 export const MARKDOWN_SUFFIX_PATTERN = /\.md$/u;
 
 export const CONFIDENCE_VALUES = ['high', 'medium', 'low'] as const;
@@ -226,11 +228,11 @@ export const TOOLS = [
   },
   {
     name: 'scratch',
-    description: 'Manage the shared scratch log. Actions: append, read, compact, delete, clear.',
+    description: 'Manage the shared scratch log. Actions: append, read, compact, prune, delete, clear.',
     inputSchema: {
       type: 'object',
       properties: {
-        action: enumProp(['append', 'read', 'compact', 'delete', 'clear'] as const, 'Scratch action to perform.'),
+        action: enumProp(['append', 'read', 'compact', 'prune', 'delete', 'clear'] as const, 'Scratch action to perform.'),
         content: stringProp('Scratch content for `append`.'),
         session_id: stringProp(
           'Session UUID for `read` filtering, `compact` targeting, or `delete` filtering.',
@@ -239,6 +241,7 @@ export const TOOLS = [
         limit: numberProp('Maximum number of scratch entries to return.'),
         since: stringProp('ISO 8601 timestamp filter for `read`.'),
         bootstrap: booleanProp('Apply bootstrap pruning and dream-sequence compaction for `read`.'),
+        token_budget: numberProp('Approximate token limit for bootstrap `read`. Oldest entries are dropped to fit; individual entries are truncated at 400 chars. Default: unlimited.'),
         threshold_hours: numberProp('Age threshold in hours for `compact` or `delete`. Defaults to 1.'),
         compacted_content: stringProp('Replacement summary content for `compact`.'),
       },

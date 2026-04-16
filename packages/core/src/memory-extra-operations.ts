@@ -40,15 +40,24 @@ export class MemoryExtraOperations {
 
     const existing = await VaultNote.read(this.deps.adapter, filePath).catch(() => null);
     const now = new Date().toISOString();
+
+    // If content includes frontmatter, parse it out so the body is clean
+    // and merge the incoming frontmatter fields over the defaults.
+    const parsed = VaultNote.parse(filePath, content);
+    const hasIncomingFrontmatter = content.trimStart().startsWith('---');
+    const incomingFm = hasIncomingFrontmatter ? parsed.frontmatter : {};
+    const body = hasIncomingFrontmatter ? parsed.content : content;
+
     const frontmatter: NoteFrontmatter = {
+      ...existing?.frontmatter,
+      ...incomingFm,
       type: MemoryType.Reflection,
       created: existing?.frontmatter.created ?? now,
       updated: now,
       memory_state: MemoryState.Core,
-      tags: ['soul-document'],
     };
 
-    return await VaultNote.create(this.deps.adapter, filePath, frontmatter, content);
+    return await VaultNote.create(this.deps.adapter, filePath, frontmatter, body);
   }
 
   async storeSkill(slug: string, content: string, tags: string[] = []): Promise<VaultNote> {

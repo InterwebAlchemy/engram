@@ -685,3 +685,98 @@ test('deleteScratch filters by match text and threshold age', async (t) => {
     '[DREAM END] recent summary',
   ]);
 });
+
+test('sweepScratch removes entries older than bootstrap retention window', async (t) => {
+  const vaultRoot = await createTempVault();
+  t.after(async () => {
+    await fs.rm(vaultRoot, { recursive: true, force: true });
+  });
+
+  const manager = new MemoryManager(new NodeAdapter(), defaultMemoryConfig(vaultRoot, 'integrated'));
+  const scratchPath = path.join(vaultRoot, 'engram', '.scratch');
+
+  const eightDaysAgo = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString();
+  const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
+
+  await fs.mkdir(path.dirname(scratchPath), { recursive: true });
+  await fs.writeFile(
+    scratchPath,
+    [
+      `[session-a | ${eightDaysAgo}] very old entry`,
+      `[session-b | ${oneDayAgo}] recent entry`,
+      `[session-c | ${twoDaysAgo}] [COMPACTED] recent compacted — should stay (within 72h)`,
+    ].join('\n'),
+  );
+
+  const removed = await manager.sweepScratch();
+  assert.equal(removed, 1);
+
+  const remaining = await manager.readScratch();
+  assert.deepEqual(remaining.map((e) => e.content), [
+    '[COMPACTED] recent compacted — should stay (within 72h)',
+    'recent entry',
+  ]);
+});
+
+test('sweepScratch removes compacted entries older than 72 hours', async (t) => {
+  const vaultRoot = await createTempVault();
+  t.after(async () => {
+    await fs.rm(vaultRoot, { recursive: true, force: true });
+  });
+
+  const manager = new MemoryManager(new NodeAdapter(), defaultMemoryConfig(vaultRoot, 'integrated'));
+  const scratchPath = path.join(vaultRoot, 'engram', '.scratch');
+
+  const fourDaysAgo = new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString();
+  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+  await fs.mkdir(path.dirname(scratchPath), { recursive: true });
+  await fs.writeFile(
+    scratchPath,
+    [
+      `[session-a | ${fourDaysAgo}] [COMPACTED] stale compacted`,
+      `[session-b | ${oneHourAgo}] [COMPACTED] fresh compacted — keep`,
+      `[session-c | ${oneDayAgo}] uncompacted recent — keep`,
+    ].join('\n'),
+  );
+
+  const removed = await manager.sweepScratch();
+  assert.equal(removed, 1);
+
+  const remaining = await manager.readScratch();
+  assert.deepEqual(remaining.map((e) => e.content), [
+    'uncompacted recent — keep',
+    '[COMPACTED] fresh compacted — keep',
+  ]);
+});
+
+test('appendScratch auto-sweeps bootstrap-invisible entries from the file', async (t) => {
+  const vaultRoot = await createTempVault();
+  t.after(async () => {
+    await fs.rm(vaultRoot, { recursive: true, force: true });
+  });
+
+  const manager = new MemoryManager(new NodeAdapter(), defaultMemoryConfig(vaultRoot, 'integrated'));
+  const scratchPath = path.join(vaultRoot, 'engram', '.scratch');
+
+  const eightDaysAgo = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString();
+  const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+  await fs.mkdir(path.dirname(scratchPath), { recursive: true });
+  await fs.writeFile(
+    scratchPath,
+    [
+      `[session-a | ${eightDaysAgo}] stale entry that should be swept`,
+      `[session-b | ${oneDayAgo}] recent entry`,
+    ].join('\n'),
+  );
+
+  await manager.appendScratch('session-c', 'new entry');
+
+  const remaining = await manager.readScratch();
+  assert.equal(remaining.length, 2);
+  assert.deepEqual(remaining.map((e) => e.content), ['recent entry', 'new entry']);
+});
+

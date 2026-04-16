@@ -1,3 +1,5 @@
+// TODO: revisit what can be extracted to reduce file size
+/* eslint-disable max-lines -- too long; see TODO above */
 import type { FileSystemAdapter } from './adapters/types';
 import { supportsProcess } from './memory-helpers';
 import type {
@@ -304,10 +306,13 @@ export function compactScratchLog(
     return raw;
   }
 
+  const strippedContent = options.compactedContent.startsWith(`${COMPACTED_PREFIX} `)
+    ? options.compactedContent.slice(COMPACTED_PREFIX.length + 1)
+    : options.compactedContent;
   const compactLine = formatScratchLine(
     options.sessionId,
     timestamp,
-    `${COMPACTED_PREFIX} ${options.compactedContent}`,
+    `${COMPACTED_PREFIX} ${strippedContent}`,
   );
 
   return lines
@@ -353,6 +358,47 @@ export function pruneScratchLog(
   };
 }
 
+/**
+ * Remove all entries from the log that would already be invisible to bootstrap:
+ * - entries older than SCRATCH_BOOTSTRAP_RETENTION_DAYS
+ * - [COMPACTED] entries older than DREAM_COMPACTED_RETENTION_HOURS
+ *
+ * Safe to call at any time — it mirrors the bootstrap filter policy exactly,
+ * so no visible context is lost.
+ */
+export function sweepScratchLog(
+  raw: string,
+  now = Date.now(),
+): { content: string; removed: number } {
+  if (raw.trim().length === 0) return { content: raw, removed: 0 };
+
+  const ageCutoff = now - millisecondsFromDays(SCRATCH_BOOTSTRAP_RETENTION_DAYS);
+  const compactedCutoff = now - millisecondsFromHours(DREAM_COMPACTED_RETENTION_HOURS);
+  const lines = raw.split('\n');
+  let removed = 0;
+
+  const kept = lines.filter((line) => {
+    const parsed = parseScratchLine(line);
+    if (parsed === null) return true;
+
+    const entryTimestamp = new Date(parsed.timestamp).getTime();
+
+    if (entryTimestamp < ageCutoff) {
+      removed += 1;
+      return false;
+    }
+
+    if (parsed.content.startsWith(COMPACTED_PREFIX) && entryTimestamp < compactedCutoff) {
+      removed += 1;
+      return false;
+    }
+
+    return true;
+  });
+
+  return { content: kept.join('\n'), removed };
+}
+
 export function deleteScratchLog(
   raw: string,
   options: ScratchDeleteOptions,
@@ -386,15 +432,16 @@ export async function appendScratchEntry(
   const line = formatScratchLine(sessionId, timestamp, content);
 
   if (supportsProcess(adapter)) {
-    await adapter.process(logPath, (existing) =>
-      existing.trim().length > 0 ? `${existing.trimEnd()}\n${line}` : line,
-    );
+    await adapter.process(logPath, (existing) => {
+      const next = existing.trim().length > 0 ? `${existing.trimEnd()}\n${line}` : line;
+      return sweepScratchLog(next).content;
+    });
     return;
   }
 
   const existing = await adapter.read(logPath).catch(() => EMPTY_LOG);
-  const nextContent = existing.trim().length > 0 ? `${existing.trimEnd()}\n${line}` : line;
-  await adapter.write(logPath, nextContent);
+  const next = existing.trim().length > 0 ? `${existing.trimEnd()}\n${line}` : line;
+  await adapter.write(logPath, sweepScratchLog(next).content);
 }
 
 export async function readScratchEntries(
@@ -488,6 +535,38 @@ export async function pruneScratchFile(
   if (result.removed === 0) {
     return 0;
   }
+
+  await adapter.write(logPath, result.content);
+  return result.removed;
+}
+
+/**
+ * Remove all bootstrap-invisible entries from the scratch file.
+ * Mirrors the sweep policy from sweepScratchLog — safe to call at any time.
+ * Returns the number of entries removed.
+ */
+export async function sweepScratchFile(
+  adapter: FileSystemAdapter,
+  logPath: string,
+): Promise<number> {
+  if (supportsProcess(adapter)) {
+    const exists = await adapter.exists(logPath);
+    if (!exists) return 0;
+
+    let removed = 0;
+    await adapter.process(logPath, (raw) => {
+      const result = sweepScratchLog(raw);
+      ({ removed } = result);
+      return result.content;
+    });
+    return removed;
+  }
+
+  const raw = await adapter.read(logPath).catch(() => EMPTY_LOG);
+  if (raw.trim().length === 0) return 0;
+
+  const result = sweepScratchLog(raw);
+  if (result.removed === 0) return 0;
 
   await adapter.write(logPath, result.content);
   return result.removed;

@@ -37,6 +37,7 @@ import {
   deleteScratchFile,
   pruneScratchFile,
   readScratchEntries,
+  sweepScratchFile,
 } from './scratch-helpers';
 import { MemoryContextOperations } from './memory-context-operations';
 import { MemoryExtraOperations } from './memory-extra-operations';
@@ -586,6 +587,14 @@ export class MemoryManager {
   }
   async deleteScratch(options: ScratchDeleteOptions): Promise<number> {
     const { scratchFilePath: logPath } = this; this.assertWriteAllowed(logPath); return await deleteScratchFile(this.adapter, logPath, options);
+  }
+  /**
+   * Remove all bootstrap-invisible entries from the scratch file.
+   * Sweeps entries older than the bootstrap retention window and compacted
+   * entries older than the compacted retention window. Returns count removed.
+   */
+  async sweepScratch(): Promise<number> {
+    const { scratchFilePath: logPath } = this; this.assertWriteAllowed(logPath); return await sweepScratchFile(this.adapter, logPath);
   }
   /** Hard-delete the scratch log. */
   async clearScratch(): Promise<void> {
