@@ -91,7 +91,7 @@ Cross-device continuity is established by any of the available [synchronization 
 
 Verified bootstrap harnesses today are `Claude Code CLI`, `Claude Code Desktop App`, `Claude Code VS Code extension`, `Claude Desktop`, `Codex Desktop App`, `Codex VS Code extension`, `Cursor`, `GitHub Copilot CLI`, `GitHub Copilot in VS Code`, and `Windsurf App`.
 
-The reusable bootstrap instructions live in [`templates/engram-bootstrap.tmpl.md`](templates/engram-bootstrap.tmpl.md). Harness-specific files like `CLAUDE.md` should be treated as duplicates of that template, and project-level `AGENTS.md` files can carry repo-specific contributor instructions. As more harnesses are verified, they should be added here explicitly rather than implied.
+The reusable bootstrap instructions live in [`templates/engram-bootstrap.tmpl.md`](templates/engram-bootstrap.tmpl.md). Harness-specific files like `CLAUDE.md` should be treated as duplicates of that template. For repo-specific contributor instructions, edit [`agent-instructions.tmpl.md`](agent-instructions.tmpl.md) and generate harness-visible files with `npm run agents` or `npm run agents:claude`. As more harnesses are verified, they should be added here explicitly rather than implied.
 
 If your Engram does not bootstrap from an ambient greeting (e.g. `Hey!`, `Let's get to work`, etc.), use this invocation:
 

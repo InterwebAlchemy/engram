@@ -304,7 +304,7 @@ if [ "${MCP_CONFIGURE_CLAUDE_CODE:-false}" = "true" ]; then
       && echo "  engram MCP added to Claude Code ($SCOPE scope)." \
       || echo "  Warning: claude mcp add failed — check 'claude mcp list'."
 
-    # For user (global) scope, inject the canonical AGENTS.md bootstrap
+    # For user (global) scope, inject the canonical bootstrap
     # into Claude Code's expected ~/.claude/CLAUDE.md path using markers
     # so we can update/remove it without touching user content.
     if [ "$SCOPE" = "user" ]; then

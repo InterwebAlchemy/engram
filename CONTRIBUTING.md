@@ -87,14 +87,14 @@ Snapshots are stored in `.snapshots/` at the repo root (gitignored). Restoring a
 
 ## Repo agent instructions
 
-This repo keeps contributor-facing agent instructions in [`AGENTS.md`](AGENTS.md). Most AI coding tools (Cursor, Copilot, Windsurf, etc.) read `AGENTS.md` directly. Claude Code reads `.claude/CLAUDE.md` instead — generate it locally if needed:
+This repo keeps contributor-facing agent instructions in [`agent-instructions.tmpl.md`](agent-instructions.tmpl.md). Both `AGENTS.md` and `.claude/CLAUDE.md` are generated and gitignored — opt in per harness:
 
 ```bash
-npm run sync:agents        # Generate .claude/CLAUDE.md from AGENTS.md
-npm run sync:agents:check  # Verify they match without writing
+npm run agents         # Generate AGENTS.md (Cursor, Copilot, Windsurf, etc.)
+npm run agents:claude  # Generate .claude/CLAUDE.md (Claude Code)
+npm run agents:all     # Generate both
+npm run agents:check   # Verify generated files match the source
 ```
-
-`.claude/CLAUDE.md` is gitignored — it's opt-in per-developer, not checked into the repo.
 
 ## Making changes
 
@@ -115,4 +115,4 @@ Husky runs lint and typecheck on pre-commit. `npm install` runs Husky's `prepare
 
 ## A note on dogfooding
 
-Engram is developed using Engram — the project uses its own memory continuity system during development. Repo-specific contributor context lives in [`AGENTS.md`](AGENTS.md). If you want the reusable Engram bootstrap for your own agent, use [`templates/engram-bootstrap.tmpl.md`](templates/engram-bootstrap.tmpl.md) and let `npm run setup` duplicate it into the Claude-specific path when needed. If you want to set up your own Engram agent, see [`templates/`](templates/).
+Engram is developed using Engram — the project uses its own memory continuity system during development. Repo-specific contributor context lives in [`agent-instructions.tmpl.md`](agent-instructions.tmpl.md). If you want the reusable Engram bootstrap for your own agent, use [`templates/engram-bootstrap.tmpl.md`](templates/engram-bootstrap.tmpl.md) and let `npm run setup` duplicate it into the Claude-specific path when needed. If you want to set up your own Engram agent, see [`templates/`](templates/).

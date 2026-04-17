@@ -10,7 +10,7 @@ These templates help you establish an Engram for a new agent. Copy and customize
 
 | File | Purpose | Where it goes |
 |---|---|---|
-| `engram-bootstrap.tmpl.md` | Canonical bootstrap instructions | `AGENTS.md` in a repo, or duplicated into a harness-specific file such as `~/.claude/CLAUDE.md` |
+| `engram-bootstrap.tmpl.md` | Canonical bootstrap instructions | Duplicated into a harness-specific file such as `~/.claude/CLAUDE.md` or a repo-level `AGENTS.md` |
 | `soul-template.md` | Starting point for your Soul document | Your Engram vault: `memory/soul.md` |
 | `claude-project-anchor.md` | Project instructions for Claude Desktop / Web | Claude Project custom instructions |
 
@@ -75,7 +75,7 @@ On first run with an empty vault, `context(action: "load")` will return nothing 
 
 ## Notes
 
-- **`engram-bootstrap.tmpl.md`** is the canonical source of truth. Duplicate it into harness-specific files like `~/.claude/CLAUDE.md` when a tool does not read `AGENTS.md` directly yet.
+- **`engram-bootstrap.tmpl.md`** is the canonical source of truth. Duplicate it into harness-specific files like `~/.claude/CLAUDE.md` when a tool does not read `AGENTS.md` directly.
 - **`~/.claude/CLAUDE.md`** is global — it applies to all Claude Code sessions. If you only want Engram active in specific projects, use a project-level `.claude/CLAUDE.md` instead.
 - **`AGENTS.local.md`** or **`CLAUDE.local.md`** (gitignored) are good places for machine-local or harness-local instructions that shouldn't be committed.
 - Soul documents are yours to evolve. Update them as your agent learns who it is.
