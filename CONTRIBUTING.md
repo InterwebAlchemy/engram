@@ -8,6 +8,7 @@ This guide covers how to get set up, what to expect from the codebase, and how t
 
 - Node.js 20+
 - npm 10+
+- [shellcheck](https://www.shellcheck.net/) (for linting shell scripts)
 - An Obsidian vault (optional but useful for manual testing)
 
 ### Setup
@@ -86,19 +87,14 @@ Snapshots are stored in `.snapshots/` at the repo root (gitignored). Restoring a
 
 ## Repo agent instructions
 
-This repo keeps contributor-facing agent instructions in [`AGENTS.md`](AGENTS.md). The Claude-specific in-repo file at [`.claude/CLAUDE.md`](/Users/ericallen/Development/_utils/engram/.claude/CLAUDE.md) is generated from that source with:
+This repo keeps contributor-facing agent instructions in [`AGENTS.md`](AGENTS.md). Most AI coding tools (Cursor, Copilot, Windsurf, etc.) read `AGENTS.md` directly. Claude Code reads `.claude/CLAUDE.md` instead — generate it locally if needed:
 
 ```bash
-npm run sync:agents
+npm run sync:agents        # Generate .claude/CLAUDE.md from AGENTS.md
+npm run sync:agents:check  # Verify they match without writing
 ```
 
-To verify they still match without rewriting the file:
-
-```bash
-npm run sync:agents:check
-```
-
-Local commits are also protected by the Husky pre-commit hook in [`.husky/pre-commit`](/Users/ericallen/Development/_utils/engram/.husky/pre-commit). It blocks direct edits to `.claude/CLAUDE.md` and auto-regenerates the file when `AGENTS.md` is committed. `npm install` runs Husky's `prepare` script automatically, and `npm run setup` runs it again before the rest of the dev environment setup.
+`.claude/CLAUDE.md` is gitignored — it's opt-in per-developer, not checked into the repo.
 
 ## Making changes
 
@@ -108,7 +104,7 @@ Local commits are also protected by the Husky pre-commit hook in [`.husky/pre-co
 
 Run `npm run test` before submitting. If your change affects the MCP tool surface (new params, new tools, changed descriptions), update the relevant template files in `templates/` if applicable.
 
-Husky keeps `AGENTS.md` and `.claude/CLAUDE.md` in sync automatically. `npm install` runs Husky's `prepare` script, `npm run setup` runs it again before the rest of setup, and `npm run setup:hooks` lets you re-install hooks manually. If you need to verify the generated file in CI or locally, use `npm run sync:agents:check`.
+Husky runs lint and typecheck on pre-commit. `npm install` runs Husky's `prepare` script, `npm run setup` runs it again before the rest of setup, and `npm run setup:hooks` lets you re-install hooks manually.
 
 ## Submitting changes
 
@@ -119,4 +115,4 @@ Husky keeps `AGENTS.md` and `.claude/CLAUDE.md` in sync automatically. `npm inst
 
 ## A note on dogfooding
 
-Engram is developed using Engram — the project uses its own memory continuity system during development. Repo-specific contributor context lives in [`AGENTS.md`](AGENTS.md). If you want the reusable Engram bootstrap for your own agent, use [`templates/AGENTS.md`](templates/AGENTS.md) and let `npm run setup` duplicate it into the Claude-specific path when needed. If you want to set up your own Engram agent, see [`templates/`](templates/).
+Engram is developed using Engram — the project uses its own memory continuity system during development. Repo-specific contributor context lives in [`AGENTS.md`](AGENTS.md). If you want the reusable Engram bootstrap for your own agent, use [`templates/engram-bootstrap.tmpl.md`](templates/engram-bootstrap.tmpl.md) and let `npm run setup` duplicate it into the Claude-specific path when needed. If you want to set up your own Engram agent, see [`templates/`](templates/).

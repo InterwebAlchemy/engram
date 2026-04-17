@@ -44,7 +44,7 @@ test('protectCoreMemoryActions converts core mutations into review flags', () =>
   const actions: DreamsAction[] = [
     {
       action: 'rewrite_content',
-      path: 'engram/memory/reflections/soul.md',
+      path: 'engram/memory/soul.md',
       content: 'new body',
       summary: 'new summary',
       reason: 'Tighten the core note.',
@@ -60,7 +60,7 @@ test('protectCoreMemoryActions converts core mutations into review flags', () =>
       memoriesByState: {
         core: [
           {
-            path: 'engram/memory/reflections/soul.md',
+            path: 'engram/memory/soul.md',
             updated: '2026-04-10T00:00:00.000Z',
             hasThread: false,
             hasSummary: true,
@@ -91,9 +91,9 @@ test('protectCoreMemoryActions converts core mutations into review flags', () =>
   assert.deepEqual(protectCoreMemoryActions(actions, report), [
     {
       action: 'flag_core_review',
-      path: 'engram/memory/reflections/soul.md',
+      path: 'engram/memory/soul.md',
       concern: 'Core memory may need a manual update based on Dream analysis.',
-      suggested_change: 'rewrite_content engram/memory/reflections/soul.md',
+      suggested_change: 'rewrite_content engram/memory/soul.md',
       reason: 'Tighten the core note.',
     },
   ]);

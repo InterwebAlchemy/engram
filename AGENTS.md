@@ -1,7 +1,7 @@
 # Engram — Contributor Instructions
 
 <!-- Source of truth for repo-level agent instructions.
-Keep `.claude/CLAUDE.md` in sync with `npm run sync:agents`. -->
+For Claude Code, optionally generate .claude/CLAUDE.md with `npm run sync:agents`. -->
 
 Engram is a monorepo for an agent memory continuity system. This file provides repo-specific context for agents working on this codebase.
 
@@ -40,7 +40,7 @@ npm run dev
 
 The `setup` script scaffolds the vault structure and symlinks build artifacts. The `dev` script watches for changes and rebuilds.
 
-If you want Claude Code to load the generic Engram bootstrap globally, `npm run setup` can duplicate [templates/AGENTS.md](/Users/ericallen/Development/_utils/engram/templates/AGENTS.md) into `~/.claude/CLAUDE.md` when `MCP_CONFIGURE_CLAUDE_CODE=true` and the scope is `user`.
+If you want Claude Code to load the generic Engram bootstrap globally, `npm run setup` can duplicate [templates/engram-bootstrap.tmpl.md](/Users/ericallen/Development/_utils/engram/templates/engram-bootstrap.tmpl.md) into `~/.claude/CLAUDE.md` when `MCP_CONFIGURE_CLAUDE_CODE=true` and the scope is `user`.
 
 ## Architecture notes
 
@@ -49,15 +49,18 @@ If you want Claude Code to load the generic Engram bootstrap globally, `npm run 
 - `memory_state` controls retrieval priority: `core` > `remembered` > `default` > `forgotten`
 - `context` returns core + remembered + query-relevant memories; soul doc is loaded separately via `soul(action: "get")`
 - Thread docs should prefer a lightweight `## Todo` section with `- [ ]` items over sprawling markdown plans; the active thread summary surfaced during `context(action: "load", thread_id=...)` now loads ahead of core memories and includes open todos
-- Inbox is a single directory at `engram/notes/inbox/`; global items live directly under `inbox/`, thread-scoped items live under `inbox/threads/<thread_id>/` as individual notes; both surface during `context(action: "load")` sorted by `created` date (FIFO); items must be **inside** the `inbox/` directory — a note at path `inbox` creates `inbox.md` which is invisible to the scan
+- Inbox is a top-level directory at `engram/inbox/`; global items live directly under `inbox/`, thread-scoped items live under `inbox/threads/<thread_id>/` as individual notes; both surface during `context(action: "load")` sorted by `created` date (FIFO); items must be **inside** the `inbox/` directory — a note at path `inbox` creates `inbox.md` which is invisible to the scan
+- Skills are a top-level directory at `engram/skills/`, separate from memories
+- Soul document lives at `engram/memory/soul.md` (top of memory directory, not inside reflections)
 - Working notes under `engram/notes` are separate from memories; prefer storing lightweight note references in Thread docs or scratch and loading note contents explicitly with note tools when needed
 - The MCP server is the primary integration surface; tools map closely to `MemoryManager` methods
 
 ## Bootstrapping
 
-- Repo-level `AGENTS.md` is for agents working on the Engram codebase itself
-- Reusable Engram bootstrap instructions for new agents live in [templates/AGENTS.md](/Users/ericallen/Development/_utils/engram/templates/AGENTS.md)
-- Claude-specific global bootstrap still uses `~/.claude/CLAUDE.md`, but that file should be treated as a duplicate of the template bootstrap, not the repo contributor guide
+- `AGENTS.md` is the repo-level contributor guide (read by most AI coding tools)
+- For Claude Code, optionally generate `.claude/CLAUDE.md` via `npm run sync:agents` (gitignored, opt-in)
+- Reusable Engram bootstrap for new agents: [templates/engram-bootstrap.tmpl.md](/Users/ericallen/Development/_utils/engram/templates/engram-bootstrap.tmpl.md)
+- Global Claude Code bootstrap: `~/.claude/CLAUDE.md` (duplicate of the template bootstrap)
 
 ## See also
 

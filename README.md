@@ -77,21 +77,21 @@ Cross-device continuity is established by any of the available [synchronization 
 3. If you prefer the manual path, create `.env`, set `ENGRAM_VAULT_PATH` to your Obsidian vault directory, optionally set `ENGRAM_ROOT` if you do not want the default `engram/`, then run `npm run setup`
 
    To auto-configure MCP clients during setup, set the relevant variables in `.env` before running:
-   - `MCP_CONFIGURE_CLAUDE_CODE=true` — adds the MCP server to Claude Code and, for global scope, duplicates the reusable bootstrap instructions from `templates/AGENTS.md` into `~/.claude/CLAUDE.md`
+   - `MCP_CONFIGURE_CLAUDE_CODE=true` — adds the MCP server to Claude Code and, for global scope, duplicates the reusable bootstrap instructions from `templates/engram-bootstrap.tmpl.md` into `~/.claude/CLAUDE.md`
    - `MCP_CONFIGURE_CLAUDE_DESKTOP=true` — adds the MCP server to Claude Desktop
    - `MCP_CONFIGURE_CURSOR=true` — adds the MCP server to Cursor and copies bootstrap instructions to clipboard for pasting into Cursor Settings
 
    Verified bootstrap harnesses today: `Claude Code CLI`, `Claude Code Desktop App`, `Claude Code VS Code extension`, `Claude Desktop`, `Codex Desktop App`, `Codex VS Code extension`, `Cursor`, `GitHub Copilot CLI`, `GitHub Copilot in VS Code`, `Windsurf App`.
    Other MCP client setup paths may exist in this repo, but they should be treated as configuration helpers until bootstrap behavior is actually verified.
 
-4. Review the generated Soul document at `<vault>/<engram-root>/memory/reflections/soul.md` and make it yours. Each session bootstraps by calling `soul(action: "get")`, then `thread(action: "resolve")` (auto-detects or creates the active Thread from the working directory), then `context(action: "load")`, then `scratch(action: "read", bootstrap: true)`.
+4. Review the generated Soul document at `<vault>/<engram-root>/memory/soul.md` and make it yours. Each session bootstraps by calling `soul(action: "get")`, then `thread(action: "resolve")` (auto-detects or creates the active Thread from the working directory), then `context(action: "load")`, then `scratch(action: "read", bootstrap: true)`.
 5. Optionally, copy `packages/obsidian-plugin/` into your vault's `.obsidian/plugins/` directory to chat with your Engram directly from Obsidian using various providers
 
 ### Bootstrapping a session
 
 Verified bootstrap harnesses today are `Claude Code CLI`, `Claude Code Desktop App`, `Claude Code VS Code extension`, `Claude Desktop`, `Codex Desktop App`, `Codex VS Code extension`, `Cursor`, `GitHub Copilot CLI`, `GitHub Copilot in VS Code`, and `Windsurf App`.
 
-The reusable bootstrap instructions live in [`templates/AGENTS.md`](templates/AGENTS.md). Harness-specific files like `CLAUDE.md` should be treated as duplicates of that template, and project-level `AGENTS.md` files can carry repo-specific contributor instructions. As more harnesses are verified, they should be added here explicitly rather than implied.
+The reusable bootstrap instructions live in [`templates/engram-bootstrap.tmpl.md`](templates/engram-bootstrap.tmpl.md). Harness-specific files like `CLAUDE.md` should be treated as duplicates of that template, and project-level `AGENTS.md` files can carry repo-specific contributor instructions. As more harnesses are verified, they should be added here explicitly rather than implied.
 
 If your Engram does not bootstrap from an ambient greeting (e.g. `Hey!`, `Let's get to work`, etc.), use this invocation:
 

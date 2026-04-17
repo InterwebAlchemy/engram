@@ -10,8 +10,8 @@ These templates help you establish an Engram for a new agent. Copy and customize
 
 | File | Purpose | Where it goes |
 |---|---|---|
-| `AGENTS.md` | Canonical bootstrap instructions | `AGENTS.md` in a repo, or duplicated into a harness-specific file such as `~/.claude/CLAUDE.md` |
-| `soul-template.md` | Starting point for your Soul document | Your Engram vault: `memory/reflections/soul.md` |
+| `engram-bootstrap.tmpl.md` | Canonical bootstrap instructions | `AGENTS.md` in a repo, or duplicated into a harness-specific file such as `~/.claude/CLAUDE.md` |
+| `soul-template.md` | Starting point for your Soul document | Your Engram vault: `memory/soul.md` |
 | `claude-project-anchor.md` | Project instructions for Claude Desktop / Web | Claude Project custom instructions |
 
 ---
@@ -39,10 +39,10 @@ Or add it to your Claude Desktop `claude_desktop_config.json`:
 
 ### 2. Deploy the bootstrap instructions
 
-Use `AGENTS.md` as the source of truth. If you want Claude Code to load it globally, duplicate it into Claude's expected config path:
+Use `engram-bootstrap.tmpl.md` as the source of truth. If you want Claude Code to load it globally, duplicate it into Claude's expected config path:
 
 ```bash
-cp templates/AGENTS.md ~/.claude/CLAUDE.md
+cp templates/engram-bootstrap.tmpl.md ~/.claude/CLAUDE.md
 ```
 
 This tells Claude Code to call `soul(action: "get")`, `thread(action: "resolve")`, `context(action: "load")`, and `scratch(action: "read", bootstrap: true)` at the start of every session.
@@ -52,7 +52,7 @@ This tells Claude Code to call `soul(action: "get")`, `thread(action: "resolve")
 Copy `soul-template.md` and fill it in:
 
 ```bash
-cp templates/soul-template.md /path/to/your/vault/engram/memory/reflections/soul.md
+cp templates/soul-template.md /path/to/your/vault/engram/memory/soul.md
 ```
 
 Edit it to reflect who your agent is — name, working style, values, communication preferences. This is your agent's self-model; it persists across sessions and models.
@@ -75,7 +75,7 @@ On first run with an empty vault, `context(action: "load")` will return nothing 
 
 ## Notes
 
-- **`AGENTS.md`** is the canonical source of truth. Duplicate it into harness-specific files like `~/.claude/CLAUDE.md` when a tool does not read `AGENTS.md` directly yet.
+- **`engram-bootstrap.tmpl.md`** is the canonical source of truth. Duplicate it into harness-specific files like `~/.claude/CLAUDE.md` when a tool does not read `AGENTS.md` directly yet.
 - **`~/.claude/CLAUDE.md`** is global — it applies to all Claude Code sessions. If you only want Engram active in specific projects, use a project-level `.claude/CLAUDE.md` instead.
 - **`AGENTS.local.md`** or **`CLAUDE.local.md`** (gitignored) are good places for machine-local or harness-local instructions that shouldn't be committed.
 - Soul documents are yours to evolve. Update them as your agent learns who it is.

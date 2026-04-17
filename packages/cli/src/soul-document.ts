@@ -30,7 +30,7 @@ export async function prepareSoulDocumentPlan(
   answers: InitAnswers,
 ): Promise<SoulDocumentPlan> {
   const template = await fs.readFile(templatePath, 'utf8');
-  const soulPath = path.join(answers.vaultPath, answers.engramRoot, 'memory', 'reflections', 'soul.md');
+  const soulPath = path.join(answers.vaultPath, answers.engramRoot, 'memory', 'soul.md');
   const existingContent = await fs.readFile(soulPath, 'utf8').catch(() => null);
   const generatedContent = buildGeneratedSoulContent(template, answers);
   const gitIdentity = buildGitIdentity(answers.gitName, answers.gitEmail);

@@ -145,7 +145,7 @@ async function fileExists(filePath: string): Promise<boolean> {
 
 export async function isRepoContext(repoRoot: string): Promise<boolean> {
   return await fileExists(path.join(repoRoot, 'scripts', 'setup-dev.sh'))
-    && await fileExists(path.join(repoRoot, 'templates', 'AGENTS.md'));
+    && await fileExists(path.join(repoRoot, 'templates', 'engram-bootstrap.tmpl.md'));
 }
 
 async function readEnvFile(envPath: string): Promise<Partial<Record<string, string>>> {

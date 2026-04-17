@@ -32,6 +32,7 @@ RESET='\033[0m'
 
 # ─── Resolve vault path ─────────────────────────────────────────────────────
 
+# shellcheck source=/dev/null
 source "$REPO_ROOT/scripts/resolve-vault.sh"
 
 # ─── Clean mode ─────────────────────────────────────────────────────────────

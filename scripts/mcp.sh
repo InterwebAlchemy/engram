@@ -23,6 +23,7 @@ if [ -f "$REPO_ROOT/.env" ]; then
 fi
 
 # Load vault path from .env / environment
+# shellcheck source=/dev/null
 source "$REPO_ROOT/scripts/resolve-vault.sh"
 
 if [ -z "${ENGRAM_ROOT:-}" ] && [ -f "$HOME/.engram/config.json" ]; then

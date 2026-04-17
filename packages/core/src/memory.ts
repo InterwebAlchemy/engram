@@ -22,15 +22,8 @@ import type { Conversation } from './conversation';
 import { KeywordSearchProvider } from './scoring';
 import type { SearchProvider } from './scoring';
 import { applyMemoryFilters } from './context-helpers';
-import { normalizeNoteContent } from './memory-helpers';
-import {
-  appendRawNote,
-  deleteRawNote,
-  listRawNotes,
-  mutateVaultNote,
-  searchRawNotes,
-  updateRawNote,
-} from './note-helpers';
+import { mutateVaultNote } from './note-helpers';
+import { NoteOperations } from './note-operations';
 import {
   appendScratchEntry,
   compactScratchFile,
@@ -44,8 +37,7 @@ import { MemoryExtraOperations } from './memory-extra-operations';
 import { ThreadOperations } from './thread-operations';
 
 const MEMORY_SLUG_PREVIEW_LENGTH = 60;
-const NOTE_PREVIEW_LENGTH = 200;
-const DEFAULT_NOTE_SEARCH_LIMIT = 10;
+const DEFAULT_BOOTSTRAP_LIMIT = 10;
 const DEFAULT_SCRATCH_READ_LIMIT = 50;
 
 interface StoreOptions { tags?: string[]; provider?: string; confidence?: Confidence; }
@@ -54,6 +46,7 @@ export class MemoryManager {
   private readonly writeRoot: string; private readonly readRoots: string[];
   private readonly contextOperations: MemoryContextOperations; private readonly searchProvider: SearchProvider;
   private readonly extraOperations: MemoryExtraOperations; private readonly threadOperations: ThreadOperations;
+  private readonly noteOps: NoteOperations;
 
   constructor(
     private readonly adapter: FileSystemAdapter,
@@ -80,6 +73,8 @@ export class MemoryManager {
       adapter: this.adapter,
       archiveDir: () => this.archiveDir(),
       memoryTypeDir: (type) => this.memoryTypeDir(type),
+      memoryDir: () => path.join(this.writeRoot, this.config.memoryPath),
+      skillsDir: () => this.skillsDir(),
       writeRoot: this.writeRoot,
       listMemories: async (filters) => await this.list(filters),
       conversationDir: (dateStr) => this.conversationDir(dateStr),
@@ -101,6 +96,14 @@ export class MemoryManager {
       threadDir: () => this.threadDir(),
       threadPath: (threadId) => this.threadPath(threadId),
       mutateThread: async (filePath, transform) => await this.mutateVaultNoteContent(filePath, transform),
+    });
+    this.noteOps = new NoteOperations({
+      adapter: this.adapter,
+      assertWriteAllowed: (filePath) => { this.assertWriteAllowed(filePath); },
+      notesDir: () => this.notesDir(),
+      inboxDir: () => this.inboxDir(),
+      normalizeNotePath: (filePath) => this.normalizeNotePath(filePath),
+      noteRelativePath: (filePath) => this.noteRelativePath(filePath),
     });
   }
   // ─── Write-scope enforcement ──────────────────────────────────────────────
@@ -138,7 +141,6 @@ export class MemoryManager {
     [MemoryType.Fact]: 'facts',
     [MemoryType.Entity]: 'entities',
     [MemoryType.Reflection]: 'reflections',
-    [MemoryType.Skill]: 'skills',
   };
 
   private memoryTypeDir(type: MemoryType | string): string {
@@ -148,13 +150,17 @@ export class MemoryManager {
 
   private notesDir(): string { return path.join(this.writeRoot, this.config.notesPath); }
 
+  private skillsDir(): string { return path.join(this.writeRoot, this.config.skillsPath); }
+
+  private inboxDir(): string { return path.join(this.writeRoot, this.config.inboxPath); }
+
   private threadDir(): string { return path.join(this.writeRoot, this.config.threadsPath); }
 
   private threadPath(threadId: string): string { return path.join(this.threadDir(), `${threadId}.md`); }
 
   private contextLabelFor(note: VaultNote): string {
     const memoryRoot = path.join(this.writeRoot, this.config.memoryPath);
-    return `memory:${path.relative(memoryRoot, note.path)}`;
+    return `memory:${path.relative(memoryRoot, note.path).replace(/\.md$/u, '')}`;
   }
 
   private conversationDir(dateStr?: string): string {
@@ -164,13 +170,23 @@ export class MemoryManager {
   }
 
   private normalizeNotePath(filePath: string): string {
+    // Route inbox/<subpath> to the top-level inbox directory.
+    // Bare 'inbox' (no slash) falls through to notes — it creates notes/inbox.md,
+    // which intentionally does NOT surface in inbox listings.
+    if (!path.isAbsolute(filePath) && (filePath.startsWith('inbox/') || filePath.startsWith('inbox\\'))) {
+      return this.normalizeInboxPath(filePath);
+    }
+
     const notesRoot = this.notesDir();
     const resolved = path.isAbsolute(filePath)
       ? filePath
       : path.resolve(notesRoot, filePath);
     const withExt = path.extname(resolved).length > 0 ? resolved : `${resolved}.md`;
 
-    if (withExt === notesRoot || withExt.startsWith(notesRoot + path.sep)) {
+    // Allow paths within either the notes or inbox directory
+    const inboxRoot = this.inboxDir();
+    if (withExt === notesRoot || withExt.startsWith(notesRoot + path.sep) ||
+        withExt === inboxRoot || withExt.startsWith(inboxRoot + path.sep)) {
       return withExt;
     }
 
@@ -179,7 +195,31 @@ export class MemoryManager {
     );
   }
 
-  private noteRelativePath(filePath: string): string { return path.relative(this.notesDir(), filePath); }
+  private normalizeInboxPath(filePath: string): string {
+    const inboxRoot = this.inboxDir();
+    // Strip the 'inbox/' prefix and resolve relative to the inbox directory
+    const relativePath = filePath.replace(/^inbox[/\\]?/u, '');
+    const resolved = relativePath.length > 0
+      ? path.resolve(inboxRoot, relativePath)
+      : inboxRoot;
+    const withExt = path.extname(resolved).length > 0 ? resolved : `${resolved}.md`;
+
+    if (withExt === inboxRoot || withExt.startsWith(inboxRoot + path.sep)) {
+      return withExt;
+    }
+
+    throw new Error(
+      `Inbox path must stay within the inbox directory ("${inboxRoot}")`,
+    );
+  }
+
+  private noteRelativePath(filePath: string): string {
+    const inboxRoot = this.inboxDir();
+    if (filePath === inboxRoot || filePath.startsWith(inboxRoot + path.sep)) {
+      return path.join('inbox', path.relative(inboxRoot, filePath));
+    }
+    return path.relative(this.notesDir(), filePath);
+  }
 
   private archiveDir(): string { return path.join(this.writeRoot, this.config.archivePath); }
 
@@ -321,322 +361,67 @@ export class MemoryManager {
     return await this.extraOperations.setSoulDocument(content);
   }
 
-  // ─── Thread operations ────────────────────────────────────────────────────
+  // ─── Thread operations (delegated to ThreadOperations) ────────────────────
 
-  async getThread(threadId: string): Promise<VaultNote | null> {
-    return await this.threadOperations.getThread(threadId);
-  }
+  async getThread(threadId: string): Promise<VaultNote | null> { return await this.threadOperations.getThread(threadId); }
+  async setThread(threadId: string, content: string, fields: ThreadFields = {}): Promise<VaultNote> { return await this.threadOperations.setThread(threadId, content, fields); }
+  async updateThread(threadId: string, content?: string, fields?: ThreadFields): Promise<VaultNote> { return await this.threadOperations.updateThread(threadId, content, fields); }
+  async listThreads(): Promise<VaultNote[]> { return await this.threadOperations.listThreads(); }
+  async listThreadTodos(threadId: string, options: { includeCompleted?: boolean } = {}): Promise<Array<{ text: string; checked: boolean }>> { return await this.threadOperations.listThreadTodos(threadId, options); }
+  async addThreadTodo(threadId: string, itemText: string, options: { prepend?: boolean } = {}): Promise<VaultNote> { return await this.threadOperations.addThreadTodo(threadId, itemText, options); }
+  async completeThreadTodo(threadId: string, itemText: string): Promise<VaultNote> { return await this.threadOperations.completeThreadTodo(threadId, itemText); }
+  async reopenThreadTodo(threadId: string, itemText: string): Promise<VaultNote> { return await this.threadOperations.reopenThreadTodo(threadId, itemText); }
+  async removeThreadTodo(threadId: string, itemText: string): Promise<VaultNote> { return await this.threadOperations.removeThreadTodo(threadId, itemText); }
+  async listThreadInbox(threadId: string): Promise<Array<{ path: string; content: string; created: string }>> { return await this.threadOperations.listThreadInbox(threadId); }
+  async addThreadInboxItem(threadId: string, itemText: string): Promise<string> { return await this.threadOperations.addThreadInboxItem(threadId, itemText); }
+  async completeThreadInboxItem(threadId: string, item: string): Promise<string> { return await this.threadOperations.completeThreadInboxItem(threadId, item); }
+  async removeThreadInboxItem(threadId: string, item: string): Promise<string> { return await this.threadOperations.removeThreadInboxItem(threadId, item); }
+  async getThreadInboxSummary(threadId: string): Promise<string | null> { return await this.threadOperations.getThreadInboxSummary(threadId); }
+  async listGlobalInbox(): Promise<Array<{ path: string; content: string; created: string }>> { return await this.threadOperations.listGlobalInbox(); }
+  async addGlobalInboxItem(content: string, name?: string): Promise<string> { return await this.threadOperations.addGlobalInboxItem(content, name); }
+  async removeInboxItem(itemPath: string): Promise<string> { return await this.threadOperations.removeInboxItem(itemPath); }
+  async getGlobalInboxSummary(activeThreadId?: string): Promise<string | null> { return await this.threadOperations.getGlobalInboxSummary(activeThreadId); }
+  async resolveThread(hints: { cwd?: string; gitRemote?: string; autoCreate?: boolean }): Promise<{ threadId: string; created: boolean; thread: VaultNote }> { return await this.threadOperations.resolveThread(hints); }
+  async mergeThreads(sourceId: string, targetId: string): Promise<{ retaggedCount: number }> { return await this.threadOperations.mergeThreads(sourceId, targetId); }
 
-  async setThread(threadId: string, content: string, fields: ThreadFields = {}): Promise<VaultNote> {
-    return await this.threadOperations.setThread(threadId, content, fields);
-  }
+  // ─── Skill operations (delegated to MemoryExtraOperations) ────────────────
 
-  async updateThread(threadId: string, content?: string, fields?: ThreadFields): Promise<VaultNote> {
-    return await this.threadOperations.updateThread(threadId, content, fields);
-  }
+  async storeSkill(slug: string, content: string, tags: string[] = []): Promise<VaultNote> { return await this.extraOperations.storeSkill(slug, content, tags); }
+  async getSkill(slug: string): Promise<VaultNote | null> { return await this.extraOperations.getSkill(slug); }
+  async listSkills(): Promise<VaultNote[]> { return await this.extraOperations.listSkills(); }
 
-  async listThreads(): Promise<VaultNote[]> {
-    return await this.threadOperations.listThreads();
-  }
+  // ─── Note operations (delegated to NoteOperations) ────────────────────────
 
-  async listThreadTodos(
-    threadId: string,
-    options: { includeCompleted?: boolean } = {},
-  ): Promise<Array<{ text: string; checked: boolean }>> {
-    return await this.threadOperations.listThreadTodos(threadId, options);
-  }
-
-  async addThreadTodo(
-    threadId: string,
-    itemText: string,
-    options: { prepend?: boolean } = {},
-  ): Promise<VaultNote> {
-    return await this.threadOperations.addThreadTodo(threadId, itemText, options);
-  }
-
-  async completeThreadTodo(threadId: string, itemText: string): Promise<VaultNote> {
-    return await this.threadOperations.completeThreadTodo(threadId, itemText);
-  }
-
-  async reopenThreadTodo(threadId: string, itemText: string): Promise<VaultNote> {
-    return await this.threadOperations.reopenThreadTodo(threadId, itemText);
-  }
-
-  async removeThreadTodo(threadId: string, itemText: string): Promise<VaultNote> {
-    return await this.threadOperations.removeThreadTodo(threadId, itemText);
-  }
-
-  async listThreadInbox(
-    threadId: string,
-  ): Promise<Array<{ path: string; content: string; created: string }>> {
-    return await this.threadOperations.listThreadInbox(threadId);
-  }
-
-  async addThreadInboxItem(threadId: string, itemText: string): Promise<string> {
-    return await this.threadOperations.addThreadInboxItem(threadId, itemText);
-  }
-
-  async completeThreadInboxItem(threadId: string, item: string): Promise<string> {
-    return await this.threadOperations.completeThreadInboxItem(threadId, item);
-  }
-
-  async removeThreadInboxItem(threadId: string, item: string): Promise<string> {
-    return await this.threadOperations.removeThreadInboxItem(threadId, item);
-  }
-
-  async getThreadInboxSummary(threadId: string): Promise<string | null> {
-    return await this.threadOperations.getThreadInboxSummary(threadId);
-  }
-
-  async listGlobalInbox(): Promise<Array<{ path: string; content: string; created: string }>> {
-    return await this.threadOperations.listGlobalInbox();
-  }
-
-  async addGlobalInboxItem(content: string, name?: string): Promise<string> {
-    return await this.threadOperations.addGlobalInboxItem(content, name);
-  }
-
-  async removeInboxItem(itemPath: string): Promise<string> {
-    return await this.threadOperations.removeInboxItem(itemPath);
-  }
-
-  async getGlobalInboxSummary(activeThreadId?: string): Promise<string | null> {
-    return await this.threadOperations.getGlobalInboxSummary(activeThreadId);
-  }
-  async resolveThread(hints: {
-    cwd?: string;
-    gitRemote?: string;
-    autoCreate?: boolean;
-  }): Promise<{ threadId: string; created: boolean; thread: VaultNote }> {
-    return await this.threadOperations.resolveThread(hints);
-  }
-
-  async mergeThreads(
-    sourceId: string,
-    targetId: string,
-  ): Promise<{ retaggedCount: number }> {
-    return await this.threadOperations.mergeThreads(sourceId, targetId);
-  }
-
-  // ─── Skill operations ─────────────────────────────────────────────────────
-
-  /**
-   * Store or overwrite a skill by slug.
-   * Skills live at engram/memory/skill/{slug}.md and default to Core state
-   * so they are always available for retrieval but loaded on demand, not
-   * auto-injected like soul.
-   */
-  async storeSkill(slug: string, content: string, tags: string[] = []): Promise<VaultNote> {
-    return await this.extraOperations.storeSkill(slug, content, tags);
-  }
-
-  /**
-   * Retrieve a skill by slug. Returns null if not found.
-   */
-  async getSkill(slug: string): Promise<VaultNote | null> {
-    return await this.extraOperations.getSkill(slug);
-  }
-
-  /**
-   * List all stored skills.
-   */
-  async listSkills(): Promise<VaultNote[]> {
-    return await this.extraOperations.listSkills();
-  }
-
-  // ─── Note operations ──────────────────────────────────────────────────────
-
-  /**
-   * Create a raw markdown note under engram/notes.
-   * Fails if the target path already exists.
-   */
-  async createNote(filePath: string, content: string): Promise<string> {
-    const target = this.normalizeNotePath(filePath);
-    this.assertWriteAllowed(target);
-
-    if (await this.adapter.exists(target)) {
-      throw new Error(`Note already exists: ${target}`);
-    }
-
-    await this.adapter.mkdir(path.dirname(target));
-    await this.adapter.write(target, normalizeNoteContent(content));
-    return target;
-  }
-
-  /**
-   * Read a raw note from engram/notes.
-   */
-  async readNote(filePath: string): Promise<string> {
-    const target = this.normalizeNotePath(filePath);
-    return await this.adapter.read(target);
-  }
-
-  /**
-   * Overwrite an existing raw note under engram/notes.
-   */
-  async updateNote(
-    filePath: string,
-    content: string,
-    expectedCurrentContent?: string,
-  ): Promise<string> {
-    const target = this.normalizeNotePath(filePath);
-    this.assertWriteAllowed(target);
-    return await updateRawNote(this.adapter, target, content, expectedCurrentContent);
-  }
-
-  /**
-   * Append markdown content to a raw note under engram/notes.
-   * Creates the note if it does not exist yet.
-   */
-  async appendNote(
-    filePath: string,
-    content: string,
-    options: {
-      expectedCurrentContent?: string;
-      separator?: string;
-    } = {},
-  ): Promise<string> {
-    const target = this.normalizeNotePath(filePath);
-    this.assertWriteAllowed(target);
-    return await appendRawNote(this.adapter, target, content, options);
-  }
-
-  /**
-   * List markdown notes under engram/notes.
-   */
-  async listNotes(options: {
-    limit?: number;
-    prefix?: string;
-  } = {}): Promise<Array<{ path: string; preview: string }>> {
-    return await listRawNotes(
-      this.adapter,
-      this.notesDir(),
-      {
-        ...options,
-        noteRelativePath: (filePath) => this.noteRelativePath(filePath),
-        readNote: async (filePath) => await this.readNote(filePath),
-        previewLength: NOTE_PREVIEW_LENGTH,
-      },
-    );
-  }
-
-  /**
-   * Search markdown notes under engram/notes.
-   */
-  async searchNotes(
-    query: string,
-    options: { limit?: number } = {},
-  ): Promise<Array<{ path: string; preview: string; score?: number }>> {
-    return await searchRawNotes(
-      this.adapter,
-      this.notesDir(),
-      query,
-      {
-        limit: options.limit ?? DEFAULT_NOTE_SEARCH_LIMIT,
-        noteRelativePath: (filePath) => this.noteRelativePath(filePath),
-        previewLength: NOTE_PREVIEW_LENGTH,
-      },
-    );
-  }
-
-  /**
-   * Delete an existing raw note from engram/notes.
-   */
-  async deleteNote(filePath: string): Promise<string> {
-    const target = this.normalizeNotePath(filePath);
-    this.assertWriteAllowed(target);
-    return await deleteRawNote(this.adapter, target);
-  }
+  async createNote(filePath: string, content: string): Promise<string> { return await this.noteOps.createNote(filePath, content); }
+  async readNote(filePath: string): Promise<string> { return await this.noteOps.readNote(filePath); }
+  async updateNote(filePath: string, content: string, expectedCurrentContent?: string): Promise<string> { return await this.noteOps.updateNote(filePath, content, expectedCurrentContent); }
+  async appendNote(filePath: string, content: string, options: { expectedCurrentContent?: string; separator?: string } = {}): Promise<string> { return await this.noteOps.appendNote(filePath, content, options); }
+  async listNotes(options: { limit?: number; prefix?: string } = {}): Promise<Array<{ path: string; preview: string }>> { return await this.noteOps.listNotes(options); }
+  async searchNotes(query: string, options: { limit?: number } = {}): Promise<Array<{ path: string; preview: string; score?: number }>> { return await this.noteOps.searchNotes(query, options); }
+  async deleteNote(filePath: string): Promise<string> { return await this.noteOps.deleteNote(filePath); }
 
   // ─── Scratch operations ───────────────────────────────────────────────────
 
-  private get scratchFilePath(): string {
-    return path.join(this.writeRoot, this.config.scratchFile);
-  }
+  private get scratchFilePath(): string { return path.join(this.writeRoot, this.config.scratchFile); }
 
-  /**
-   * Append an entry to the shared scratch log.
-   * Each entry is prefixed with the session ID and an ISO timestamp.
-   * Newlines in content are collapsed to keep entries single-line.
-   */
   async appendScratch(sessionId: string, content: string): Promise<void> {
-    const { scratchFilePath: logPath } = this;
-    this.assertWriteAllowed(logPath);
-    await appendScratchEntry(this.adapter, logPath, sessionId, content);
+    this.assertWriteAllowed(this.scratchFilePath);
+    await appendScratchEntry(this.adapter, this.scratchFilePath, sessionId, content);
   }
 
-  /**
-   * Read scratch log entries, with optional filtering and pagination.
-   * Returns entries sorted oldest-first. Applies limit after filtering.
-   */
   async readScratch(options: ScratchReadOptions = {}): Promise<ScratchEntry[]> {
-    return await readScratchEntries(this.adapter, this.scratchFilePath, options, { bootstrapLimit: DEFAULT_NOTE_SEARCH_LIMIT, defaultLimit: DEFAULT_SCRATCH_READ_LIMIT });
+    return await readScratchEntries(this.adapter, this.scratchFilePath, options, { bootstrapLimit: DEFAULT_BOOTSTRAP_LIMIT, defaultLimit: DEFAULT_SCRATCH_READ_LIMIT });
   }
 
-  /** Compact scratch entries for a session into one synthesized entry. */
-  async compactScratch(options: ScratchCompactOptions): Promise<void> {
-    const { scratchFilePath: logPath } = this; this.assertWriteAllowed(logPath); await compactScratchFile(this.adapter, logPath, options);
-  }
+  async compactScratch(options: ScratchCompactOptions): Promise<void> { this.assertWriteAllowed(this.scratchFilePath); await compactScratchFile(this.adapter, this.scratchFilePath, options); }
+  async pruneScratch(options: ScratchPruneOptions): Promise<number> { this.assertWriteAllowed(this.scratchFilePath); return await pruneScratchFile(this.adapter, this.scratchFilePath, options); }
+  async deleteScratch(options: ScratchDeleteOptions): Promise<number> { this.assertWriteAllowed(this.scratchFilePath); return await deleteScratchFile(this.adapter, this.scratchFilePath, options); }
+  async sweepScratch(): Promise<number> { this.assertWriteAllowed(this.scratchFilePath); return await sweepScratchFile(this.adapter, this.scratchFilePath); }
+  async clearScratch(): Promise<void> { this.assertWriteAllowed(this.scratchFilePath); await this.adapter.delete(this.scratchFilePath).catch(() => undefined); }
 
-  /**
-   * Remove scratch entries for a session older than thresholdMs.
-   * Returns the number of entries deleted.
-   */
-  async pruneScratch(options: ScratchPruneOptions): Promise<number> {
-    const { scratchFilePath: logPath } = this; this.assertWriteAllowed(logPath); return await pruneScratchFile(this.adapter, logPath, options);
-  }
-  async deleteScratch(options: ScratchDeleteOptions): Promise<number> {
-    const { scratchFilePath: logPath } = this; this.assertWriteAllowed(logPath); return await deleteScratchFile(this.adapter, logPath, options);
-  }
-  /**
-   * Remove all bootstrap-invisible entries from the scratch file.
-   * Sweeps entries older than the bootstrap retention window and compacted
-   * entries older than the compacted retention window. Returns count removed.
-   */
-  async sweepScratch(): Promise<number> {
-    const { scratchFilePath: logPath } = this; this.assertWriteAllowed(logPath); return await sweepScratchFile(this.adapter, logPath);
-  }
-  /** Hard-delete the scratch log. */
-  async clearScratch(): Promise<void> {
-    const { scratchFilePath: logPath } = this; this.assertWriteAllowed(logPath); await this.adapter.delete(logPath).catch(() => undefined);
-  }
+  // ─── Archive & conversation (delegated to MemoryExtraOperations) ──────────
 
-  /**
-   * Move all forgotten memory notes to the archive directory, preserving their
-   * relative path structure under engram/archive/.
-   *
-   * Optionally restrict to notes that have been forgotten for at least
-   * `olderThanDays` days (based on the `updated` timestamp, which is set when
-   * a note is marked forgotten).
-   *
-   * Returns the list of paths that were archived.
-   */
-  async archiveForgotten(olderThanDays?: number): Promise<string[]> {
-    return await this.extraOperations.archiveForgotten(olderThanDays);
-  }
-
-  // ─── Conversation persistence ─────────────────────────────────────────────
-
-  /**
-   * Save a Conversation to the vault as a dated markdown file.
-   * Returns the written VaultNote.
-   */
-  async saveConversation(
-    conversation: Conversation,
-    slug?: string,
-  ): Promise<VaultNote> {
-    return await this.extraOperations.saveConversation(conversation, slug);
-  }
-
-  /**
-   * Create and save a conversation from a raw messages array.
-   */
-  async storeConversation(
-    messages: Array<Pick<Message, 'role' | 'content'>>,
-    summary?: string,
-    tags: string[] = [],
-    slug?: string,
-  ): Promise<VaultNote> {
-    return await this.extraOperations.storeConversation(messages, summary, tags, slug);
-  }
+  async archiveForgotten(olderThanDays?: number): Promise<string[]> { return await this.extraOperations.archiveForgotten(olderThanDays); }
+  async saveConversation(conversation: Conversation, slug?: string): Promise<VaultNote> { return await this.extraOperations.saveConversation(conversation, slug); }
+  async storeConversation(messages: Array<Pick<Message, 'role' | 'content'>>, summary?: string, tags?: string[], slug?: string): Promise<VaultNote> { return await this.extraOperations.storeConversation(messages, summary, tags ?? [], slug); }
 }

@@ -1,6 +1,7 @@
 import type {
   MemoryManager,
   ThreadStatus,
+  VaultNote,
 } from '@interwebalchemy/engram-core';
 import { THREAD_STATUS_MAP } from './tool-definitions';
 import {
@@ -79,11 +80,7 @@ export async function handleThreadTool(
         gitRemote: optionalStringArg(args, 'git_remote'),
         autoCreate: optionalBooleanArg(args, 'auto_create'),
       });
-      return textResult(jsonText({
-        thread_id: result.threadId,
-        status: result.created ? 'created' : 'found',
-        thread: result.thread.serialize(),
-      }));
+      return textResult(formatResolvedThread(result));
     }
     case 'merge': {
       const sourceThreadId = requireStringArg(args, 'source_thread_id');
@@ -215,4 +212,31 @@ async function handleInboxRemove(
     return textResult('`path` is required for `remove`.', true);
   }
   return textResult('`path` is required for `remove`.', true);
+}
+
+function appendThreadMeta(lines: string[], frontmatter: VaultNote['frontmatter'], threadId: string): void {
+  const { name, description, goals } = frontmatter;
+  if (typeof name === 'string' && name.length > 0 && name !== threadId) {
+    lines.push(`name: ${name}`);
+  }
+  if (typeof description === 'string' && description.length > 0) {
+    lines.push(`description: ${description}`);
+  }
+  if (Array.isArray(goals) && goals.length > 0) {
+    lines.push('goals:');
+    for (const g of goals) {
+      lines.push(`- ${String(g)}`);
+    }
+  }
+}
+
+function formatResolvedThread(result: { threadId: string; created: boolean; thread: VaultNote }): string {
+  const { threadId, created, thread } = result;
+  const lines: string[] = [`thread_id: ${threadId} (${created ? 'created' : 'found'})`];
+  appendThreadMeta(lines, thread.frontmatter, threadId);
+  const body = thread.content.trim();
+  if (body.length > 0) {
+    lines.push('', body);
+  }
+  return lines.join('\n');
 }

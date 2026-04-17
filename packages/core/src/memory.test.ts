@@ -69,7 +69,7 @@ test('getContext uses memory-root-relative labels', async (t) => {
 
   assert.deepEqual(
     sections.map((section) => section.label),
-    ['memory:entities/project.md', 'memory:facts/dreams.md'],
+    ['memory:entities/project', 'memory:facts/dreams'],
   );
 });
 
@@ -116,7 +116,7 @@ test('getContext skips non-core notes without summaries', async (t) => {
 
   assert.deepEqual(
     sections.map((section) => section.label),
-    ['memory:entities/project.md', 'memory:facts/with-summary.md'],
+    ['memory:entities/project', 'memory:facts/with-summary'],
   );
   assert.equal(sections[1]?.content, 'Dreams consolidation summary');
 });
@@ -169,7 +169,7 @@ test('getContext includes a compact active thread summary with open todos', asyn
   assert.match(sections[0]?.content ?? '', /- \[ \] Tighten retrieval prompt/);
   assert.match(sections[0]?.content ?? '', /- \[ \] Add note reference convention/);
   assert.doesNotMatch(sections[0]?.content ?? '', /Finish prior experiment/);
-  assert.equal(sections[1]?.label, 'memory:entities/project.md');
+  assert.equal(sections[1]?.label, 'memory:entities/project');
 });
 
 test('getContext includes thread inbox notes ahead of core memories', async (t) => {
@@ -313,7 +313,7 @@ test('thread inbox items sort by created date (FIFO)', async (t) => {
   await manager.setThread('demo-thread', 'Thread body', { name: 'Demo Thread' });
 
   // Create notes with explicit created dates out of order
-  const notesDir = path.join(vaultRoot, 'engram', 'notes', 'inbox', 'threads', 'demo-thread');
+  const notesDir = path.join(vaultRoot, 'engram', 'inbox', 'threads', 'demo-thread');
   await fs.mkdir(notesDir, { recursive: true });
   await fs.writeFile(
     path.join(notesDir, 'second-item.md'),

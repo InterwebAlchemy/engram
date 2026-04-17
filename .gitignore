@@ -15,6 +15,9 @@ packages/obsidian-plugin/main.js
 CLAUDE.local.*
 AGENTS.local.*
 
+# Generated project-level instructions (opt-in via `npm run sync:agents`)
+.claude/CLAUDE.md
+
 # Development notes and todos
 .claude/notes/
 

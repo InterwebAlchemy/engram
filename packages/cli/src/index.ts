@@ -136,7 +136,7 @@ async function main(): Promise<void> {
 
 async function runInit(repoRoot: string, envPath: string, repoContext: boolean): Promise<void> {
   const templatePath = path.join(repoRoot, 'templates', 'soul-template.md');
-  const agentsTemplatePath = path.join(repoRoot, 'templates', 'AGENTS.md');
+  const agentsTemplatePath = path.join(repoRoot, 'templates', 'engram-bootstrap.tmpl.md');
   const existing = await loadExistingConfig(envPath, repoRoot);
   const rl = readline.createInterface({ input, output });
 

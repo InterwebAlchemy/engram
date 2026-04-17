@@ -1,7 +1,7 @@
 import * as path from 'node:path';
 import type { FileSystemAdapter } from './adapters/types';
-import { MemoryType, SOUL_DOCUMENT_SLUG } from './types';
-import type { ContextSection, TokenBudget } from './types';
+import { SOUL_DOCUMENT_SLUG } from './types';
+import type { ContextSection, MemoryType, TokenBudget } from './types';
 import { VaultNote } from './vault';
 import { ContextBuilder } from './context';
 import { summarizeThread } from './memory-helpers';
@@ -66,7 +66,7 @@ export class MemoryContextOperations {
     );
     const valid = allNotes.filter((note): note is VaultNote => note !== null);
 
-    const soulPath = path.join(this.deps.memoryTypeDir(MemoryType.Reflection), `${SOUL_DOCUMENT_SLUG}.md`);
+    const soulPath = path.join(this.deps.memoryDir(), `${SOUL_DOCUMENT_SLUG}.md`);
     const { coreNotes, rememberedNotes, defaultNotes } = partitionContextNotes(valid, soulPath, threadId);
 
     const builder = new ContextBuilder();

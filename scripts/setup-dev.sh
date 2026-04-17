@@ -57,6 +57,7 @@ upsert_env_var() {
 
 # ─── Resolve vault path ────────────────────────────────────────────────────
 
+# shellcheck source=/dev/null
 source "$REPO_ROOT/scripts/resolve-vault.sh"
 
 ENGRAM_ROOT="${ENGRAM_ROOT:-engram}"
@@ -74,9 +75,12 @@ mkdir -p "$VAULT_PATH/.obsidian/plugins/engram"
 # Scaffold the Engram directory structure inside the vault
 # so the plugin has somewhere to write immediately
 for dir in "$ENGRAM_ROOT/memory/facts" "$ENGRAM_ROOT/memory/entities" "$ENGRAM_ROOT/memory/reflections" \
-           "$ENGRAM_ROOT/memory/skill" "$ENGRAM_ROOT/conversations/2026-03-20" "$ENGRAM_ROOT/working" \
-           "$ENGRAM_ROOT/archive" "$ENGRAM_ROOT/templates" \
-           "$ENGRAM_ROOT/notes/inbox/threads" \
+           "$ENGRAM_ROOT/skills" \
+           "$ENGRAM_ROOT/inbox/threads" \
+           "$ENGRAM_ROOT/notes/dreams" \
+           "$ENGRAM_ROOT/threads" \
+           "$ENGRAM_ROOT/archive/memory/facts" "$ENGRAM_ROOT/archive/memory/entities" "$ENGRAM_ROOT/archive/memory/reflections" \
+           "$ENGRAM_ROOT/archive/skills" "$ENGRAM_ROOT/archive/notes" "$ENGRAM_ROOT/archive/threads" \
            "Daily Notes" "Journal"; do
   mkdir -p "$VAULT_PATH/$dir"
 done
@@ -305,7 +309,7 @@ if [ "${MCP_CONFIGURE_CLAUDE_CODE:-false}" = "true" ]; then
     # so we can update/remove it without touching user content.
     if [ "$SCOPE" = "user" ]; then
       CLAUDE_MD_TARGET="${HOME}/.claude/CLAUDE.md"
-      AGENTS_MD_TEMPLATE="$REPO_ROOT/templates/AGENTS.md"
+      AGENTS_MD_TEMPLATE="$REPO_ROOT/templates/engram-bootstrap.tmpl.md"
       mkdir -p "${HOME}/.claude"
       node -e "
 const fs = require('fs');
@@ -347,7 +351,7 @@ if [ "${MCP_CONFIGURE_CURSOR:-false}" = "true" ]; then
 
   # Bootstrap instructions — Cursor has no file-based global rules,
   # so the user must paste them into Settings > General > Rules for AI.
-  AGENTS_MD_TEMPLATE="$REPO_ROOT/templates/AGENTS.md"
+  AGENTS_MD_TEMPLATE="$REPO_ROOT/templates/engram-bootstrap.tmpl.md"
 
   if [ -f "$AGENTS_MD_TEMPLATE" ]; then
     COPIED_TO_CLIPBOARD=false
@@ -388,7 +392,7 @@ if [ "${MCP_CONFIGURE_CURSOR:-false}" = "true" ]; then
       echo "  ─── End bootstrap text ────────────────────────────────────"
     fi
   else
-    echo "  Warning: templates/AGENTS.md not found — skipping bootstrap instructions."
+    echo "  Warning: templates/engram-bootstrap.tmpl.md not found — skipping bootstrap instructions."
   fi
 fi
 
@@ -419,7 +423,7 @@ if [ "${MCP_CONFIGURE_COPILOT:-false}" = "true" ]; then
 
   # Bootstrap instructions — ~/.copilot/instructions/ is read by both
   # Copilot CLI and Copilot in VS Code as user-level instructions.
-  AGENTS_MD_TEMPLATE="$REPO_ROOT/templates/AGENTS.md"
+  AGENTS_MD_TEMPLATE="$REPO_ROOT/templates/engram-bootstrap.tmpl.md"
   COPILOT_INSTRUCTIONS_DIR="$HOME/.copilot/instructions"
   COPILOT_INSTRUCTIONS_FILE="$COPILOT_INSTRUCTIONS_DIR/engram.instructions.md"
 
@@ -434,7 +438,7 @@ if [ "${MCP_CONFIGURE_COPILOT:-false}" = "true" ]; then
 
     echo "  Bootstrap instructions written to $COPILOT_INSTRUCTIONS_FILE"
   else
-    echo "  Warning: templates/AGENTS.md not found — skipping bootstrap instructions."
+    echo "  Warning: templates/engram-bootstrap.tmpl.md not found — skipping bootstrap instructions."
   fi
 fi
 
@@ -446,7 +450,7 @@ if [ "${MCP_CONFIGURE_WINDSURF:-false}" = "true" ]; then
 
   # Bootstrap instructions — Windsurf reads global rules from
   # ~/.codeium/windsurf/memories/global_rules.md (6000 char limit per file).
-  AGENTS_MD_TEMPLATE="$REPO_ROOT/templates/AGENTS.md"
+  AGENTS_MD_TEMPLATE="$REPO_ROOT/templates/engram-bootstrap.tmpl.md"
   WINDSURF_RULES="$HOME/.codeium/windsurf/memories/global_rules.md"
 
   if [ -f "$AGENTS_MD_TEMPLATE" ]; then
@@ -474,7 +478,7 @@ if (existing.includes(MARKER_START) && existing.includes(MARKER_END)) {
 fs.writeFileSync('$WINDSURF_RULES', result, 'utf8');
 "
   else
-    echo "  Warning: templates/AGENTS.md not found — skipping bootstrap instructions."
+    echo "  Warning: templates/engram-bootstrap.tmpl.md not found — skipping bootstrap instructions."
   fi
 fi
 

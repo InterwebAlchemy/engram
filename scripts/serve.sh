@@ -24,6 +24,7 @@ fi
 # Resolve vault path
 _saved_args=("$@")
 set --
+# shellcheck source=/dev/null
 source "$REPO_ROOT/scripts/resolve-vault.sh"
 set -- "${_saved_args[@]}"
 unset _saved_args

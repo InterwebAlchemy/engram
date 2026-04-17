@@ -18,6 +18,8 @@ interface MemoryExtraOperationDependencies {
   adapter: FileSystemAdapter;
   archiveDir: () => string;
   memoryTypeDir: (type: MemoryType | string) => string;
+  memoryDir: () => string;
+  skillsDir: () => string;
   writeRoot: string;
   listMemories: (filters?: { state?: MemoryState }) => Promise<VaultNote[]>;
   conversationDir: (dateStr?: string) => string;
@@ -27,12 +29,12 @@ export class MemoryExtraOperations {
   constructor(private readonly deps: MemoryExtraOperationDependencies) {}
 
   async getSoulDocument(): Promise<VaultNote | null> {
-    const filePath = path.join(this.deps.memoryTypeDir(MemoryType.Reflection), `${SOUL_DOCUMENT_SLUG}.md`);
+    const filePath = path.join(this.deps.memoryDir(), `${SOUL_DOCUMENT_SLUG}.md`);
     return await VaultNote.read(this.deps.adapter, filePath).catch(() => null);
   }
 
   async setSoulDocument(content: string): Promise<VaultNote> {
-    const dir = this.deps.memoryTypeDir(MemoryType.Reflection);
+    const dir = this.deps.memoryDir();
     const filePath = path.join(dir, `${SOUL_DOCUMENT_SLUG}.md`);
 
     this.deps.assertWriteAllowed(filePath);
@@ -61,7 +63,7 @@ export class MemoryExtraOperations {
   }
 
   async storeSkill(slug: string, content: string, tags: string[] = []): Promise<VaultNote> {
-    const dir = this.deps.memoryTypeDir(MemoryType.Skill);
+    const dir = this.deps.skillsDir();
     const filePath = path.join(dir, `${slug}.md`);
 
     this.deps.assertWriteAllowed(filePath);
@@ -81,12 +83,12 @@ export class MemoryExtraOperations {
   }
 
   async getSkill(slug: string): Promise<VaultNote | null> {
-    const filePath = path.join(this.deps.memoryTypeDir(MemoryType.Skill), `${slug}.md`);
+    const filePath = path.join(this.deps.skillsDir(), `${slug}.md`);
     return await VaultNote.read(this.deps.adapter, filePath).catch(() => null);
   }
 
   async listSkills(): Promise<VaultNote[]> {
-    const dir = this.deps.memoryTypeDir(MemoryType.Skill);
+    const dir = this.deps.skillsDir();
     const files = await this.deps.adapter.list(dir).catch(() => [] as string[]);
     const notes = await Promise.all(
       files.map(async (filePath) => await VaultNote.read(this.deps.adapter, filePath).catch(() => null)),

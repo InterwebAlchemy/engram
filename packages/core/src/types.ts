@@ -159,6 +159,8 @@ export interface MemoryConfig {
   memoryPath: string;
   notesPath: string;
   threadsPath: string;
+  skillsPath: string;
+  inboxPath: string;
   conversationsPath: string;
   workingPath: string;
   scratchFile: string;
@@ -178,6 +180,8 @@ export function defaultMemoryConfig(
     memoryPath: 'memory',
     notesPath: 'notes',
     threadsPath: 'threads',
+    skillsPath: 'skills',
+    inboxPath: 'inbox',
     conversationsPath: 'conversations',
     workingPath: 'working',
     scratchFile: '.scratch',

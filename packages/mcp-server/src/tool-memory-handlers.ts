@@ -70,8 +70,13 @@ export async function handleSoulTool(
   switch (requireEnumArg(args, 'action', SOUL_ACTIONS)) {
     case 'get': {
       const soul = await manager.getSoulDocument();
-      const serializedSoul = soul === null ? 'No Soul document found.' : soul.serialize();
-      return textResult(`${serializedSoul}\n\n---\nSession ID: ${SESSION_ID}`);
+      if (soul === null) {
+        return textResult(`No Soul document found.\n\n---\nSession ID: ${SESSION_ID}`);
+      }
+      const gitId = typeof soul.frontmatter.git_identity === 'string'
+        ? `\ngit_identity: ${soul.frontmatter.git_identity}`
+        : '';
+      return textResult(`${soul.content}\n\n---${gitId}\nSession ID: ${SESSION_ID}`);
     }
     case 'set': {
       const soul = await manager.setSoulDocument(requireStringArg(args, 'content'));
@@ -96,8 +101,8 @@ export async function handleContextTool(
   }
 
   const contextText = sections
-    .map((section) => `### ${section.label}\n\n${section.content}`)
-    .join('\n\n---\n\n');
+    .map((section) => `### ${section.label}\n${section.content}`)
+    .join('\n\n');
   return textResult(`${contextText}\n\n${buildCheckpointReminder(threadId)}`);
 }
 
