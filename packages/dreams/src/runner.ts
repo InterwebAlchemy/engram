@@ -230,14 +230,15 @@ async function hydrateDreamsContext(
   manager: MemoryManager,
   context?: DreamsEngramContext,
 ): Promise<DreamsEngramContext | undefined> {
-  const next: DreamsEngramContext = { ...(context ?? {}) };
+  const base: DreamsEngramContext = { ...(context ?? {}) };
+  const withDate = hydrateCurrentDate(base);
   const soul = await manager.getSoulDocument().catch(() => null);
   if (soul === null) {
-    return Object.keys(next).length > 0 ? next : undefined;
+    return Object.keys(withDate).length > 0 ? withDate : undefined;
   }
 
   const hydratedContext = hydrateIdentitySummary(
-    hydrateAgentName(next, soul.frontmatter.git_identity),
+    hydrateAgentName(withDate, soul.frontmatter.git_identity),
     soul.frontmatter.summary,
   );
   return Object.keys(hydratedContext).length > 0 ? hydratedContext : undefined;
@@ -334,6 +335,17 @@ async function resolvePlannedDreamNarrative(options: {
   }
 
   return buildFallbackDreamNarrative(options.report, options.actions, options.engramContext);
+}
+
+const ISO_DATE_LENGTH = 10;
+
+function hydrateCurrentDate(context: DreamsEngramContext): DreamsEngramContext {
+  const { currentDate } = context;
+  if (currentDate !== undefined && currentDate.trim().length > 0) {
+    return context;
+  }
+
+  return { ...context, currentDate: new Date().toISOString().slice(0, ISO_DATE_LENGTH) };
 }
 
 function hydrateAgentName(

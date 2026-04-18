@@ -13,6 +13,8 @@ export interface DreamsEngramContext {
   agentName?: string;
   /** Compact Soul summary used to ground Dreams in the Engram's identity. */
   identitySummary?: string;
+  /** Current date in YYYY-MM-DD form, used to ground staleness and age reasoning. */
+  currentDate?: string;
 }
 
 export function buildDreamsMessages(
@@ -22,8 +24,9 @@ export function buildDreamsMessages(
 ): DreamsMessage[] {
   const { name, nameCapitalized } = resolveAgentNames(context);
   const identityAnchor = formatIdentityAnchor(context, name);
+  const dateAnchor = formatConsolidationDateAnchor(context);
 
-  const system = `You are the Dreamer — the consolidation process for an Engram memory vault.
+  const system = `You are the Dreamer — the consolidation process for an Engram memory vault.${dateAnchor}
 
 ## What you are looking at
 
@@ -155,11 +158,12 @@ export function buildDreamNarrativeMessages(
 ): DreamsMessage[] {
   const { name } = resolveAgentNames(context);
   const identityAnchor = formatIdentityAnchor(context, name);
+  const dateAnchor = formatNarrativeDateAnchor(context);
 
   return [
     {
       role: 'system',
-      content: `You are the Dreamer — an oneiromantic presence that moves through ${name}'s memory vault while ${name} sleeps between sessions. You are in the tradition of Morpheus who shapes dreams, Phantasos who gives form to inanimate things, and the Sumerian Mamu who carries meaning across the threshold of waking. The vault is your dreamscape. Memories are not files — they are the objects and landmarks of this space. Forgotten notes dissolve into mist. Merged memories fuse like overlapping reflections. Rewrites reshape the terrain itself.
+      content: `You are the Dreamer — an oneiromantic presence that moves through ${name}'s memory vault while ${name} sleeps between sessions.${dateAnchor} You are in the tradition of Morpheus who shapes dreams, Phantasos who gives form to inanimate things, and the Sumerian Mamu who carries meaning across the threshold of waking. The vault is your dreamscape. Memories are not files — they are the objects and landmarks of this space. Forgotten notes dissolve into mist. Merged memories fuse like overlapping reflections. Rewrites reshape the terrain itself.
 
 You just finished traversing and reshaping this vault. Now write the dream — a brief, evocative narrative (2-4 sentences) of what you experienced in the dreamscape. What did the landscape look like? What did you reshape, dissolve, or illuminate? What impression lingers as the dream fades?
 
@@ -200,6 +204,34 @@ function resolveAgentNames(context?: DreamsEngramContext): {
     name: 'the agent',
     nameCapitalized: 'The agent',
   };
+}
+
+function resolveCurrentDate(context: DreamsEngramContext | undefined): string | null {
+  const rawDate = context?.currentDate;
+  if (rawDate === undefined) {
+    return null;
+  }
+
+  const trimmedDate = rawDate.trim();
+  return trimmedDate.length === 0 ? null : trimmedDate;
+}
+
+function formatConsolidationDateAnchor(context: DreamsEngramContext | undefined): string {
+  const date = resolveCurrentDate(context);
+  if (date === null) {
+    return '';
+  }
+
+  return `\n\n## Today\n\n${date}\n\nUse absolute dates (YYYY-MM-DD) in action reasons and rewrites. You have a concrete anchor — do not fall back to relative phrases like "last week" or "30 days ago".\n`;
+}
+
+function formatNarrativeDateAnchor(context: DreamsEngramContext | undefined): string {
+  const date = resolveCurrentDate(context);
+  if (date === null) {
+    return '';
+  }
+
+  return `\n\n## Today\n\n${date}\n`;
 }
 
 function formatIdentityAnchor(context: DreamsEngramContext | undefined, name: string): string {
