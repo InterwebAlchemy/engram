@@ -37,7 +37,7 @@ import { MemoryExtraOperations } from './memory-extra-operations';
 import { ThreadOperations } from './thread-operations';
 
 const MEMORY_SLUG_PREVIEW_LENGTH = 60;
-const DEFAULT_BOOTSTRAP_LIMIT = 10;
+const DEFAULT_BOOTSTRAP_LIMIT = 5;
 const DEFAULT_SCRATCH_READ_LIMIT = 50;
 
 interface StoreOptions { tags?: string[]; provider?: string; confidence?: Confidence; }

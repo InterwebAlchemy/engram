@@ -229,7 +229,7 @@ export async function handleScratchTool(
   }
 }
 
-const BOOTSTRAP_ENTRY_MAX_CHARS = 400;
+const BOOTSTRAP_ENTRY_MAX_CHARS = 200;
 const CHARS_PER_TOKEN = 4;
 
 async function handleScratchRead(manager: MemoryManager, args: ToolArgs): Promise<ToolResponse> {

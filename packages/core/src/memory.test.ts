@@ -600,7 +600,7 @@ test('readScratch bootstrap compacts dream sequences and drops stale entries', a
   ]);
 });
 
-test('readScratch bootstrap defaults to the 10 most recent entries', async (t) => {
+test('readScratch bootstrap defaults to the 5 most recent entries', async (t) => {
   const vaultRoot = await createTempVault();
   t.after(async () => {
     await fs.rm(vaultRoot, { recursive: true, force: true });
@@ -619,10 +619,10 @@ test('readScratch bootstrap defaults to the 10 most recent entries', async (t) =
   );
 
   const entries = await manager.readScratch({ bootstrap: true });
-  assert.equal(entries.length, 10);
+  assert.equal(entries.length, 5);
   assert.deepEqual(
     entries.map((entry) => entry.content),
-    Array.from({ length: 10 }, (_, index) => `Entry ${index + 2}`),
+    Array.from({ length: 5 }, (_, index) => `Entry ${index + 7}`),
   );
 });
 
