@@ -4,7 +4,7 @@
 
 ![engram banner](./assets/engram.png)
 
-Claude, ChatGPT, Codex, etc. all have memory systems, but none of them share that state with the others. While you may be able to export and import some of these memories, you can't seamlessly use them across tools.
+Claude, ChatGPT, Codex, Cursor, and friends all have memory systems, but none of them share that state with the others. While you may be able to export and import some of these memories, you can't seamlessly use them across tools.
 
 Engram stores your agent's identity and memory in an [Obsidian Vault](https://obsidian.md/) where it is human-readable, human-editable, and portable to whatever tool or device you're using next.
 
@@ -14,11 +14,17 @@ Built on the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/), E
 
 ### Multiple harnesses, one memory
 
-You're working on a complicated refactor.
+**Problem**:
+
+> You're working on a complicated refactor and need to leverage multiple tools from different agent harnesses and providers.
+
+**Workflow**:
 
 1. Start your refactor session in the Claude Code Desktop App or Claude Code VS Code extension to scaffold out the changes and implement the initial architecture
 2. Switch to the Codex Desktop App or Codex VS Code extension to carry the same identity and project context into a different coding harness
 3. Use Claude Desktop to review the same thread and continue the work from a different interface
+
+**Solution**:
 
 Each new session loads the same identity, project context, and working memory — no re-explaining architecture decisions, no re-litigating naming conventions, no temporary markdown files to coordinate across tools.
 
@@ -26,21 +32,78 @@ You just start a session and the Engram picks up where you left off.
 
 ### Porting work across projects
 
-You're building a new project and want to port logic or UI patterns to an older one.
+**Problem**:
+
+> You're building a new project and want to port logic or UI patterns to an older one.
+
+**Workflow**:
 
 1. Mention the porting plan in your current session, the Engram captures it as a Thread
 2. Open a session in the other project, the Engram detects the Thread from the working directory and loads the right context automatically
 3. The Engram already knows what you want to bring over and asks if you're ready to get to work
 
+**Solution**:
+
+The Engram automatically surfaces relevant context from the other project without you having to manually export, import, or maintain shared notes or prompt it to look for notes about the migration - this context is already contained in its memory for the relevant Threads and you can just get started.
+
 ### Rationing tokens across providers
 
-You have limited tokens across Claude Code, Claude Desktop, and Codex.
+**Problem**:
+
+> You have limited tokens across Claude Code, Claude Desktop, and Codex.
+
+**Workflow**:
+
+1. Start a session in Claude Code, Claude Desktop, or Codex
+2. Work until you hit your token limit
+3. Switch to a different harness or provider
+4. Continue the session seamlessly without losing context
+
+**Solution**:
+
+Hit your session limits and just swap harnesses without missing a beat.
 
 ![ran into Claude Code session limit and picked up in Codex without losing any context](./assets/request-limit-model-swap.png)
 
-Instead of wasting time in each one re-establishing where you are, each session picks up where the last one left off regardless of which provider's harness and underlying model it's using now.
+That's a real screenshot from a session working on Engram where I hit my Claude Code Pro session limit and just opened up Codex to keep chugging along.
 
-Hit your session limits and just swap harnesses without missing a beat.
+Instead of wasting time in each tool re-establishing where you are and what you're doing, each session picks up where the last one left off regardless of which provider's harness and underlying model it's using now.
+
+### Working on a passion project
+
+**Problem**:
+
+> You have limited time to work on your passion projects and might only get to revisit them once a month, but you want to make progress and not spend all of your time reorienting yourself and your agents.
+
+**Workflow**:
+
+1. Start a session in your passion project and work until you need to take a break
+2. The Engram captures your progress, your working memory, and any insights you had during the session
+3. When you come back to it a month later, the Engram picks up right where you left off without needing any additional context
+
+**Solution**:
+
+Work on your projects whenever you want and just let the Engram keep track of where you are and where you're headed without getting lost in picking back up what you were working on and why.
+
+Maintain long-lived projects without extra project tracking or documentation. Just pull up your repo and get to work.
+
+### Late night ideas
+
+**Problem**:
+
+> It's late, but you just had a great idea. Your laptop is in your office and you don't want to wake up your partner, wait for it to boot up, and find the right place to put your notes or turn on the lights and jot it in your notebook.
+
+**Workflow**:
+
+1. Open your synced Obsidian Vault on your phone
+2. Drop a note in the Engram's `inbox` directory with your idea
+3. The next Engram session will automatically pull in your note from the Inbox and you can decide if you want to work on it now or move it to a Thread, Note, or Memory to revisit later
+
+**Solution**:
+
+Capture your ideas whenever and wherever inspiration strikes without worrying about context-switching, interrupting your flow, or forgetting those late-night or on-the-go ideas.
+
+Turn your notes into actionable work without extra tooling.
 
 ## How It Works
 
@@ -55,12 +118,12 @@ The system is organized around a few core ideas:
 - **Soul document**: A co-authored identity file containing your agent's personality, values, communication style, and instructions for how to integrate with different harnesses. The agent can read and modify this. It's a collaborative artifact, not a static config.
 - **Memory states**: Every memory has a state: `core` (always loaded), `remembered` (reliably surfaced), `default` (background context), or `forgotten` (archived but recoverable). This controls what loads into context and what stays out of the way.
 - **Threads**: A goal, project, or area of focus that organizes relevant memory for retrieval. Sessions detect their Thread automatically from the working directory. No per-project configuration is required. Instead of loading the entire Engram into context, each session loads just the memories relevant to the active workstream.
+- **Inbox**: A staging area for things you want to collaborate on with your Engram. Open up Obsidian on any of your synced devices and drop a note in the `inbox` directory, or the Thread-specific `inbox` subdirectory, and the next Engram Fragment will pull it into context and you can decide what to do with it together.
 - **Token budgeting**: The `context` tool accepts a token budget. Core memories load first; lower-priority content is shed when the budget is tight. A quick question should use a small budget. A deep refactor may need a larger budget for more context.
 - **Working memory**: A shared scratch log with session IDs and timestamps. Multiple sessions can read and write to it concurrently. It gets compacted at session end, and key insights are promoted to long-term memory storage.
 - **Skills**: Named procedural memories the agent can store and retrieve on demand. These become reusable workflows, patterns, or instructions that persist across sessions.
-- **Dreams**: An automated synthesis process that distills memories, extracts insights, and cleans up the Engram, inspired by [Claude Code's Dream System](https://claudefa.st/blog/guide/mechanics/auto-dream). Currently triggered via the Obsidian Plugin UI.
-
-![the Obsidian plugin has a visual indicator for the Engram's Dream state](./assets/engram-dream.mp4)
+- **Dreams**: An automated synthesis process that distills memories, extracts insights, and cleans up the Engram, inspired by [Claude Code's Dream System](https://claudefa.st/blog/guide/mechanics/auto-dream) using an Opus-level model. It currently runs from the Obsidian plugin's Dreams view.
+- **Power Nap**: A quick, heuristic-only cleanup pass for the Engram that skips LLM calls entirely.
 
 Memories are markdown files with YAML frontmatter, stored in your Obsidian vault. You can browse, edit, tag, and organize them like any other note.
 

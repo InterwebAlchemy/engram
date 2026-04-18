@@ -107,13 +107,6 @@ async function executeDreamAction(
         vaultBasePath: options.vaultBasePath,
       });
       return appliedAction(action);
-    case 'compact_scratch':
-      await options.manager.compactScratch({
-        sessionId: action.session_id,
-        thresholdMs: 0,
-        compactedContent: action.summary,
-      });
-      return appliedAction(action);
     case 'archive_forgotten':
       await options.manager.archiveForgotten();
       return appliedAction(action);

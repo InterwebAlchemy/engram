@@ -170,11 +170,6 @@ export type DreamsAction =
       reason: string;
     }
   | {
-      action: 'compact_scratch';
-      session_id: string;
-      summary: string;
-    }
-  | {
       action: 'archive_forgotten';
     }
   | {

@@ -72,8 +72,6 @@ export function describeAction(action: DreamsAction): string {
       return `rewrite_content ${action.path}`;
     case 'forget':
       return `forget ${action.path}`;
-    case 'compact_scratch':
-      return `compact_scratch ${action.session_id}`;
     case 'archive_forgotten':
       return 'archive_forgotten';
     case 'flag_core_review':
@@ -120,7 +118,6 @@ function getAffectedCorePaths(action: DreamsAction, corePaths: Set<string>): str
     case 'rewrite_thread':
     case 'update_thread_status':
     case 'merge_threads':
-    case 'compact_scratch':
     case 'archive_forgotten':
       return [];
   }
@@ -302,12 +299,6 @@ function normalizeDreamAction(rawAction: unknown, actionIndex: number): DreamsAc
         action: 'forget',
         path: requireString(record, ['path'], actionIndex),
         reason: requireString(record, ['reason'], actionIndex),
-      };
-    case 'compact_scratch':
-      return {
-        action: 'compact_scratch',
-        session_id: requireString(record, ['session_id', 'sessionId'], actionIndex),
-        summary: requireString(record, ['summary'], actionIndex),
       };
     case 'archive_forgotten':
       return { action: 'archive_forgotten' };

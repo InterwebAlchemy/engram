@@ -112,7 +112,7 @@ Allowed actions:
 - \`archive_forgotten\`: archive all forgotten notes.
 - \`flag_core_review\`: surface a core memory for manual follow-up by the next Fragment. Fields: \`path\`, \`concern\`, \`suggested_change\`, \`reason\`.
 
-Do NOT emit \`compact_scratch\` actions — scratch compaction is handled automatically before your analysis runs. Focus on memory notes and existing thread docs only.
+Scratch compaction is handled automatically before your analysis runs and is not an available action. Focus on memory notes and existing thread docs only.
 Do NOT invent new thread IDs. Only rewrite, close, or merge existing threads that appear in the report/review set.
 
 Be aggressive, not conservative. The vault has a snapshot for rollback. Err on the side of consolidation — future sessions can always write new memories, but they can't un-bloat context that was never cleaned up.
