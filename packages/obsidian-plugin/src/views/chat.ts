@@ -17,6 +17,7 @@ import {
   nextMemoryState,
   parseProviderModelValue,
 } from './chat-view-helpers';
+import { buildEngramBootstrap } from './chat-view-bootstrap';
 import {
   createCompletionRequest,
   createUserMessage,
@@ -40,6 +41,9 @@ export class EngramChatView extends ItemView {
   private convSystemPrompt = '';
   private convTemperature = '';
   private convMaxTokens = '';
+
+  // Engram bootstrap (Soul + thread + inbox + scratch), built once per conversation.
+  private bootstrapPromise: Promise<string> | null = null;
 
   // DOM references
   private messagesContainer!: HTMLElement;
@@ -96,6 +100,11 @@ export class EngramChatView extends ItemView {
     this.refreshCombinedSelect();
   }
 
+  /** Clear cached bootstrap so the next send rebuilds from current vault state. */
+  resetBootstrap(): void {
+    this.bootstrapPromise = null;
+  }
+
   // ─── Toolbar (action buttons only) ────────────────────────────────────
 
   private renderToolbar(parent: HTMLElement): void {
@@ -110,6 +119,7 @@ export class EngramChatView extends ItemView {
     newBtn.addEventListener('click', () => {
       this.plugin.conversation = new Conversation();
       this.resetConvParams();
+      this.resetBootstrap();
       this.renderMessages();
     });
 
@@ -433,7 +443,9 @@ export class EngramChatView extends ItemView {
     this.renderMessages();
     inputEl.value = '';
 
+    const bootstrap = await this.ensureBootstrap();
     const request = await createCompletionRequest({
+      bootstrap,
       overrides: {
         maxTokens: this.convMaxTokens,
         systemPrompt: this.convSystemPrompt,
@@ -499,6 +511,13 @@ export class EngramChatView extends ItemView {
 
   private cancelStream(): void {
     this.abortController?.abort();
+  }
+
+  private async ensureBootstrap(): Promise<string> {
+    this.bootstrapPromise ??= buildEngramBootstrap(this.plugin)
+      .then((result) => result.content)
+      .catch(() => '');
+    return await this.bootstrapPromise;
   }
 
   private appendSystemMessage(text: string): void {

@@ -207,6 +207,21 @@ export class EngramSettingTab extends PluginSettingTab {
             }
           }),
       );
+
+    new Setting(containerEl)
+      .setName('Tool calling')
+      .setDesc(
+        'Expose Engram memory tools (memory, thread, scratch, etc.) to the model during chat. '
+          + 'Disables thinking mode on Anthropic when enabled.',
+      )
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.toolCallingEnabled)
+          .onChange(async (value) => {
+            this.plugin.settings.toolCallingEnabled = value;
+            await this.plugin.saveSettings();
+          }),
+      );
   }
 
   // ─── Per-provider accordion section ───────────────────────────────────────

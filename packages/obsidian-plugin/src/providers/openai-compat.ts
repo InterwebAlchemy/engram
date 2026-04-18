@@ -5,7 +5,11 @@ import type {
   ProviderConfig,
   CompletionConfig,
   CompletionResult,
+  ExtendedChatMessage,
+  StopReason,
   StreamChunk,
+  ToolDefinition,
+  ToolUseEvent,
   Model,
 } from './types';
 import {
@@ -14,6 +18,7 @@ import {
   getRecords,
   getString,
   isRecord,
+  safeJsonParse,
   streamSsePayloads,
 } from './provider-utils';
 
@@ -59,7 +64,7 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
     messages: ChatMessage[],
     config: CompletionConfig,
   ): Promise<CompletionResult> {
-    const body = buildOpenAIRequestBody(messages, config, false);
+    const body = buildOpenAIRequestBody(messages as ExtendedChatMessage[], config, false);
     const response = await requestUrl({
       url: `${this.baseUrl}/v1/chat/completions`,
       method: 'POST',
@@ -73,7 +78,7 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
   // ─── Streaming ──────────────────────────────────────────────────────────
 
   async *stream(
-    messages: ChatMessage[],
+    messages: ExtendedChatMessage[],
     config: CompletionConfig,
     signal?: AbortSignal,
   ): AsyncIterable<StreamChunk> {
@@ -96,19 +101,22 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
       throw new Error('No response body');
     }
 
+    const state = createOpenAIStreamState();
     for await (const payload of streamSsePayloads(response.body)) {
       if (payload === OPENAI_DONE_PAYLOAD) {
-        yield { content: '', done: true };
+        yield* flushPendingOpenAIToolCalls(state);
+        yield { content: '', done: true, stopReason: state.stopReason };
         return;
       }
 
-      const chunk = parseOpenAIStreamChunk(payload);
-      if (chunk !== null) {
+      const chunks = parseOpenAIStreamEvent(payload, state);
+      for (const chunk of chunks) {
         yield chunk;
       }
     }
 
-    yield { content: '', done: true };
+    yield* flushPendingOpenAIToolCalls(state);
+    yield { content: '', done: true, stopReason: state.stopReason };
   }
 
   // ─── Model listing ──────────────────────────────────────────────────────
@@ -140,7 +148,7 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
 }
 
 function buildOpenAIRequestBody(
-  messages: ChatMessage[],
+  messages: ExtendedChatMessage[],
   config: CompletionConfig,
   stream: boolean,
 ): Record<string, unknown> {
@@ -150,10 +158,11 @@ function buildOpenAIRequestBody(
     topP,
     frequencyPenalty,
     presencePenalty,
+    tools,
   } = config;
   const body: Record<string, unknown> = {
     model: config.model,
-    messages: messages.map(({ role, content }) => ({ role, content })),
+    messages: serializeOpenAIMessages(messages),
     stream,
   };
   if (temperature !== undefined) body.temperature = temperature;
@@ -161,7 +170,61 @@ function buildOpenAIRequestBody(
   if (topP !== undefined) body.top_p = topP;
   if (frequencyPenalty !== undefined) body.frequency_penalty = frequencyPenalty;
   if (presencePenalty !== undefined) body.presence_penalty = presencePenalty;
+  if (tools !== undefined && tools.length > 0) {
+    body.tools = tools.map(toOpenAITool);
+    body.tool_choice = 'auto';
+  }
   return body;
+}
+
+function serializeOpenAIMessages(
+  messages: ExtendedChatMessage[],
+): Array<Record<string, unknown>> {
+  const out: Array<Record<string, unknown>> = [];
+  for (const message of messages) {
+    const { role, content, toolUses, toolResults } = message;
+
+    if (toolResults !== undefined && toolResults.length > 0) {
+      for (const result of toolResults) {
+        out.push({
+          role: 'tool',
+          tool_call_id: result.toolUseId,
+          content: result.content,
+        });
+      }
+      continue;
+    }
+
+    if (role === 'assistant' && toolUses !== undefined && toolUses.length > 0) {
+      out.push({
+        role,
+        content: content.length === 0 ? null : content,
+        tool_calls: toolUses.map((toolUse) => ({
+          id: toolUse.id,
+          type: 'function',
+          function: {
+            name: toolUse.name,
+            arguments: JSON.stringify(toolUse.input),
+          },
+        })),
+      });
+      continue;
+    }
+
+    out.push({ role, content });
+  }
+  return out;
+}
+
+function toOpenAITool(tool: ToolDefinition): Record<string, unknown> {
+  return {
+    type: 'function',
+    function: {
+      name: tool.name,
+      description: tool.description,
+      parameters: tool.inputSchema,
+    },
+  };
 }
 
 function parseOpenAICompletionResponse(
@@ -204,23 +267,150 @@ function parseOpenAIUsage(
   };
 }
 
-function parseOpenAIStreamChunk(payload: string): StreamChunk | null {
+interface OpenAIToolCallBuffer {
+  id: string | undefined;
+  name: string | undefined;
+  partialJson: string;
+}
+
+class OpenAIStreamState {
+  private readonly toolCalls = new Map<number, OpenAIToolCallBuffer>();
+  private currentStopReason: StopReason | undefined;
+
+  get stopReason(): StopReason | undefined {
+    return this.currentStopReason;
+  }
+
+  setStopReason(raw: string): void {
+    this.currentStopReason = normalizeOpenAIFinishReason(raw);
+  }
+
+  accumulateToolDelta(
+    index: number,
+    id: string | undefined,
+    name: string | undefined,
+    partialJson: string,
+  ): void {
+    const buffer = this.toolCalls.get(index) ?? {
+      id: undefined,
+      name: undefined,
+      partialJson: '',
+    };
+    if (id !== undefined && id.length > 0) {
+      buffer.id = id;
+    }
+    if (name !== undefined && name.length > 0) {
+      buffer.name = name;
+    }
+    buffer.partialJson += partialJson;
+    this.toolCalls.set(index, buffer);
+  }
+
+  *drainToolCalls(): Generator<StreamChunk> {
+    const indexes = [...this.toolCalls.keys()].sort((a, b) => a - b);
+    for (const index of indexes) {
+      const buffer = this.toolCalls.get(index);
+      this.toolCalls.delete(index);
+      if (buffer === undefined) {
+        continue;
+      }
+      const toolUse = finalizeOpenAIToolCall(buffer);
+      if (toolUse !== null) {
+        yield { content: '', done: false, toolUse };
+      }
+    }
+  }
+}
+
+function createOpenAIStreamState(): OpenAIStreamState {
+  return new OpenAIStreamState();
+}
+
+function parseOpenAIStreamEvent(
+  payload: string,
+  state: OpenAIStreamState,
+): StreamChunk[] {
+  const parsed = safeJsonParse(payload);
+  if (parsed === null || !isRecord(parsed)) {
+    return [];
+  }
+
+  const choices = getRecords(parsed, 'choices');
+  const [firstChoice = {}] = choices;
+  const finishReason = getString(firstChoice, 'finish_reason');
+  if (finishReason !== undefined) {
+    state.setStopReason(finishReason);
+  }
+
+  const delta = getRecord(firstChoice, 'delta');
+  if (delta === undefined) {
+    return [];
+  }
+
+  const chunks: StreamChunk[] = [];
+  accumulateOpenAIToolDeltas(delta, state);
+  const textChunk = parseOpenAIDeltaChunk(delta);
+  if (textChunk !== null) {
+    chunks.push(textChunk);
+  }
+
+  if (state.stopReason === 'tool_use') {
+    chunks.push(...state.drainToolCalls());
+  }
+  return chunks;
+}
+
+function accumulateOpenAIToolDeltas(
+  delta: Record<string, unknown>,
+  state: OpenAIStreamState,
+): void {
+  const toolCalls = getRecords(delta, 'tool_calls');
+  for (const toolCall of toolCalls) {
+    const index = getNumber(toolCall, 'index') ?? 0;
+    const id = getString(toolCall, 'id');
+    const functionRecord = getRecord(toolCall, 'function');
+    const name = functionRecord === undefined ? undefined : getString(functionRecord, 'name');
+    const partialJson = functionRecord === undefined
+      ? ''
+      : getString(functionRecord, 'arguments') ?? '';
+    state.accumulateToolDelta(index, id, name, partialJson);
+  }
+}
+
+function* flushPendingOpenAIToolCalls(
+  state: OpenAIStreamState,
+): Generator<StreamChunk> {
+  yield* state.drainToolCalls();
+}
+
+function finalizeOpenAIToolCall(buffer: OpenAIToolCallBuffer): ToolUseEvent | null {
+  const { id, name, partialJson } = buffer;
+  if (id === undefined || name === undefined) {
+    return null;
+  }
+  const raw = partialJson.length === 0 ? '{}' : partialJson;
   try {
-    const parsed: unknown = JSON.parse(payload);
-    if (!isRecord(parsed)) {
+    const input: unknown = JSON.parse(raw);
+    if (!isRecord(input)) {
       return null;
     }
-
-    const choices = getRecords(parsed, 'choices');
-    const [firstChoice = {}] = choices;
-    const delta = getRecord(firstChoice, 'delta');
-    if (delta === undefined) {
-      return null;
-    }
-
-    return parseOpenAIDeltaChunk(delta);
+    return { id, name, input };
   } catch {
     return null;
+  }
+}
+
+function normalizeOpenAIFinishReason(raw: string): StopReason {
+  switch (raw) {
+    case 'stop':
+      return 'end_turn';
+    case 'tool_calls':
+    case 'function_call':
+      return 'tool_use';
+    case 'length':
+      return 'length';
+    default:
+      return 'other';
   }
 }
 

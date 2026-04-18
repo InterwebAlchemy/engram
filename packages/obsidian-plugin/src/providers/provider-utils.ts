@@ -40,6 +40,14 @@ export function getRecords(
   return value.filter((item): item is Record<string, unknown> => isRecord(item));
 }
 
+export function safeJsonParse(payload: string): unknown {
+  try {
+    return JSON.parse(payload);
+  } catch {
+    return null;
+  }
+}
+
 export async function* streamSsePayloads(
   stream: ReadableStream<Uint8Array>,
 ): AsyncIterable<string> {

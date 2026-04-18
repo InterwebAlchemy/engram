@@ -775,3 +775,118 @@ details[open] > .engram-params-summary::before {
   color: var(--text-muted);
   line-height: 1.4;
 }
+
+/* ─── Tool call cards (inline in assistant bubble) ─────────────────────────── */
+
+.engram-tool-calls {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 6px 0;
+}
+
+.engram-tool-card {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  overflow: hidden;
+  background: var(--background-primary-alt);
+}
+
+.engram-tool-card-summary {
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: var(--font-smaller);
+  font-weight: 600;
+  color: var(--text-muted);
+  user-select: none;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.engram-tool-card-summary::-webkit-details-marker { display: none; }
+.engram-tool-card-summary::marker { display: none; }
+
+.engram-tool-card-summary::before {
+  content: '▶';
+  font-size: 8px;
+  display: inline-block;
+  width: 12px;
+  transition: transform 0.15s ease;
+}
+
+.engram-tool-card[open] > .engram-tool-card-summary::before {
+  transform: rotate(90deg);
+}
+
+.engram-tool-card-name {
+  color: var(--text-normal);
+}
+
+.engram-tool-card-action {
+  color: var(--text-accent);
+  font-weight: 500;
+}
+
+.engram-tool-card-action::before {
+  content: '·';
+  margin: 0 4px;
+  color: var(--text-muted);
+}
+
+.engram-tool-card-status {
+  margin-left: auto;
+  font-weight: 400;
+  font-style: italic;
+  font-size: var(--font-ui-smaller);
+}
+
+.engram-tool-card-pending .engram-tool-card-status {
+  color: var(--text-muted);
+}
+
+.engram-tool-card-ok {
+  border-color: color-mix(in srgb, var(--interactive-accent) 40%, var(--background-modifier-border));
+}
+
+.engram-tool-card-ok .engram-tool-card-status {
+  color: var(--interactive-accent);
+}
+
+.engram-tool-card-error {
+  border-color: var(--text-error);
+}
+
+.engram-tool-card-error .engram-tool-card-status {
+  color: var(--text-error);
+}
+
+.engram-tool-card-body {
+  padding: 6px 8px;
+  border-top: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.engram-tool-card-body pre {
+  margin: 0;
+  padding: 6px 8px;
+  font-size: var(--font-ui-smaller);
+  background: var(--background-secondary);
+  border-radius: var(--radius-s);
+  max-height: 240px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.engram-tool-card-input {
+  color: var(--text-muted);
+}
+
+.engram-tool-card-result {
+  color: var(--text-normal);
+}

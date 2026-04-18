@@ -5,7 +5,11 @@ import type {
   ProviderConfig,
   CompletionConfig,
   CompletionResult,
+  ExtendedChatMessage,
+  StopReason,
   StreamChunk,
+  ToolDefinition,
+  ToolUseEvent,
   Model,
 } from './types';
 import {
@@ -14,6 +18,7 @@ import {
   getRecords,
   getString,
   isRecord,
+  safeJsonParse,
   streamSsePayloads,
 } from './provider-utils';
 
@@ -66,7 +71,7 @@ export class AnthropicAdapter implements ProviderAdapter {
     messages: ChatMessage[],
     config: CompletionConfig,
   ): Promise<CompletionResult> {
-    const body = buildAnthropicRequestBody(messages, config, false);
+    const body = buildAnthropicRequestBody(messages as ExtendedChatMessage[], config, false);
     const response = await requestUrl({
       url: `${ANTHROPIC_API_URL}/v1/messages`,
       method: 'POST',
@@ -80,7 +85,7 @@ export class AnthropicAdapter implements ProviderAdapter {
   // ─── Streaming ──────────────────────────────────────────────────────────
 
   async *stream(
-    messages: ChatMessage[],
+    messages: ExtendedChatMessage[],
     config: CompletionConfig,
     signal?: AbortSignal,
   ): AsyncIterable<StreamChunk> {
@@ -102,17 +107,15 @@ export class AnthropicAdapter implements ProviderAdapter {
       throw new Error('No response body');
     }
 
+    const state = createAnthropicStreamState();
     for await (const payload of streamSsePayloads(response.body)) {
-      const chunk = parseAnthropicStreamChunk(payload);
-      if (chunk === null) {
-        continue;
-      }
-      if (chunk.done) {
+      const chunks = parseAnthropicStreamEvent(payload, state);
+      for (const chunk of chunks) {
         yield chunk;
-        return;
+        if (chunk.done) {
+          return;
+        }
       }
-
-      yield chunk;
     }
 
     yield { content: '', done: true };
@@ -137,7 +140,7 @@ export class AnthropicAdapter implements ProviderAdapter {
 }
 
 function buildAnthropicRequestBody(
-  messages: ChatMessage[],
+  messages: ExtendedChatMessage[],
   config: CompletionConfig,
   stream: boolean,
 ): Record<string, unknown> {
@@ -146,7 +149,10 @@ function buildAnthropicRequestBody(
     conversationMessages,
   } = splitAnthropicMessages(messages);
   const maxTokens = config.maxTokens ?? DEFAULT_MAX_TOKENS;
-  const useThinking = maxTokens >= THINKING_MIN_TOKENS;
+  // Tool-calling requires non-thinking mode; the streaming parser also keeps
+  // the tool_use input_json_delta path simpler without interleaved thinking.
+  const hasTools = config.tools !== undefined && config.tools.length > 0;
+  const useThinking = maxTokens >= THINKING_MIN_TOKENS && !hasTools;
   const budgetTokens = Math.min(MAX_BUDGET_TOKENS, Math.floor(maxTokens * BUDGET_RATIO));
 
   const body: Record<string, unknown> = {
@@ -166,25 +172,80 @@ function buildAnthropicRequestBody(
   if (systemMessages.length > 0) body.system = systemMessages.join('\n\n');
   const { topP } = config;
   if (topP !== undefined) body.top_p = topP;
+  if (hasTools && config.tools !== undefined) {
+    body.tools = config.tools.map(toAnthropicTool);
+  }
   return body;
 }
 
-function splitAnthropicMessages(messages: ChatMessage[]): {
+function toAnthropicTool(tool: ToolDefinition): Record<string, unknown> {
+  return {
+    name: tool.name,
+    description: tool.description,
+    input_schema: tool.inputSchema,
+  };
+}
+
+type AnthropicMessageContent = string | Array<Record<string, unknown>>;
+
+interface AnthropicConversationMessage {
+  readonly role: string;
+  readonly content: AnthropicMessageContent;
+}
+
+function splitAnthropicMessages(messages: ExtendedChatMessage[]): {
   systemMessages: string[];
-  conversationMessages: Array<{ role: string; content: string }>;
+  conversationMessages: AnthropicConversationMessage[];
 } {
   const systemMessages: string[] = [];
-  const conversationMessages: Array<{ role: string; content: string }> = [];
+  const conversationMessages: AnthropicConversationMessage[] = [];
 
-  for (const { role, content } of messages) {
+  for (const message of messages) {
+    const { role, content } = message;
     if (role === 'system') {
       systemMessages.push(content);
-    } else {
-      conversationMessages.push({ role, content });
+      continue;
     }
+    conversationMessages.push({
+      role,
+      content: buildAnthropicMessageContent(message),
+    });
   }
 
   return { systemMessages, conversationMessages };
+}
+
+function buildAnthropicMessageContent(
+  message: ExtendedChatMessage,
+): AnthropicMessageContent {
+  const { content, toolUses, toolResults } = message;
+
+  if (toolResults !== undefined && toolResults.length > 0) {
+    return toolResults.map((result) => ({
+      type: 'tool_result',
+      tool_use_id: result.toolUseId,
+      content: result.content,
+      ...(result.isError === true ? { is_error: true } : {}),
+    }));
+  }
+
+  if (toolUses !== undefined && toolUses.length > 0) {
+    const blocks: Array<Record<string, unknown>> = [];
+    if (content.length > 0) {
+      blocks.push({ type: 'text', text: content });
+    }
+    for (const toolUse of toolUses) {
+      blocks.push({
+        type: 'tool_use',
+        id: toolUse.id,
+        name: toolUse.name,
+        input: toolUse.input,
+      });
+    }
+    return blocks;
+  }
+
+  return content;
 }
 
 function parseAnthropicCompletionResponse(
@@ -220,41 +281,198 @@ function parseAnthropicUsage(
   };
 }
 
-function parseAnthropicStreamChunk(payload: string): StreamChunk | null {
+interface AnthropicToolBlock {
+  readonly id: string;
+  readonly name: string;
+  partialJson: string;
+}
+
+class AnthropicStreamState {
+  private readonly toolBlocks = new Map<number, AnthropicToolBlock>();
+  private currentStopReason: StopReason | undefined;
+
+  get stopReason(): StopReason | undefined {
+    return this.currentStopReason;
+  }
+
+  noteToolBlockStart(index: number, id: string, name: string): void {
+    this.toolBlocks.set(index, { id, name, partialJson: '' });
+  }
+
+  appendToolJson(index: number, partial: string): void {
+    const block = this.toolBlocks.get(index);
+    if (block !== undefined) {
+      block.partialJson += partial;
+    }
+  }
+
+  finalizeToolBlock(index: number): ToolUseEvent | null {
+    const block = this.toolBlocks.get(index);
+    if (block === undefined) {
+      return null;
+    }
+    this.toolBlocks.delete(index);
+    return finalizeToolUse(block);
+  }
+
+  setStopReason(raw: string | undefined): void {
+    this.currentStopReason = normalizeAnthropicStopReason(raw);
+  }
+}
+
+function createAnthropicStreamState(): AnthropicStreamState {
+  return new AnthropicStreamState();
+}
+
+function parseAnthropicStreamEvent(
+  payload: string,
+  state: AnthropicStreamState,
+): StreamChunk[] {
+  const parsed = safeJsonParse(payload);
+  if (parsed === null || !isRecord(parsed)) {
+    return [];
+  }
+
+  const eventType = getString(parsed, 'type');
+  switch (eventType) {
+    case 'content_block_start':
+      handleContentBlockStart(parsed, state);
+      return [];
+    case 'content_block_delta':
+      return handleContentBlockDelta(parsed, state);
+    case 'content_block_stop':
+      return handleContentBlockStop(parsed, state);
+    case 'message_delta':
+      handleMessageDelta(parsed, state);
+      return [];
+    case 'message_stop':
+      return [{ content: '', done: true, stopReason: state.stopReason }];
+    default:
+      return [];
+  }
+}
+
+function handleContentBlockStart(
+  event: Record<string, unknown>,
+  state: AnthropicStreamState,
+): void {
+  const index = getNumber(event, 'index');
+  const contentBlock = getRecord(event, 'content_block');
+  if (index === undefined || contentBlock === undefined) {
+    return;
+  }
+
+  if (getString(contentBlock, 'type') !== 'tool_use') {
+    return;
+  }
+
+  const id = getString(contentBlock, 'id');
+  const name = getString(contentBlock, 'name');
+  if (id === undefined || name === undefined) {
+    return;
+  }
+
+  state.noteToolBlockStart(index, id, name);
+}
+
+function handleContentBlockDelta(
+  event: Record<string, unknown>,
+  state: AnthropicStreamState,
+): StreamChunk[] {
+  const delta = getRecord(event, 'delta');
+  if (delta === undefined) {
+    return [];
+  }
+
+  const deltaType = getString(delta, 'type');
+  if (deltaType === 'thinking_delta') {
+    return textChunkFromDelta(getString(delta, 'thinking'), 'reasoning');
+  }
+  if (deltaType === 'text_delta') {
+    return textChunkFromDelta(getString(delta, 'text'), 'content');
+  }
+  if (deltaType === 'input_json_delta') {
+    appendInputJsonDelta(event, delta, state);
+    return [];
+  }
+
+  return [];
+}
+
+function textChunkFromDelta(
+  value: string | undefined,
+  kind: 'content' | 'reasoning',
+): StreamChunk[] {
+  const text = value ?? '';
+  if (text.length === 0) {
+    return [];
+  }
+  return kind === 'content'
+    ? [{ content: text, done: false }]
+    : [{ content: '', reasoning: text, done: false }];
+}
+
+function appendInputJsonDelta(
+  event: Record<string, unknown>,
+  delta: Record<string, unknown>,
+  state: AnthropicStreamState,
+): void {
+  const index = getNumber(event, 'index');
+  if (index === undefined) {
+    return;
+  }
+  state.appendToolJson(index, getString(delta, 'partial_json') ?? '');
+}
+
+function handleContentBlockStop(
+  event: Record<string, unknown>,
+  state: AnthropicStreamState,
+): StreamChunk[] {
+  const index = getNumber(event, 'index');
+  if (index === undefined) {
+    return [];
+  }
+  const toolUse = state.finalizeToolBlock(index);
+  return toolUse === null ? [] : [{ content: '', done: false, toolUse }];
+}
+
+function finalizeToolUse(block: AnthropicToolBlock): ToolUseEvent | null {
+  const raw = block.partialJson.length === 0 ? '{}' : block.partialJson;
   try {
-    const parsed: unknown = JSON.parse(payload);
-    if (!isRecord(parsed)) {
+    const input: unknown = JSON.parse(raw);
+    if (!isRecord(input)) {
       return null;
     }
-
-    const eventType = getString(parsed, 'type');
-    if (eventType === 'message_stop') {
-      return { content: '', done: true };
-    }
-    if (eventType !== 'content_block_delta') {
-      return null;
-    }
-
-    const delta = getRecord(parsed, 'delta');
-    if (delta === undefined) {
-      return null;
-    }
-
-    return parseAnthropicDeltaChunk(delta);
+    return { id: block.id, name: block.name, input };
   } catch {
     return null;
   }
 }
 
-function parseAnthropicDeltaChunk(
-  delta: Record<string, unknown>,
-): StreamChunk | null {
-  const deltaType = getString(delta, 'type');
-  if (deltaType === 'thinking_delta') {
-    const thinking = getString(delta, 'thinking') ?? '';
-    return thinking.length === 0 ? null : { content: '', reasoning: thinking, done: false };
+function handleMessageDelta(
+  event: Record<string, unknown>,
+  state: AnthropicStreamState,
+): void {
+  const delta = getRecord(event, 'delta');
+  if (delta === undefined) {
+    return;
   }
+  state.setStopReason(getString(delta, 'stop_reason'));
+}
 
-  const text = getString(delta, 'text') ?? '';
-  return text.length === 0 ? null : { content: text, done: false };
+function normalizeAnthropicStopReason(raw: string | undefined): StopReason | undefined {
+  switch (raw) {
+    case 'end_turn':
+      return 'end_turn';
+    case 'tool_use':
+      return 'tool_use';
+    case 'max_tokens':
+      return 'length';
+    case 'stop_sequence':
+      return 'stop';
+    case undefined:
+      return undefined;
+    default:
+      return 'other';
+  }
 }

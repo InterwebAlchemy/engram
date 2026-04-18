@@ -1,9 +1,10 @@
 import {
   MemoryState,
+  TOOLS,
   type Message,
 } from '@interwebalchemy/engram-core';
 import type EngramPlugin from '../main';
-import type { CompletionConfig } from '../providers/types';
+import type { CompletionConfig, ToolDefinition } from '../providers/types';
 import {
   buildMemoryLabel,
   composeSystemPrompt,
@@ -32,12 +33,14 @@ export function createUserMessage(content: string): Message {
 }
 
 export async function createCompletionRequest(options: {
+  readonly bootstrap: string | undefined;
   readonly overrides: ConversationOverrides;
   readonly plugin: EngramPlugin;
   readonly selectedModel: string;
   readonly text: string;
 }): Promise<CompletionRequest> {
   const {
+    bootstrap,
     overrides,
     plugin,
     selectedModel,
@@ -49,9 +52,7 @@ export async function createCompletionRequest(options: {
     : parseInt(overrides.maxTokens, 10);
   const memoryBlock = await loadMemoryBlock(plugin, text, maxTokens);
   const trimmedSystemPrompt = overrides.systemPrompt.trim();
-  const basePrompt = trimmedSystemPrompt.length === 0
-    ? settings.defaultPreamble
-    : trimmedSystemPrompt;
+  const basePrompt = resolveBasePrompt(trimmedSystemPrompt, bootstrap, settings.defaultPreamble);
 
   return {
     completionConfig: {
@@ -60,10 +61,33 @@ export async function createCompletionRequest(options: {
         ? settings.temperature
         : parseFloat(overrides.temperature),
       maxTokens,
+      tools: settings.toolCallingEnabled ? engramTools() : undefined,
     },
     settings,
     systemPrompt: composeSystemPrompt(basePrompt, memoryBlock),
   };
+}
+
+function engramTools(): ToolDefinition[] {
+  return TOOLS.map((tool) => ({
+    name: tool.name,
+    description: tool.description,
+    inputSchema: tool.inputSchema as Record<string, unknown>,
+  }));
+}
+
+function resolveBasePrompt(
+  userOverride: string,
+  bootstrap: string | undefined,
+  defaultPreamble: string,
+): string {
+  if (userOverride.length > 0) {
+    return userOverride;
+  }
+  if (bootstrap !== undefined && bootstrap.length > 0) {
+    return bootstrap;
+  }
+  return defaultPreamble;
 }
 
 async function loadMemoryBlock(

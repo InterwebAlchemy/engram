@@ -155,6 +155,9 @@ export const DEFAULT_SETTINGS = {
   // Completion defaults
   temperature: 0.7,
   maxTokens: 4096,
+
+  // Tool calling (exposes Engram memory tools to the model during chat)
+  toolCallingEnabled: false,
 };
 
 export type EngramSettings = typeof DEFAULT_SETTINGS;

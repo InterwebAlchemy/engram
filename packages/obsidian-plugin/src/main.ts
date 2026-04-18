@@ -91,6 +91,7 @@ export default class EngramPlugin extends Plugin {
       name: 'New conversation',
       callback: () => {
         this.conversation = new Conversation();
+        this.resetChatViewBootstrap();
         this.refreshChatView();
       },
     });
@@ -203,6 +204,15 @@ export default class EngramPlugin extends Plugin {
       const { view } = leaf;
       if (view instanceof EngramChatView) {
         view.refresh();
+      }
+    }
+  }
+
+  resetChatViewBootstrap(): void {
+    for (const leaf of this.app.workspace.getLeavesOfType(CHAT_VIEW_TYPE)) {
+      const { view } = leaf;
+      if (view instanceof EngramChatView) {
+        view.resetBootstrap();
       }
     }
   }
