@@ -1,6 +1,6 @@
 // TODO: revisit what can be extracted to reduce file size
 /* eslint-disable max-lines -- too long; see TODO above */
-import type { MemoryManager } from '@interwebalchemy/engram-core';
+import type { MemoryManager } from '../memory';
 import {
   DEFAULT_CONTEXT_TOKEN_BUDGET,
   DEFAULT_LIST_LIMIT,
@@ -16,7 +16,7 @@ import {
   SESSION_ID,
   SHORT_PREVIEW_LENGTH,
   buildCheckpointReminder,
-} from './tool-definitions';
+} from './definitions';
 import {
   type ToolArgs,
   type ToolResponse,
@@ -34,7 +34,7 @@ import {
   requireStringArg,
   requiredMappedArg,
   textResult,
-} from './tool-args';
+} from './args';
 
 const MEMORY_ACTIONS = ['store', 'read', 'update', 'search', 'list', 'archive'] as const;
 const SOUL_ACTIONS = ['get', 'set'] as const;

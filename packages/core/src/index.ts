@@ -36,3 +36,26 @@ export { slugify, datePath, tokenizeQuery } from './utils';
 
 export { KeywordSearchProvider } from './scoring';
 export type { SearchProvider, ScoredNote } from './scoring';
+
+export {
+  TOOLS,
+  SESSION_ID,
+  buildCheckpointReminder,
+  CONFIDENCE_VALUES,
+  BOOTSTRAP_STATES,
+  MEMORY_TYPES,
+  MEMORY_STATES,
+  THREAD_STATUSES,
+  MEMORY_TYPE_MAP,
+  MEMORY_STATE_MAP,
+  THREAD_STATUS_MAP,
+  executeToolCall,
+  extractText,
+  getToolHandler,
+} from './tools';
+export type {
+  ToolArgs,
+  ToolMessage,
+  ToolResponse,
+  ToolName,
+} from './tools';

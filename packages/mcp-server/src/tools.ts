@@ -5,42 +5,12 @@ import {
   ListToolsRequestSchema,
   ReadResourceRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
-import type { MemoryManager } from '@interwebalchemy/engram-core';
-import { TOOLS } from './tool-definitions';
 import {
-  formatUnknown,
-  textResult,
-  toolArgs,
-  type ToolArgs,
+  TOOLS,
+  executeToolCall,
+  type MemoryManager,
   type ToolResponse,
-} from './tool-args';
-import {
-  handleContextTool,
-  handleConversationTool,
-  handleMemoryTool,
-  handleNoteTool,
-  handleScratchTool,
-  handleSkillTool,
-  handleSoulTool,
-} from './tool-memory-handlers';
-import {
-  handleInboxTool,
-  handleThreadTool,
-} from './tool-thread-handlers';
-
-type ToolHandler = (manager: MemoryManager, args: ToolArgs) => Promise<ToolResponse>;
-
-const TOOL_HANDLERS = {
-  memory: handleMemoryTool,
-  soul: handleSoulTool,
-  context: handleContextTool,
-  note: handleNoteTool,
-  conversation: handleConversationTool,
-  skill: handleSkillTool,
-  scratch: handleScratchTool,
-  thread: handleThreadTool,
-  inbox: handleInboxTool,
-} as const satisfies Record<string, ToolHandler>;
+} from '@interwebalchemy/engram-core';
 
 // eslint-disable-next-line @typescript-eslint/no-deprecated -- Tool registration still targets the low-level MCP Server API used by current transports.
 export function registerTools(server: Server, manager: MemoryManager): void {
@@ -55,16 +25,7 @@ export function registerTools(server: Server, manager: MemoryManager): void {
       name,
       arguments: rawArgs,
     } = params;
-    const handler = getToolHandler(name);
-    if (handler === undefined) {
-      return textResult(`Unknown tool: ${name}`, true);
-    }
-
-    try {
-      return await handler(manager, toolArgs(rawArgs));
-    } catch (error) {
-      return textResult(`Error: ${formatUnknown(error)}`, true);
-    }
+    return await executeToolCall({ manager, name, args: rawArgs });
   });
 
   server.setRequestHandler(ListResourcesRequestSchema, async () => {
@@ -106,35 +67,4 @@ export function registerTools(server: Server, manager: MemoryManager): void {
       ],
     };
   });
-}
-
-function getToolHandler(name: string): ToolHandler | undefined {
-  if (name === 'memory') {
-    return TOOL_HANDLERS.memory;
-  }
-  if (name === 'soul') {
-    return TOOL_HANDLERS.soul;
-  }
-  if (name === 'context') {
-    return TOOL_HANDLERS.context;
-  }
-  if (name === 'note') {
-    return TOOL_HANDLERS.note;
-  }
-  if (name === 'conversation') {
-    return TOOL_HANDLERS.conversation;
-  }
-  if (name === 'skill') {
-    return TOOL_HANDLERS.skill;
-  }
-  if (name === 'scratch') {
-    return TOOL_HANDLERS.scratch;
-  }
-  if (name === 'thread') {
-    return TOOL_HANDLERS.thread;
-  }
-  if (name === 'inbox') {
-    return TOOL_HANDLERS.inbox;
-  }
-  return undefined;
 }

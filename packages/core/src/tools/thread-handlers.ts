@@ -1,9 +1,7 @@
-import type {
-  MemoryManager,
-  ThreadStatus,
-  VaultNote,
-} from '@interwebalchemy/engram-core';
-import { THREAD_STATUS_MAP } from './tool-definitions';
+import type { MemoryManager } from '../memory';
+import type { ThreadStatus } from '../types';
+import type { VaultNote } from '../vault';
+import { THREAD_STATUS_MAP } from './definitions';
 import {
   type ToolArgs,
   type ToolResponse,
@@ -15,7 +13,7 @@ import {
   requireEnumArg,
   requireStringArg,
   textResult,
-} from './tool-args';
+} from './args';
 
 const INBOX_ACTIONS = ['list', 'add', 'read', 'remove'] as const;
 const THREAD_ACTIONS = [

@@ -3,7 +3,7 @@ import {
   MemoryState,
   MemoryType,
   ThreadStatus,
-} from '@interwebalchemy/engram-core';
+} from '../types';
 
 interface ArraySchemaProperty {
   description: string;
