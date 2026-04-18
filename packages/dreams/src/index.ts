@@ -46,14 +46,14 @@ async function main(): Promise<void> {
     focus: args.focus,
   };
 
-  if (args.cleanupOnly) {
+  if (args.powerNap) {
     const result = await runDreamsCleanup({
       vaultPath,
       engramRoot,
       focus: args.focus,
     });
 
-    writeLine(`Dreams cleanup timestamp: ${result.report.timestamp}`);
+    writeLine(`Power Nap timestamp: ${result.report.timestamp}`);
     writeLine(`Vault: ${vaultPath}`);
     writeLine(
       `Pre-cleanup: ${result.preCleanup.tagsFixed} tags fixed, ${result.preCleanup.tagsNormalized} tags normalized, ${result.preCleanup.scratchEntriesPurged} scratch entries purged, ${result.preCleanup.orphanedDreamStartsResolved} orphaned dream starts resolved`,
@@ -100,7 +100,7 @@ interface ParsedArgs {
   apiKey?: string;
   baseURL?: string;
   dryRun: boolean;
-  cleanupOnly: boolean;
+  powerNap: boolean;
   focus?: DreamsFocus[];
 }
 
@@ -111,13 +111,16 @@ function parseArgs(argv: string[]): ParsedArgs {
     apiKey: env.ENGRAM_DREAMS_API_KEY,
     baseURL: env.ENGRAM_DREAMS_BASE_URL,
     dryRun: false,
-    cleanupOnly: false,
+    powerNap: false,
   };
 
   let index = 0;
   while (index < argv.length) {
     const arg = argv.at(index);
     switch (arg) {
+      case 'nap':
+        parsed.powerNap = true;
+        break;
       case '--vault':
         index += 1;
         parsed.vault = argv.at(index);
@@ -149,8 +152,9 @@ function parseArgs(argv: string[]): ParsedArgs {
       case '--dry-run':
         parsed.dryRun = true;
         break;
+      case '--power-nap':
       case '--cleanup-only':
-        parsed.cleanupOnly = true;
+        parsed.powerNap = true;
         break;
       case '--help':
       case '-h':
@@ -231,7 +235,9 @@ function normalizeEngramRoot(value: string): string {
 }
 
 function printHelp(): void {
-  writeLine('Usage: engram-dreams --vault <path> [--engram-root <dir>] [--provider anthropic|openai] [--model <id>] [--api-key <key>] [--base-url <url>] [--dry-run] [--cleanup-only]');
+  writeLine('Usage: engram-dreams [nap] --vault <path> [--engram-root <dir>] [--provider anthropic|openai] [--model <id>] [--api-key <key>] [--base-url <url>] [--dry-run] [--power-nap]');
+  writeLine('  `nap` / `--power-nap` runs heuristic-only cleanup without any LLM calls.');
+  writeLine('  `--cleanup-only` is kept as a backward-compatible alias.');
 }
 
 function parseFocusList(value: string | undefined): DreamsFocus[] | undefined {

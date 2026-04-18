@@ -1,4 +1,4 @@
-import { ItemView, type WorkspaceLeaf, setIcon } from 'obsidian';
+import { ItemView, type WorkspaceLeaf } from 'obsidian';
 import { defaultMemoryConfig } from '@interwebalchemy/engram-core';
 import type EngramPlugin from '../main';
 import { DREAMS_VIEW_TYPE } from '../constants';
@@ -32,22 +32,26 @@ import {
   showSnapshotRestoreConfirm,
 } from './dreams-view-helpers';
 import {
+  renderDreamControls,
+  renderDreamToolbar,
+} from './dreams-view-controls';
+import {
   buildDreamCompletionNotice,
   createDreamPlan,
   createDreamRunRecord,
   findSelectedOption,
   formatLatestDreamLabel,
   getModelOptions,
+  runPowerNap,
   syncModelSelection,
   type ModelOption,
 } from './dreams-view-support';
-
 const DREAMS_VIEW_TITLE = 'Engram Dreams';
 const DREAMS_VIEW_ICON = 'moon-star';
 const DREAMING_LABEL = 'Dreaming...';
+const POWER_NAP_LABEL = 'Power Napping...';
 const DREAMING_ANIMATION_MS = 250;
 const NARRATIVE_MAX_TOKENS = 512;
-
 export class EngramDreamsView extends ItemView {
   private readonly plugin: EngramPlugin;
   private readonly viewType = DREAMS_VIEW_TYPE;
@@ -61,30 +65,26 @@ export class EngramDreamsView extends ItemView {
   private latestExecution: DreamsExecutionResult | null = null;
   private latestRunSnapshot: SnapshotRecord | null = null;
   private loading = false;
-  private dreaming = false;
+  private running = false;
   private error: string | null = null;
   private selectedProviderId = '';
   private selectedModelId = '';
   private dreamCanvas: DreamCanvas | null = null;
   private dreamAnimator: Ciph3rTextAnimator | null = null;
-
+  private overlayLabel = DREAMING_LABEL;
   constructor(leaf: WorkspaceLeaf, plugin: EngramPlugin) {
     super(leaf);
     this.plugin = plugin;
   }
-
   getViewType(): string {
     return this.viewType;
   }
-
   getDisplayText(): string {
     return this.displayText;
   }
-
   getIcon(): string {
     return this.iconName;
   }
-
   async onOpen(): Promise<void> {
     const container = this.containerEl.children.item(1);
     if (!(container instanceof HTMLElement)) {
@@ -96,17 +96,14 @@ export class EngramDreamsView extends ItemView {
     this.syncSelection();
     await this.refresh();
   }
-
   async onClose(): Promise<void> {
     this.cleanupDreamOverlay();
     await Promise.resolve();
   }
-
   async refresh(): Promise<void> {
     this.loading = true;
     this.error = null;
     this.render();
-
     try {
       const analyzer = new DreamsAnalyzer(this.plugin.memoryManager);
       const snapshotManager = EngramDreamsView.createSnapshotManager();
@@ -132,20 +129,30 @@ export class EngramDreamsView extends ItemView {
       this.render();
     }
   }
-
   private render(): void {
     this.cleanupDreamOverlay();
     this.container.empty();
-
-    if (this.dreaming) {
+    if (this.running) {
       this.renderDreamingOverlay();
       return;
     }
-
-    const toolbar = this.container.createDiv({ cls: 'engram-dreams-toolbar' });
-    this.renderToolbar(toolbar);
-    this.renderControls(this.container);
-
+    renderDreamToolbar({
+      parent: this.container.createDiv({ cls: 'engram-dreams-toolbar' }),
+      onRefresh: () => { void this.refresh(); },
+      onCreateSnapshot: () => { void this.handleCreateSnapshot(); },
+    });
+    renderDreamControls({
+      parent: this.container,
+      options: this.syncSelection(),
+      selectedProviderId: this.selectedProviderId,
+      selectedModelId: this.selectedModelId,
+      onModelChange: (providerId, modelId) => {
+        this.selectedProviderId = providerId;
+        this.selectedModelId = modelId;
+      },
+      onDream: () => { void this.handleDream(); },
+      onPowerNap: () => { void this.handlePowerNap(); },
+    });
     if (this.loading) {
       this.container.createDiv({
         cls: 'engram-dreams-empty',
@@ -153,7 +160,6 @@ export class EngramDreamsView extends ItemView {
       });
       return;
     }
-
     if (this.error !== null) {
       this.container.createDiv({
         cls: 'engram-dreams-empty',
@@ -161,7 +167,6 @@ export class EngramDreamsView extends ItemView {
       });
       return;
     }
-
     if (this.report === null) {
       this.container.createDiv({
         cls: 'engram-dreams-empty',
@@ -169,7 +174,6 @@ export class EngramDreamsView extends ItemView {
       });
       return;
     }
-
     renderSummarySection(this.container, this.report, this.snapshots);
     renderUsageHistorySection(this.container, this.runHistory);
     renderDreamResultsSection({
@@ -191,20 +195,16 @@ export class EngramDreamsView extends ItemView {
       this.handleRestoreSnapshot.bind(this),
     );
   }
-
   private renderDreamingOverlay(): void {
     const overlay = this.container.createDiv({ cls: 'engram-dreams-overlay' });
-
     const canvas = overlay.createEl('canvas', { cls: 'engram-dreams-overlay-canvas' });
     this.dreamCanvas = new DreamCanvas(canvas);
     this.dreamCanvas.start();
-
     const center = overlay.createDiv({ cls: 'engram-dreams-overlay-center' });
-    const label = center.createSpan({ cls: 'engram-dreams-overlay-text', text: DREAMING_LABEL });
-    this.dreamAnimator = new Ciph3rTextAnimator(label, DREAMING_LABEL, DREAMING_ANIMATION_MS);
+    const label = center.createSpan({ cls: 'engram-dreams-overlay-text', text: this.overlayLabel });
+    this.dreamAnimator = new Ciph3rTextAnimator(label, this.overlayLabel, DREAMING_ANIMATION_MS);
     this.dreamAnimator.start();
   }
-
   private cleanupDreamOverlay(): void {
     if (this.dreamCanvas !== null) {
       this.dreamCanvas.stop();
@@ -215,122 +215,55 @@ export class EngramDreamsView extends ItemView {
       this.dreamAnimator = null;
     }
   }
-
-  private renderToolbar(parent: HTMLElement): void {
-    const titleGroup = parent.createDiv({ cls: 'engram-dreams-toolbar-copy' });
-    titleGroup.createEl('h3', { text: 'Dreams dashboard' });
-    titleGroup.createEl('p', {
-      cls: 'setting-item-description',
-      text: 'Inspect vault health, plan memory cleanup, and run Dreams from the place where the memories live.',
-    });
-
-    const actions = parent.createDiv({ cls: 'engram-dreams-toolbar-actions' });
-
-    const refreshButton = actions.createEl('button', {
-      cls: 'engram-toolbar-btn',
-      attr: { 'aria-label': 'Refresh Dreams dashboard' },
-    });
-    setIcon(refreshButton, 'refresh-cw');
-    refreshButton.addEventListener('click', () => {
-      void this.refresh();
-    });
-
-    const snapshotButton = actions.createEl('button', {
-      cls: 'mod-cta',
-      text: 'Create snapshot',
-    });
-    snapshotButton.addEventListener('click', () => {
-      void this.handleCreateSnapshot();
-    });
-  }
-
-  private renderControls(parent: HTMLElement): void {
-    const section = parent.createDiv({ cls: 'engram-dreams-controls' });
-    const copy = section.createDiv({ cls: 'engram-dreams-controls-copy' });
-    copy.createEl('h4', { text: 'Dream' });
-    copy.createDiv({
-      cls: 'engram-dreams-section-description',
-      text: 'Analyze vault health and apply cleanup actions automatically. A snapshot is created before any changes.',
-    });
-
-    const options = this.syncSelection();
-
-    const form = section.createDiv({ cls: 'engram-dreams-controls-form' });
-    const modelSelect = form.createEl('select', {
-      cls: 'engram-filter-select',
-      attr: { 'aria-label': 'Dreams provider and model' },
-    });
-
-    if (options.length === 0) {
-      modelSelect.createEl('option', {
-        value: '',
-        text: 'No enabled models. Configure one in Settings.',
-      });
-      modelSelect.disabled = true;
-    } else {
-      for (const option of options) {
-        modelSelect.createEl('option', {
-          value: `${option.providerId}::${option.modelId}`,
-          text: `${option.providerName} - ${option.modelName}`,
-        });
-      }
-      modelSelect.value = `${this.selectedProviderId}::${this.selectedModelId}`;
-      modelSelect.addEventListener('change', () => {
-        const [providerId = '', modelId = ''] = modelSelect.value.split('::');
-        this.selectedProviderId = providerId;
-        this.selectedModelId = modelId;
-      });
-    }
-
-    const dreamButton = form.createEl('button', {
-      cls: 'mod-cta',
-      text: 'Dream',
-    });
-    dreamButton.disabled = options.length === 0;
-    dreamButton.addEventListener('click', () => {
-      void this.handleDream();
-    });
-  }
-
   private async handleDream(): Promise<void> {
-    if (this.dreaming) {
+    if (this.running) {
       return;
     }
-
     const selection = this.getSelectedOption();
     if (selection === null) {
       showNotice('No Dreams model is configured yet. Enable one in Settings first.');
       return;
     }
-
-    this.beginDreamRun();
-
+    this.beginRun(DREAMING_LABEL);
     try {
       await this.runDream(selection);
     } catch (error) {
       this.error = error instanceof Error ? error.message : String(error);
       showNotice(`Dream failed: ${this.error}`);
     } finally {
-      this.dreaming = false;
+      this.running = false;
       this.render();
     }
   }
-
-  private beginDreamRun(): void {
-    this.dreaming = true;
+  private async handlePowerNap(): Promise<void> {
+    if (this.running) {
+      return;
+    }
+    this.beginRun(POWER_NAP_LABEL);
+    try {
+      await this.runPowerNap();
+    } catch (error) {
+      this.error = error instanceof Error ? error.message : String(error);
+      showNotice(`Power Nap failed: ${this.error}`);
+    } finally {
+      this.running = false;
+      this.render();
+    }
+  }
+  private beginRun(label: string): void {
+    this.running = true;
+    this.overlayLabel = label;
     this.error = null;
     this.latestPlan = null;
     this.latestExecution = null;
     this.latestRunSnapshot = null;
     this.render();
   }
-
   private async runDream(selection: ModelOption): Promise<void> {
     const provider = this.plugin.createProviderAdapter(selection.providerId);
     if (provider === undefined) {
       throw new Error(`Could not create provider adapter for ${selection.providerName}.`);
     }
-
     const snapshotManager = EngramDreamsView.createSnapshotManager();
     const analyzer = new DreamsAnalyzer(this.plugin.memoryManager);
     const snapshot = await snapshotManager.create({
@@ -339,10 +272,8 @@ export class EngramDreamsView extends ItemView {
       label: 'Dreams pre-run snapshot',
       reason: 'obsidian-dreams-run',
     });
-
     await analyzer.preCleanup();
     await writeDreamStartEntry(this.plugin.memoryManager);
-
     const plan = await createDreamPlan({
       selection,
       manager: this.plugin.memoryManager,
@@ -355,7 +286,6 @@ export class EngramDreamsView extends ItemView {
     this.report = report;
     this.latestExecution = await this.applyDreamPlan(plan, snapshot);
     this.runHistory = await this.recordDreamRun(selection, plan);
-
     if (this.latestExecution !== null) {
       await writeDreamScratchEntry({
         manager: this.plugin.memoryManager,
@@ -365,11 +295,30 @@ export class EngramDreamsView extends ItemView {
         dream: plan.dream,
       });
     }
-
     this.snapshots = await snapshotManager.list();
     showNotice(buildDreamCompletionNotice(plan, this.latestExecution));
   }
+  private async runPowerNap(): Promise<void> {
+    const result = await runPowerNap({
+      manager: this.plugin.memoryManager,
+      snapshotManager: EngramDreamsView.createSnapshotManager(),
+      vaultPath: this.plugin.getVaultBasePath(),
+      engramRoot: this.plugin.settings.engramRoot,
+    });
+    const {
+      preCleanup,
+      report,
+      snapshots,
+      snapshot,
+    } = result;
+    this.report = report;
+    this.snapshots = snapshots;
+    this.latestRunSnapshot = snapshot;
 
+    showNotice(
+      `Power Nap complete: ${preCleanup.tagsFixed} tags fixed, ${preCleanup.tagsNormalized} tags normalized, ${preCleanup.scratchEntriesPurged} scratch entries purged, ${preCleanup.orphanedDreamStartsResolved} orphaned dream starts resolved.`,
+    );
+  }
   private async applyDreamPlan(
     plan: DreamsPlanResult,
     snapshot: SnapshotRecord,
@@ -377,14 +326,12 @@ export class EngramDreamsView extends ItemView {
     if (plan.actions.length === 0) {
       return null;
     }
-
     const basePath = this.plugin.getVaultBasePath();
     const config = {
       ...defaultMemoryConfig(basePath, this.plugin.settings.vaultMode),
       engramRoot: this.plugin.settings.engramRoot,
       readPaths: this.plugin.settings.readPaths,
     };
-
     const execution = await executeDreamsActions({
       actions: plan.actions,
       manager: this.plugin.memoryManager,
@@ -396,7 +343,6 @@ export class EngramDreamsView extends ItemView {
     this.latestRunSnapshot = snapshot;
     return execution;
   }
-
   private async recordDreamRun(
     selection: ModelOption,
     plan: DreamsPlanResult,
@@ -411,7 +357,6 @@ export class EngramDreamsView extends ItemView {
       },
     );
   }
-
   private async handleCreateSnapshot(): Promise<void> {
     try {
       const snapshot = await EngramDreamsView.createSnapshotManager().create({
@@ -427,13 +372,11 @@ export class EngramDreamsView extends ItemView {
       showNotice(`Snapshot failed: ${message}`);
     }
   }
-
   private handleRestoreSnapshot(snapshot: SnapshotRecord): void {
     showSnapshotRestoreConfirm(this.app, snapshot.id, () => {
       void this.restoreSnapshot(snapshot);
     });
   }
-
   private async restoreSnapshot(snapshot: SnapshotRecord): Promise<void> {
     try {
       const result = await EngramDreamsView.createSnapshotManager().restore({
@@ -458,15 +401,12 @@ export class EngramDreamsView extends ItemView {
       showNotice(`Restore failed: ${message}`);
     }
   }
-
   private static createSnapshotManager(): SnapshotManager {
     return new SnapshotManager();
   }
-
   private static getSnapshotsDir(): string {
     return EngramDreamsView.createSnapshotManager().getSnapshotsDir();
   }
-
   private syncSelection(): ModelOption[] {
     const options = getModelOptions(this.plugin.settings);
     const selection = syncModelSelection(
@@ -482,7 +422,6 @@ export class EngramDreamsView extends ItemView {
     this.selectedModelId = modelId;
     return options;
   }
-
   private getSelectedOption(): ModelOption | null {
     const options = this.syncSelection();
     return findSelectedOption(options, {

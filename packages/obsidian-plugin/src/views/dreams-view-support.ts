@@ -2,7 +2,7 @@ import type {
   ChatMessage,
   MemoryManager,
 } from '@interwebalchemy/engram-core';
-import type { DreamsAnalyzer } from '../../../dreams/src/analyzer';
+import { DreamsAnalyzer, type PreCleanupResult } from '../../../dreams/src/analyzer';
 import {
   estimateDreamMaxTokens,
   planDreams,
@@ -12,9 +12,12 @@ import type { EngramSettings } from '../constants';
 import type {
   DreamsExecutionResult,
   DreamsPlanResult,
+  DreamsReport,
   DreamsRunRecord,
 } from '../../../dreams/src/types';
 import type { ProviderAdapter } from '../providers/types';
+import type { SnapshotManager } from '../../../snapshot/src/manager';
+import type { SnapshotRecord } from '../../../snapshot/src/types';
 
 export interface ModelOption {
   providerId: string;
@@ -34,6 +37,20 @@ interface CreateDreamPlanOptions {
   analyzer: DreamsAnalyzer;
   provider: ProviderAdapter;
   narrativeMaxTokens: number;
+}
+
+interface RunPowerNapOptions {
+  manager: MemoryManager;
+  snapshotManager: SnapshotManager;
+  vaultPath: string;
+  engramRoot: string;
+}
+
+export interface PowerNapResult {
+  preCleanup: PreCleanupResult;
+  report: DreamsReport;
+  snapshot: SnapshotRecord;
+  snapshots: SnapshotRecord[];
 }
 
 export function getModelOptions(settings: EngramSettings): ModelOption[] {
@@ -197,6 +214,30 @@ export async function createDreamPlan(
       return { content: result.content.trim() };
     },
   });
+}
+
+export async function runPowerNap(
+  options: RunPowerNapOptions,
+): Promise<PowerNapResult> {
+  const analyzer = new DreamsAnalyzer(options.manager);
+  const snapshot = await options.snapshotManager.create({
+    vaultPath: options.vaultPath,
+    engramRoot: options.engramRoot,
+    label: 'Power Nap pre-run snapshot',
+    reason: 'obsidian-power-nap',
+  });
+  const preCleanup = await analyzer.preCleanup();
+  const [report, snapshots] = await Promise.all([
+    analyzer.analyze(),
+    options.snapshotManager.list(),
+  ]);
+
+  return {
+    preCleanup,
+    report,
+    snapshot,
+    snapshots,
+  };
 }
 
 export function resolveAgentName(gitIdentity: unknown): string | undefined {
