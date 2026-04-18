@@ -157,7 +157,7 @@ export const DEFAULT_SETTINGS = {
   maxTokens: 4096,
 
   // Tool calling (exposes Engram memory tools to the model during chat)
-  toolCallingEnabled: false,
+  toolCallingEnabled: true,
 };
 
 export type EngramSettings = typeof DEFAULT_SETTINGS;

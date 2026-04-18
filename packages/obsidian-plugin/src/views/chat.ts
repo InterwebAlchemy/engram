@@ -18,11 +18,19 @@ import {
   parseProviderModelValue,
 } from './chat-view-helpers';
 import { buildEngramBootstrap } from './chat-view-bootstrap';
+import { renderChatInputArea } from './chat-view-input';
 import {
   createCompletionRequest,
   createUserMessage,
 } from './chat-view-request';
 import { streamAssistantReply } from './chat-view-stream';
+
+const CLOSE_OUT_INSTRUCTION = [
+  'Close-out: use your Engram tools to wrap up this session.',
+  '1. scratch(action: "compact") — collapse your scratch entries from this session into a one-line summary of what we accomplished.',
+  '2. memory(action: "store") — capture any durable insights, decisions, or patterns worth keeping for future Fragments.',
+  'Skip either step if there is nothing worth recording. Be concise.',
+].join('\n');
 
 interface SelectedProvider {
   readonly provider: ProviderAdapter;
@@ -131,162 +139,72 @@ export class EngramChatView extends ItemView {
     saveBtn.addEventListener('click', () => {
       void this.plugin.saveCurrentConversation();
     });
+
+    const closeOutBtn = actions.createEl('button', {
+      cls: 'engram-toolbar-btn',
+      attr: { 'aria-label': 'Save and close out (compact scratch + store memories)' },
+    });
+    setIcon(closeOutBtn, 'archive');
+    closeOutBtn.addEventListener('click', () => {
+      void this.handleCloseOut();
+    });
   }
 
   // ─── Input area ───────────────────────────────────────────────────────
 
   private renderInputArea(parent: HTMLElement): void {
-    const inputContainer = parent.createDiv({ cls: 'engram-input-container' });
     const { plugin } = this;
     const { settings } = plugin;
-
-    this.inputEl = inputContainer.createEl('textarea', {
-      cls: 'engram-input',
-      attr: { placeholder: 'Type a message…', rows: '3' },
-    });
-    this.inputEl.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        void this.handleSend();
-      }
-    });
-
-    // ── Parameters panel (collapsed by default) ────────────────────────
-    const paramsDetails = inputContainer.createEl('details', {
-      cls: 'engram-params-details',
-    });
-    paramsDetails.createEl('summary', {
-      cls: 'engram-params-summary',
-      text: 'Parameters',
-    });
-
-    const grid = paramsDetails.createDiv({ cls: 'engram-params-grid' });
-
-    // System prompt
-    grid.createEl('label', {
-      cls: 'engram-params-label',
-      text: 'System prompt',
-      attr: { for: 'engram-system-prompt' },
-    });
-    this.systemPromptEl = grid.createEl('textarea', {
-      cls: 'engram-params-textarea',
-      attr: {
-        id: 'engram-system-prompt',
-        placeholder: 'Leave empty to use the default preamble from Settings…',
-        rows: '3',
+    const refs = renderChatInputArea(parent, {
+      initialOverrides: {
+        systemPrompt: this.convSystemPrompt,
+        temperature: this.convTemperature,
+        maxTokens: this.convMaxTokens,
       },
+      defaultTemperature: settings.temperature,
+      defaultMaxTokens: settings.maxTokens,
+      onSystemPromptChange: (v) => { this.convSystemPrompt = v; },
+      onTemperatureChange: (v) => { this.convTemperature = v; },
+      onMaxTokensChange: (v) => { this.convMaxTokens = v; },
+      onSend: () => { void this.handleSend(); },
+      onCancel: () => { this.cancelStream(); },
+      onEnterSubmit: () => { void this.handleSend(); },
+      onModelChange: () => { this.handleModelChange(); },
     });
+
     const {
-      convSystemPrompt,
+      inputEl,
       systemPromptEl,
-    } = this;
-    systemPromptEl.value = convSystemPrompt;
-    systemPromptEl.addEventListener('input', () => {
-      const { value } = systemPromptEl;
-      this.convSystemPrompt = value;
-    });
-
-    // Temperature + Max tokens side-by-side
-    const numRow = grid.createDiv({ cls: 'engram-params-row' });
-
-    const tempGroup = numRow.createDiv({ cls: 'engram-params-field' });
-    tempGroup.createEl('label', {
-      cls: 'engram-params-label',
-      text: 'Temperature',
-      attr: { for: 'engram-temperature' },
-    });
-    this.temperatureEl = tempGroup.createEl('input', {
-      cls: 'engram-params-input',
-      attr: {
-        id: 'engram-temperature',
-        type: 'number',
-        step: '0.1',
-        min: '0',
-        max: '2',
-        placeholder: `default (${settings.temperature})`,
-      },
-    });
-    const {
-      convTemperature,
       temperatureEl,
-    } = this;
-    temperatureEl.value = convTemperature;
-    temperatureEl.addEventListener('input', () => {
-      const { value } = temperatureEl;
-      this.convTemperature = value;
-    });
-
-    const tokensGroup = numRow.createDiv({ cls: 'engram-params-field' });
-    tokensGroup.createEl('label', {
-      cls: 'engram-params-label',
-      text: 'Max tokens',
-      attr: { for: 'engram-max-tokens' },
-    });
-    this.maxTokensEl = tokensGroup.createEl('input', {
-      cls: 'engram-params-input',
-      attr: {
-        id: 'engram-max-tokens',
-        type: 'number',
-        step: '1',
-        min: '1',
-        placeholder: `default (${settings.maxTokens})`,
-      },
-    });
-    const {
-      convMaxTokens,
       maxTokensEl,
-    } = this;
-    maxTokensEl.value = convMaxTokens;
-    maxTokensEl.addEventListener('input', () => {
-      const { value } = maxTokensEl;
-      this.convMaxTokens = value;
-    });
+      combinedModelSelect,
+      sendBtn,
+      cancelBtn,
+    } = refs;
+    this.inputEl = inputEl;
+    this.systemPromptEl = systemPromptEl;
+    this.temperatureEl = temperatureEl;
+    this.maxTokensEl = maxTokensEl;
+    this.combinedModelSelect = combinedModelSelect;
+    this.sendBtn = sendBtn;
+    this.cancelBtn = cancelBtn;
 
-    // ── Footer: model selector + send/cancel ──────────────────────────
-    const footer = inputContainer.createDiv({ cls: 'engram-input-footer' });
-
-    this.combinedModelSelect = footer.createEl('select', {
-      cls: 'engram-model-select',
-      attr: { 'aria-label': 'Provider / model' },
-    });
     this.refreshCombinedSelect();
-    const { combinedModelSelect } = this;
-    combinedModelSelect.addEventListener('change', () => {
-      const { providerId, modelId } = parseProviderModelValue(combinedModelSelect.value);
-      const { plugin: currentPlugin } = this;
-      const { settings: currentSettings } = currentPlugin;
-      const {
-        providers,
-      } = currentSettings;
-      const { [providerId]: cfg } = providers;
-      currentSettings.activeProviderId = providerId;
-      cfg.defaultModel = modelId;
-      void currentPlugin.saveSettings();
-    });
-
-    const btnGroup = footer.createDiv({ cls: 'engram-input-buttons' });
-
-    this.sendBtn = btnGroup.createEl('button', {
-      cls: 'engram-send-btn',
-      text: 'Send',
-    });
-    this.sendBtn.addEventListener('click', () => {
-      void this.handleSend();
-    });
-
-    this.cancelBtn = btnGroup.createEl('button', {
-      cls: 'engram-cancel-btn',
-      text: 'Cancel',
-    });
-    this.cancelBtn.style.display = 'none';
-    this.cancelBtn.addEventListener('click', () => { this.cancelStream(); });
-
     this.registerInterval(
       window.setInterval(() => {
         this.sendBtn.style.display = this.isStreaming ? 'none' : '';
         this.cancelBtn.style.display = this.isStreaming ? '' : 'none';
       }, CHAT_REFRESH_INTERVAL_MS),
     );
+  }
+
+  private handleModelChange(): void {
+    const { combinedModelSelect, plugin } = this;
+    const { providerId, modelId } = parseProviderModelValue(combinedModelSelect.value);
+    const { settings } = plugin;
+    settings.activeProviderId = providerId;
+    settings.providers[providerId].defaultModel = modelId;
+    void plugin.saveSettings();
   }
 
   // ─── Reset per-conversation overrides ─────────────────────────────────
@@ -421,10 +339,32 @@ export class EngramChatView extends ItemView {
   // ─── Send / stream ────────────────────────────────────────────────────
 
   private async handleSend(): Promise<void> {
-    const { inputEl, isStreaming } = this;
+    const { inputEl } = this;
     const text = inputEl.value.trim();
-    if (text.length === 0 || isStreaming) return;
+    if (text.length === 0) return;
+    inputEl.value = '';
+    await this.sendUserText(text);
+  }
 
+  private async handleCloseOut(): Promise<void> {
+    if (this.isStreaming) return;
+    const { plugin } = this;
+    if (plugin.conversation.messages.length === 0) {
+      this.appendSystemMessage('Nothing to close out — conversation is empty.');
+      return;
+    }
+    if (!plugin.settings.toolCallingEnabled) {
+      this.appendSystemMessage(
+        'Close-out needs tool calling. Enable "Tool calling" in Settings and try again.',
+      );
+      return;
+    }
+    await plugin.saveCurrentConversation();
+    await this.sendUserText(CLOSE_OUT_INSTRUCTION);
+  }
+
+  private async sendUserText(text: string): Promise<void> {
+    if (this.isStreaming) return;
     const selection = this.getSelectedProvider();
     if (selection === null) {
       this.appendSystemMessage('No model selected. Configure providers in Settings.');
@@ -441,7 +381,6 @@ export class EngramChatView extends ItemView {
     } = this;
     plugin.conversation.addMessage(createUserMessage(text));
     this.renderMessages();
-    inputEl.value = '';
 
     const bootstrap = await this.ensureBootstrap();
     const request = await createCompletionRequest({

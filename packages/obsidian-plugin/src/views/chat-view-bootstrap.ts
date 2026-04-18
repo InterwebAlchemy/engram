@@ -20,7 +20,7 @@ export interface EngramBootstrap {
  * reconstruct via the MCP bootstrap chain.
  */
 export async function buildEngramBootstrap(plugin: EngramPlugin): Promise<EngramBootstrap> {
-  const parts: string[] = [];
+  const parts: string[] = [todayPart()];
   const soulPart = await loadSoulPart(plugin);
   if (soulPart !== null) {
     parts.push(soulPart);
@@ -46,6 +46,11 @@ export async function buildEngramBootstrap(plugin: EngramPlugin): Promise<Engram
     content: parts.join('\n\n'),
     threadId,
   };
+}
+
+function todayPart(): string {
+  const today = new Date().toISOString().slice(0, 'YYYY-MM-DD'.length);
+  return `## Today\n\n${today}`;
 }
 
 async function loadSoulPart(plugin: EngramPlugin): Promise<string | null> {
