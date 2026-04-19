@@ -4,10 +4,9 @@ import {
 } from '@interwebalchemy/engram-core';
 import { KNOWN_MODELS } from '../constants';
 
-export const CHAT_VIEW_TITLE = 'Engram Chat';
-export const CHAT_VIEW_ICON = 'brain';
+export const CHAT_VIEW_TITLE = 'Chat';
+export const CHAT_VIEW_ICON = 'brain-circuit';
 export const THINKING_LABEL = 'Thinking...';
-export const CHAT_REFRESH_INTERVAL_MS = 100;
 export const MEMORY_CONTEXT_TOKEN_FALLBACK = 8192;
 export const MEMORY_CONTEXT_TOKEN_MULTIPLIER = 3;
 const THINK_OPEN_PATTERN = /^[\s\S]*?<think(?:ing)?>[ \t]*/iu;

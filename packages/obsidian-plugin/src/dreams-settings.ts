@@ -64,7 +64,7 @@ export function renderDreamsModelDefaults(
         }
         settings.dreams = normalizeDreamModelSettings(settings);
         await plugin.saveSettings();
-        plugin.refreshEngramView('dreams');
+        plugin.refreshEngramView('memories');
         redisplay();
       });
     });
@@ -108,7 +108,7 @@ export function renderDreamsModelDefaults(
         }
         settings.dreams = normalizeDreamModelSettings(settings);
         await plugin.saveSettings();
-        plugin.refreshEngramView('dreams');
+        plugin.refreshEngramView('memories');
         redisplay();
       });
     });

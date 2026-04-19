@@ -150,7 +150,6 @@ export class SnapshotsTab implements EngramTab {
           : `Restored ${snapshot.id}. Safety snapshot: ${result.safetySnapshot.id}`,
       );
       this.plugin.refreshEngramView('chat');
-      this.plugin.refreshEngramView('dreams');
       this.plugin.refreshEngramView('memories');
       await this.refresh();
     } catch (error) {

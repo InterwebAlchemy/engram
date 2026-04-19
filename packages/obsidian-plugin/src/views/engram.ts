@@ -7,7 +7,6 @@ import {
 } from '../constants';
 import type { EngramTab } from './tab';
 import { ChatTab } from './chat';
-import { DreamsTab } from './dreams';
 import { MemoriesTab } from './memory';
 import { SnapshotsTab } from './snapshots';
 
@@ -33,7 +32,6 @@ export class EngramView extends ItemView {
     super(leaf);
     this.tabs = new Map<EngramTabId, EngramTab>([
       ['chat', new ChatTab(this.app, plugin)],
-      ['dreams', new DreamsTab(plugin)],
       ['memories', new MemoriesTab(this.app, plugin)],
       ['snapshots', new SnapshotsTab(this.app, plugin)],
     ]);

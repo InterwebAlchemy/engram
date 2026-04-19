@@ -19,31 +19,6 @@ const BYTES_PER_MEGABYTE = BYTES_PER_KILOBYTE * BYTES_PER_KILOBYTE;
 const DECIMAL_PRECISION = 1;
 const FINDING_LIMIT = 8;
 const RECENT_RUN_LIMIT = 5;
-
-export function renderSummarySection(
-  parent: HTMLElement,
-  report: DreamsReport,
-  snapshotCount: number,
-): void {
-  const { threadHealth } = report;
-  const grid = parent.createDiv({ cls: 'engram-dreams-summary-grid' });
-  const { size: threadPressureCount } = new Set([
-    ...threadHealth.oversizedThreads,
-    ...threadHealth.staleThreads,
-  ]);
-
-  renderStatCard(grid, 'Memories', `${report.stateDistribution.total}`, 'Total notes tracked by Dreams.');
-  renderStatCard(grid, 'Remembered', `${report.stateDistribution.counts.remembered}`, 'Auto-loaded context that should stay intentionally small.');
-  renderStatCard(grid, 'Default', `${report.stateDistribution.counts.default}`, 'Background memories available for search or later semantic retrieval.');
-  renderStatCard(grid, 'Threads', `${report.threadHealth.totalCount}`, 'Workstreams tracked in `engram/threads`.');
-  renderStatCard(grid, 'Thread pressure', `${threadPressureCount}`, 'Threads that look stale or too large and may need consolidation.');
-  renderStatCard(grid, 'Thread gaps', `${report.threadCoverageGaps.length}`, 'Notes tagged to a thread namespace but missing `thread:` frontmatter.');
-  renderStatCard(grid, 'Data issues', `${report.dataQualityIssues.length}`, 'Missing summaries, bootstrap metadata, or type mismatches.');
-  renderStatCard(grid, 'Stale scratch', `${report.scratchHealth.staleSessions.length}`, 'Sessions that still need compaction.');
-  renderStatCard(grid, 'Merge candidates', `${report.mergeCandidates.length}`, 'Potential duplicates worth human or LLM review.');
-  renderStatCard(grid, 'Snapshots', `${snapshotCount}`, 'Recoverable Engram states available from this vault.');
-}
-
 export function renderUsageHistorySection(
   parent: HTMLElement,
   runHistory: DreamsRunHistory | null,
@@ -133,7 +108,9 @@ export function renderDreamResultsSection(options: RenderDreamResultsSectionOpti
 }
 
 export function renderFindingsSections(parent: HTMLElement, report: DreamsReport): void {
-  const sections = parent.createDiv({ cls: 'engram-dreams-sections' });
+  const wrapper = parent.createEl('details', { cls: 'engram-overview-findings-toggle' });
+  wrapper.createEl('summary', { text: 'Detailed findings' });
+  const sections = wrapper.createDiv({ cls: 'engram-dreams-sections' });
 
   renderFindingSection(
     sections,
@@ -316,18 +293,6 @@ function renderDreamExecutionSummary(
   });
 }
 
-function renderStatCard(
-  parent: HTMLElement,
-  label: string,
-  value: string,
-  description: string,
-): void {
-  const card = parent.createDiv({ cls: 'engram-dreams-stat-card' });
-  card.createDiv({ cls: 'engram-dreams-stat-label', text: label });
-  card.createDiv({ cls: 'engram-dreams-stat-value', text: value });
-  card.createDiv({ cls: 'engram-dreams-stat-description', text: description });
-}
-
 function renderCoreReviewFlags(parent: HTMLElement, actions: DreamsAction[]): void {
   const coreFlags = actions.filter(
     (action): action is Extract<DreamsAction, { action: 'flag_core_review' }> =>
@@ -379,6 +344,7 @@ function renderFindingSection(
     list.createEl('li', { text: item });
   }
 }
+
 
 function buildUsageHistoryDescription(
   trend: ReturnType<typeof summarizeDreamsUsage>,

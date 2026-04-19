@@ -9,7 +9,6 @@ import type { ProviderAdapter } from '../providers/types';
 import type { EngramTabId } from '../constants';
 import type { EngramTab } from './tab';
 import {
-  CHAT_REFRESH_INTERVAL_MS,
   CHAT_VIEW_ICON,
   CHAT_VIEW_TITLE,
   getModelDisplayName,
@@ -48,7 +47,6 @@ export class ChatTab implements EngramTab {
   private parent: HTMLElement | null = null;
   private abortController: AbortController | null = null;
   private isStreaming = false;
-  private buttonToggleInterval: ReturnType<typeof setInterval> | null = null;
 
   // Per-conversation parameter overrides (empty = use global default or provider default)
   private convSystemPrompt = '';
@@ -63,6 +61,9 @@ export class ChatTab implements EngramTab {
   private inputEl!: HTMLTextAreaElement;
   private sendBtn!: HTMLButtonElement;
   private cancelBtn!: HTMLButtonElement;
+  private saveBtn!: HTMLButtonElement;
+  private closeOutBtn!: HTMLButtonElement;
+  private toolbarMetaEl!: HTMLElement;
   private combinedModelSelect!: HTMLSelectElement;
   private systemPromptEl!: HTMLTextAreaElement;
   private temperatureEl!: HTMLInputElement;
@@ -88,7 +89,6 @@ export class ChatTab implements EngramTab {
 
   unmount(): void {
     this.cancelStream();
-    this.stopButtonToggle();
     if (this.parent !== null) {
       this.parent.empty();
       this.parent.removeClass('engram-chat-container');
@@ -103,6 +103,7 @@ export class ChatTab implements EngramTab {
     }
     this.renderMessages();
     this.refreshCombinedSelect();
+    this.syncStreamingControls();
   }
 
   /** Clear cached bootstrap so the next send rebuilds from current vault state. */
@@ -110,10 +111,19 @@ export class ChatTab implements EngramTab {
     this.bootstrapPromise = null;
   }
 
-  // ─── Toolbar (action buttons only) ────────────────────────────────────
+  // ─── Toolbar ──────────────────────────────────────────────────────────
 
   private renderToolbar(parent: HTMLElement): void {
     const toolbar = parent.createDiv({ cls: 'engram-toolbar' });
+    const copy = toolbar.createDiv({ cls: 'engram-toolbar-copy' });
+    const titleRow = copy.createDiv({ cls: 'engram-toolbar-title-row' });
+    titleRow.createEl('h3', { text: CHAT_VIEW_TITLE });
+    this.toolbarMetaEl = titleRow.createSpan({ cls: 'engram-toolbar-meta' });
+    copy.createEl('p', {
+      cls: 'setting-item-description',
+      text: 'Keep a vault-aware working conversation here, then close out when you want to compact scratch and store durable memories.',
+    });
+
     const actions = toolbar.createDiv({ cls: 'engram-toolbar-actions' });
 
     const newBtn = actions.createEl('button', {
@@ -132,6 +142,7 @@ export class ChatTab implements EngramTab {
       cls: 'engram-toolbar-btn',
       attr: { 'aria-label': 'Save conversation' },
     });
+    this.saveBtn = saveBtn;
     setIcon(saveBtn, 'save');
     saveBtn.addEventListener('click', () => {
       void this.plugin.saveCurrentConversation();
@@ -141,6 +152,7 @@ export class ChatTab implements EngramTab {
       cls: 'engram-toolbar-btn',
       attr: { 'aria-label': 'Save and close out (compact scratch + store memories)' },
     });
+    this.closeOutBtn = closeOutBtn;
     setIcon(closeOutBtn, 'archive');
     closeOutBtn.addEventListener('click', () => {
       void this.handleCloseOut();
@@ -187,22 +199,31 @@ export class ChatTab implements EngramTab {
     this.cancelBtn = cancelBtn;
 
     this.refreshCombinedSelect();
-    this.startButtonToggle();
+    this.syncStreamingControls();
   }
 
-  private startButtonToggle(): void {
-    this.stopButtonToggle();
-    this.buttonToggleInterval = setInterval(() => {
-      this.sendBtn.style.display = this.isStreaming ? 'none' : '';
-      this.cancelBtn.style.display = this.isStreaming ? '' : 'none';
-    }, CHAT_REFRESH_INTERVAL_MS);
-  }
-
-  private stopButtonToggle(): void {
-    if (this.buttonToggleInterval !== null) {
-      clearInterval(this.buttonToggleInterval);
-      this.buttonToggleInterval = null;
-    }
+  private syncStreamingControls(): void {
+    const {
+      cancelBtn,
+      closeOutBtn,
+      combinedModelSelect,
+      inputEl,
+      isStreaming,
+      saveBtn,
+      sendBtn,
+      toolbarMetaEl,
+    } = this;
+    const hasMessages = this.plugin.conversation.messages.length > 0;
+    const hasSelectedModel = combinedModelSelect.value.length > 0;
+    sendBtn.style.display = isStreaming ? 'none' : '';
+    cancelBtn.style.display = isStreaming ? '' : 'none';
+    sendBtn.disabled = isStreaming || !hasSelectedModel;
+    cancelBtn.disabled = !isStreaming;
+    inputEl.disabled = isStreaming;
+    combinedModelSelect.disabled = isStreaming || !hasSelectedModel;
+    saveBtn.disabled = isStreaming || !hasMessages;
+    closeOutBtn.disabled = isStreaming || !hasMessages;
+    toolbarMetaEl.setText(describeConversation(this.plugin.conversation.messages.length));
   }
 
   private handleModelChange(): void {
@@ -277,14 +298,14 @@ export class ChatTab implements EngramTab {
         value: '',
         text: 'No models — configure in Settings',
       });
-      combinedModelSelect.disabled = true;
+      combinedModelSelect.value = '';
+      this.syncStreamingControls();
       return;
     }
 
-    combinedModelSelect.disabled = false;
-
     const valueToSelect = this.optionExists(preferredValue) ? preferredValue : firstOptionValue;
     combinedModelSelect.value = valueToSelect;
+    this.syncStreamingControls();
   }
 
   private optionExists(value: string): boolean {
@@ -296,11 +317,25 @@ export class ChatTab implements EngramTab {
   private renderMessages(): void {
     const { messagesContainer } = this;
     messagesContainer.empty();
+    if (this.plugin.conversation.messages.length === 0) {
+      this.renderEmptyState();
+      this.syncStreamingControls();
+      return;
+    }
     for (const [index, message] of this.plugin.conversation.messages.entries()) {
       this.renderMessage(message, index);
     }
     const { scrollHeight } = messagesContainer;
     messagesContainer.scrollTop = scrollHeight;
+    this.syncStreamingControls();
+  }
+
+  private renderEmptyState(): void {
+    const panel = this.messagesContainer.createDiv({ cls: 'engram-chat-empty-state' });
+    panel.createEl('h4', { text: 'Conversation is empty' });
+    panel.createEl('p', {
+      text: 'Choose a model below and start chatting. Message badges let you mark important turns as core, remembered, or forgotten before you save or close out.',
+    });
   }
 
   private renderMessage(msg: Message, index: number): void {
@@ -407,6 +442,7 @@ export class ChatTab implements EngramTab {
     });
 
     this.isStreaming = true;
+    this.syncStreamingControls();
     const abortController = new AbortController();
     this.abortController = abortController;
 
@@ -457,6 +493,7 @@ export class ChatTab implements EngramTab {
 
   private cancelStream(): void {
     this.abortController?.abort();
+    this.syncStreamingControls();
   }
 
   private async ensureBootstrap(): Promise<string> {
@@ -472,4 +509,12 @@ export class ChatTab implements EngramTab {
     });
     div.createSpan({ text });
   }
+}
+
+function describeConversation(messageCount: number): string {
+  if (messageCount === 0) {
+    return 'Empty conversation';
+  }
+
+  return `${String(messageCount)} ${messageCount === 1 ? 'message' : 'messages'}`;
 }

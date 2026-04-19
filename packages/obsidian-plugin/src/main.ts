@@ -11,6 +11,7 @@ import type { ProviderAdapter } from './providers/types';
 import { EngramSettingTab } from './settings';
 import { EngramView } from './views/engram';
 import { ChatTab } from './views/chat';
+import { MemoriesTab, type MemoryMode } from './views/memory';
 import {
   ENGRAM_VIEW_TYPE,
   DEFAULT_SETTINGS,
@@ -65,14 +66,14 @@ export default class EngramPlugin extends Plugin {
 
     this.addCommand({
       id: 'open-memory-manager',
-      name: 'Open memory manager',
-      callback: async () => { await this.activateEngramView('memories'); },
+      name: 'Open memory editor',
+      callback: async () => { await this.activateMemoryMode('edit'); },
     });
 
     this.addCommand({
       id: 'open-dreams-dashboard',
-      name: 'Open Dreams dashboard',
-      callback: async () => { await this.activateEngramView('dreams'); },
+      name: 'Open memory overview',
+      callback: async () => { await this.activateMemoryMode('overview'); },
     });
 
     this.addCommand({
@@ -188,6 +189,31 @@ export default class EngramPlugin extends Plugin {
     const { view } = leaf;
     if (view instanceof EngramView) {
       await view.activateTab(tabId);
+    }
+  }
+
+  async activateMemoryMode(mode: MemoryMode): Promise<void> {
+    await this.activateEngramView('memories');
+    for (const leaf of this.app.workspace.getLeavesOfType(ENGRAM_VIEW_TYPE)) {
+      const { view } = leaf;
+      if (!(view instanceof EngramView)) {
+        continue;
+      }
+      const memoryTab = view.getTab('memories');
+      if (!(memoryTab instanceof MemoriesTab)) {
+        continue;
+      }
+      switch (mode) {
+        case 'overview':
+          memoryTab.showOverview();
+          break;
+        case 'explore':
+          memoryTab.showExplore();
+          break;
+        case 'edit':
+          memoryTab.showEdit();
+          break;
+      }
     }
   }
 
