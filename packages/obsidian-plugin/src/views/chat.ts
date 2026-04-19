@@ -1,4 +1,4 @@
-import { ItemView, type WorkspaceLeaf, setIcon, MarkdownRenderer } from 'obsidian';
+import { type App, setIcon, MarkdownRenderer } from 'obsidian';
 import {
   MemoryState,
   Conversation,
@@ -6,7 +6,8 @@ import {
 import type { Message } from '@interwebalchemy/engram-core';
 import type EngramPlugin from '../main';
 import type { ProviderAdapter } from '../providers/types';
-import { CHAT_VIEW_TYPE } from '../constants';
+import type { EngramTabId } from '../constants';
+import type { EngramTab } from './tab';
 import {
   CHAT_REFRESH_INTERVAL_MS,
   CHAT_VIEW_ICON,
@@ -37,13 +38,17 @@ interface SelectedProvider {
   readonly selectedModel: string;
 }
 
-export class EngramChatView extends ItemView {
+export class ChatTab implements EngramTab {
+  readonly id: EngramTabId = 'chat';
+  readonly label = CHAT_VIEW_TITLE;
+  readonly icon = CHAT_VIEW_ICON;
+
+  private readonly app: App;
   private readonly plugin: EngramPlugin;
-  private readonly viewType = CHAT_VIEW_TYPE;
-  private readonly displayText = CHAT_VIEW_TITLE;
-  private readonly iconName = CHAT_VIEW_ICON;
+  private parent: HTMLElement | null = null;
   private abortController: AbortController | null = null;
   private isStreaming = false;
+  private buttonToggleInterval: ReturnType<typeof setInterval> | null = null;
 
   // Per-conversation parameter overrides (empty = use global default or provider default)
   private convSystemPrompt = '';
@@ -63,47 +68,39 @@ export class EngramChatView extends ItemView {
   private temperatureEl!: HTMLInputElement;
   private maxTokensEl!: HTMLInputElement;
 
-  constructor(leaf: WorkspaceLeaf, plugin: EngramPlugin) {
-    super(leaf);
+  constructor(app: App, plugin: EngramPlugin) {
+    this.app = app;
     this.plugin = plugin;
-  }
-
-  getViewType(): string {
-    return this.viewType;
-  }
-
-  getDisplayText(): string {
-    return this.displayText;
-  }
-
-  getIcon(): string {
-    return this.iconName;
   }
 
   // ─── Lifecycle ────────────────────────────────────────────────────────
 
-  async onOpen(): Promise<void> {
-    const container = this.containerEl.children.item(1);
-    if (!(container instanceof HTMLElement)) {
-      throw new Error('Chat view container was not available.');
-    }
-    container.empty();
-    container.addClass('engram-chat-container');
+  mount(parent: HTMLElement): void {
+    parent.empty();
+    parent.addClass('engram-chat-container');
+    this.parent = parent;
 
-    this.renderToolbar(container);
-    this.messagesContainer = container.createDiv({ cls: 'engram-messages' });
-    this.renderInputArea(container);
+    this.renderToolbar(parent);
+    this.messagesContainer = parent.createDiv({ cls: 'engram-messages' });
+    this.renderInputArea(parent);
     this.renderMessages();
-    await Promise.resolve();
   }
 
-  async onClose(): Promise<void> {
+  unmount(): void {
     this.cancelStream();
-    await Promise.resolve();
+    this.stopButtonToggle();
+    if (this.parent !== null) {
+      this.parent.empty();
+      this.parent.removeClass('engram-chat-container');
+      this.parent = null;
+    }
   }
 
   /** Re-render messages and rebuild the model selector. */
   refresh(): void {
+    if (this.parent === null) {
+      return;
+    }
     this.renderMessages();
     this.refreshCombinedSelect();
   }
@@ -190,12 +187,22 @@ export class EngramChatView extends ItemView {
     this.cancelBtn = cancelBtn;
 
     this.refreshCombinedSelect();
-    this.registerInterval(
-      window.setInterval(() => {
-        this.sendBtn.style.display = this.isStreaming ? 'none' : '';
-        this.cancelBtn.style.display = this.isStreaming ? '' : 'none';
-      }, CHAT_REFRESH_INTERVAL_MS),
-    );
+    this.startButtonToggle();
+  }
+
+  private startButtonToggle(): void {
+    this.stopButtonToggle();
+    this.buttonToggleInterval = setInterval(() => {
+      this.sendBtn.style.display = this.isStreaming ? 'none' : '';
+      this.cancelBtn.style.display = this.isStreaming ? '' : 'none';
+    }, CHAT_REFRESH_INTERVAL_MS);
+  }
+
+  private stopButtonToggle(): void {
+    if (this.buttonToggleInterval !== null) {
+      clearInterval(this.buttonToggleInterval);
+      this.buttonToggleInterval = null;
+    }
   }
 
   private handleModelChange(): void {

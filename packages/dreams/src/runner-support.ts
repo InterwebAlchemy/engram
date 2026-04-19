@@ -3,19 +3,59 @@ import {
   type MemoryManager,
 } from '@interwebalchemy/engram-core';
 import type { DreamsEngramContext } from './prompt';
-import type { DreamsMessage } from './providers';
+import type { DreamsMessage, DreamsProviderConfig } from './providers';
 import type {
   DreamsAction,
   DreamsExecutionResult,
   DreamsReport,
   DreamsRunRecord,
+  DreamsRunnerOptions,
 } from './types';
 
 const DREAMS_SESSION_ID = 'dreams';
 const MIN_DREAM_COMPLETION_TOKENS = 8_000;
 const MAX_DREAM_COMPLETION_TOKENS = 32_000;
 const PROMPT_TO_COMPLETION_RATIO = 0.5;
+const NARRATIVE_MAX_TOKENS = 1_024;
 const ACTION_SEPARATOR = '; ';
+
+export interface NarrativeProviderResolution {
+  provider: 'anthropic' | 'openai';
+  config: DreamsProviderConfig;
+}
+
+/**
+ * Returns the narrative provider override when the caller has supplied any
+ * narrative-specific setting, or null when narrative generation should reuse
+ * the analysis provider instance.
+ */
+export function resolveNarrativeProvider(
+  options: DreamsRunnerOptions,
+): NarrativeProviderResolution | null {
+  const { narrative } = options;
+  if (narrative === undefined) {
+    return null;
+  }
+
+  const hasOverride =
+    narrative.provider !== undefined ||
+    narrative.model !== undefined ||
+    narrative.apiKey !== undefined ||
+    narrative.baseURL !== undefined;
+  if (!hasOverride) {
+    return null;
+  }
+
+  return {
+    provider: narrative.provider ?? options.provider,
+    config: {
+      model: narrative.model ?? options.model,
+      apiKey: narrative.apiKey ?? options.apiKey,
+      baseURL: narrative.baseURL ?? options.baseURL,
+      maxTokens: NARRATIVE_MAX_TOKENS,
+    },
+  };
+}
 
 export function buildReportSummary(report: DreamsReport): DreamsRunRecord['reportSummary'] {
   return {

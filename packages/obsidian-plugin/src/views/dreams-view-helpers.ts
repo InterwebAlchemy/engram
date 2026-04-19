@@ -23,7 +23,7 @@ const RECENT_RUN_LIMIT = 5;
 export function renderSummarySection(
   parent: HTMLElement,
   report: DreamsReport,
-  snapshots: SnapshotRecord[],
+  snapshotCount: number,
 ): void {
   const { threadHealth } = report;
   const grid = parent.createDiv({ cls: 'engram-dreams-summary-grid' });
@@ -41,7 +41,7 @@ export function renderSummarySection(
   renderStatCard(grid, 'Data issues', `${report.dataQualityIssues.length}`, 'Missing summaries, bootstrap metadata, or type mismatches.');
   renderStatCard(grid, 'Stale scratch', `${report.scratchHealth.staleSessions.length}`, 'Sessions that still need compaction.');
   renderStatCard(grid, 'Merge candidates', `${report.mergeCandidates.length}`, 'Potential duplicates worth human or LLM review.');
-  renderStatCard(grid, 'Snapshots', `${snapshots.length}`, 'Recoverable Engram states available from this vault.');
+  renderStatCard(grid, 'Snapshots', `${snapshotCount}`, 'Recoverable Engram states available from this vault.');
 }
 
 export function renderUsageHistorySection(

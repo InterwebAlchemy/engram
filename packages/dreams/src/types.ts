@@ -264,6 +264,13 @@ export interface DreamsUsageTrend {
   deltaFromBaseline?: number;
 }
 
+export interface DreamsNarrativeOptions {
+  provider?: 'anthropic' | 'openai';
+  model?: string;
+  apiKey?: string;
+  baseURL?: string;
+}
+
 export interface DreamsRunnerOptions {
   vaultPath: string;
   engramRoot?: string;
@@ -274,4 +281,10 @@ export interface DreamsRunnerOptions {
   dryRun?: boolean;
   focus?: DreamsFocus[];
   engramContext?: DreamsEngramContext;
+  /**
+   * Optional override for the narrative call. Any unset field falls back to the
+   * analysis configuration. When the entire block is omitted or empty, narrative
+   * generation reuses the analysis provider instance.
+   */
+  narrative?: DreamsNarrativeOptions;
 }

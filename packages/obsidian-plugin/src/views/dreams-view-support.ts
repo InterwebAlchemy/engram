@@ -26,7 +26,7 @@ export interface ModelOption {
   modelName: string;
 }
 
-interface ModelSelection {
+export interface ModelSelection {
   providerId: string;
   modelId: string;
 }
@@ -37,6 +37,9 @@ interface CreateDreamPlanOptions {
   analyzer: DreamsAnalyzer;
   provider: ProviderAdapter;
   narrativeMaxTokens: number;
+  /** When omitted, narrative generation reuses the analysis selection/provider. */
+  narrativeSelection?: ModelOption;
+  narrativeProvider?: ProviderAdapter;
 }
 
 interface RunPowerNapOptions {
@@ -76,30 +79,69 @@ export function syncModelSelection(
   settings: EngramSettings,
   current: ModelSelection,
   options: ModelOption[] = getModelOptions(settings),
+  fallback: ModelSelection = getActiveModelSelection(settings, options),
 ): ModelSelection {
-  const currentExists = options.some(
-    (option) =>
-      option.providerId === current.providerId &&
-      option.modelId === current.modelId,
-  );
+  const currentExists = hasModelSelection(options, current);
   if (currentExists) {
     return current;
   }
 
-  const { activeProviderId, providers } = settings;
-  const { [activeProviderId]: activeProvider } = providers;
-  const { defaultModel: activeModelId } = activeProvider;
-  const preferred = options.find(
-    (option) =>
-      option.providerId === activeProviderId &&
-      option.modelId === activeModelId,
-  );
-  if (preferred === undefined) {
+  if (!hasModelSelection(options, fallback)) {
     return { providerId: '', modelId: '' };
   }
 
-  const { providerId, modelId } = preferred;
+  const { providerId, modelId } = fallback;
   return { providerId, modelId };
+}
+
+export function getDreamAnalysisSelection(
+  settings: EngramSettings,
+  options: ModelOption[] = getModelOptions(settings),
+): ModelSelection {
+  const configured = {
+    providerId: settings.dreams.analysisProviderId,
+    modelId: settings.dreams.analysisModelId,
+  };
+  return hasModelSelection(options, configured)
+    ? configured
+    : getActiveModelSelection(settings, options);
+}
+
+export function getDreamNarrativeSelection(
+  settings: EngramSettings,
+  options: ModelOption[] = getModelOptions(settings),
+  analysisSelection: ModelSelection = getDreamAnalysisSelection(settings, options),
+): ModelSelection {
+  const configured = {
+    providerId: settings.dreams.narrativeProviderId,
+    modelId: settings.dreams.narrativeModelId,
+  };
+  if (!hasModelSelection(options, configured)) {
+    return { providerId: '', modelId: '' };
+  }
+
+  return isSameSelection(configured, analysisSelection)
+    ? { providerId: '', modelId: '' }
+    : configured;
+}
+
+export function normalizeDreamModelSettings(
+  settings: EngramSettings,
+  options: ModelOption[] = getModelOptions(settings),
+): EngramSettings['dreams'] {
+  const analysisSelection = getDreamAnalysisSelection(settings, options);
+  const narrativeSelection = getDreamNarrativeSelection(
+    settings,
+    options,
+    analysisSelection,
+  );
+
+  return {
+    analysisProviderId: analysisSelection.providerId,
+    analysisModelId: analysisSelection.modelId,
+    narrativeProviderId: narrativeSelection.providerId,
+    narrativeModelId: narrativeSelection.modelId,
+  };
 }
 
 export function findSelectedOption(
@@ -186,8 +228,12 @@ export async function createDreamPlan(
     analyzer,
     provider,
     narrativeMaxTokens,
+    narrativeSelection,
+    narrativeProvider,
   } = options;
   const engramContext = await getDreamEngramContext(manager);
+  const effectiveNarrativeSelection = narrativeSelection ?? selection;
+  const effectiveNarrativeProvider = narrativeProvider ?? provider;
 
   return await planDreams({
     manager,
@@ -206,14 +252,49 @@ export async function createDreamPlan(
     },
     engramContext,
     narrativeComplete: async (messages) => {
-      const result = await provider.complete(messages as ChatMessage[], {
-        model: selection.modelId,
+      const result = await effectiveNarrativeProvider.complete(messages as ChatMessage[], {
+        model: effectiveNarrativeSelection.modelId,
         temperature: 0.7,
         maxTokens: narrativeMaxTokens,
       });
       return { content: result.content.trim() };
     },
   });
+}
+
+function getActiveModelSelection(
+  settings: EngramSettings,
+  options: ModelOption[],
+): ModelSelection {
+  const { activeProviderId, providers } = settings;
+  const { [activeProviderId]: activeProvider } = providers;
+  const { defaultModel: activeModelId } = activeProvider;
+  const preferred = options.find(
+    (option) =>
+      option.providerId === activeProviderId &&
+      option.modelId === activeModelId,
+  );
+  if (preferred === undefined) {
+    return { providerId: '', modelId: '' };
+  }
+
+  const { providerId, modelId } = preferred;
+  return { providerId, modelId };
+}
+
+function hasModelSelection(
+  options: ModelOption[],
+  selection: ModelSelection,
+): boolean {
+  return options.some(
+    (option) =>
+      option.providerId === selection.providerId &&
+      option.modelId === selection.modelId,
+  );
+}
+
+function isSameSelection(left: ModelSelection, right: ModelSelection): boolean {
+  return left.providerId === right.providerId && left.modelId === right.modelId;
 }
 
 export async function runPowerNap(

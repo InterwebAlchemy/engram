@@ -9,18 +9,14 @@ import { OpenAICompatibleAdapter } from './providers/openai-compat';
 import { AnthropicAdapter } from './providers/anthropic';
 import type { ProviderAdapter } from './providers/types';
 import { EngramSettingTab } from './settings';
-import { EngramChatView } from './views/chat';
-import { EngramDreamsView } from './views/dreams';
-import { EngramMemoryView } from './views/memory';
+import { EngramView } from './views/engram';
+import { ChatTab } from './views/chat';
 import {
-  CHAT_VIEW_TYPE,
-  DREAMS_VIEW_TYPE,
-  MEMORY_VIEW_TYPE,
+  ENGRAM_VIEW_TYPE,
   DEFAULT_SETTINGS,
-} from './constants';
-import type {
-  EngramSettings,
-  ProviderSettings,
+  type EngramTabId,
+  type EngramSettings,
+  type ProviderSettings,
 } from './constants';
 
 export default class EngramPlugin extends Plugin {
@@ -36,11 +32,9 @@ export default class EngramPlugin extends Plugin {
   async onload(): Promise<void> {
     await this.loadSettings();
 
-    // Filesystem adapter backed by the Obsidian vault API
     const adapter = new ObsidianAdapter(this.app);
     this.fileAdapter = adapter;
 
-    // Memory manager scoped to the engram root
     const basePath = this.getVaultBasePath();
     this.memoryManager = new MemoryManager(
       adapter,
@@ -53,37 +47,38 @@ export default class EngramPlugin extends Plugin {
 
     this.conversation = new Conversation();
 
-    // Initialize provider adapters
     this.initializeProviders();
 
-    // Register views
-    this.registerView(CHAT_VIEW_TYPE, (leaf) => new EngramChatView(leaf, this));
-    this.registerView(MEMORY_VIEW_TYPE, (leaf) => new EngramMemoryView(leaf, this));
-    this.registerView(DREAMS_VIEW_TYPE, (leaf) => new EngramDreamsView(leaf, this));
+    this.registerView(ENGRAM_VIEW_TYPE, (leaf) => new EngramView(leaf, this));
 
-    // Settings tab
     this.addSettingTab(new EngramSettingTab(this.app, this));
 
-    // Ribbon icon to open the chat
-    this.addRibbonIcon('brain', 'Open Engram chat', async () => { await this.activateChatView(); });
+    this.addRibbonIcon('brain-circuit', 'Engram', async () => {
+      await this.activateEngramView('chat');
+    });
 
-    // Command palette entries
     this.addCommand({
       id: 'open-chat',
       name: 'Open chat',
-      callback: async () => { await this.activateChatView(); },
+      callback: async () => { await this.activateEngramView('chat'); },
     });
 
     this.addCommand({
       id: 'open-memory-manager',
       name: 'Open memory manager',
-      callback: async () => { await this.activateMemoryView(); },
+      callback: async () => { await this.activateEngramView('memories'); },
     });
 
     this.addCommand({
       id: 'open-dreams-dashboard',
       name: 'Open Dreams dashboard',
-      callback: async () => { await this.activateDreamsView(); },
+      callback: async () => { await this.activateEngramView('dreams'); },
+    });
+
+    this.addCommand({
+      id: 'open-snapshots',
+      name: 'Open snapshots',
+      callback: async () => { await this.activateEngramView('snapshots'); },
     });
 
     this.addCommand({
@@ -91,8 +86,8 @@ export default class EngramPlugin extends Plugin {
       name: 'New conversation',
       callback: () => {
         this.conversation = new Conversation();
-        this.resetChatViewBootstrap();
-        this.refreshChatView();
+        this.resetChatBootstrap();
+        this.refreshEngramView('chat');
       },
     });
 
@@ -102,7 +97,6 @@ export default class EngramPlugin extends Plugin {
       callback: async () => { await this.saveCurrentConversation(); },
     });
 
-    // Autosave
     this.startAutosave();
   }
 
@@ -122,7 +116,6 @@ export default class EngramPlugin extends Plugin {
     }
   }
 
-  /** Re-initialize a single provider after its config changes (e.g. base URL update). */
   reinitializeProvider(id: string): void {
     const cfg = this.getProviderSettings(id);
     if (cfg === null) {
@@ -180,16 +173,22 @@ export default class EngramPlugin extends Plugin {
 
   // ─── View activation ───────────────────────────────────────────────────
 
-  async activateChatView(): Promise<void> {
-    await this.activateView(CHAT_VIEW_TYPE);
-  }
-
-  async activateMemoryView(): Promise<void> {
-    await this.activateView(MEMORY_VIEW_TYPE);
-  }
-
-  async activateDreamsView(): Promise<void> {
-    await this.activateView(DREAMS_VIEW_TYPE);
+  async activateEngramView(tabId: EngramTabId): Promise<void> {
+    const existingLeaves = this.app.workspace.getLeavesOfType(ENGRAM_VIEW_TYPE);
+    let leaf = existingLeaves.at(0);
+    if (leaf === undefined) {
+      const right = this.app.workspace.getRightLeaf(false);
+      if (right === null) {
+        return;
+      }
+      await right.setViewState({ type: ENGRAM_VIEW_TYPE, active: true });
+      leaf = right;
+    }
+    await this.app.workspace.revealLeaf(leaf);
+    const { view } = leaf;
+    if (view instanceof EngramView) {
+      await view.activateTab(tabId);
+    }
   }
 
   // ─── Conversation persistence ──────────────────────────────────────────
@@ -199,29 +198,24 @@ export default class EngramPlugin extends Plugin {
     await this.memoryManager.saveConversation(this.conversation);
   }
 
-  refreshChatView(): void {
-    for (const leaf of this.app.workspace.getLeavesOfType(CHAT_VIEW_TYPE)) {
+  /** Refresh a specific tab inside every open Engram view. */
+  refreshEngramView(tabId: EngramTabId): void {
+    for (const leaf of this.app.workspace.getLeavesOfType(ENGRAM_VIEW_TYPE)) {
       const { view } = leaf;
-      if (view instanceof EngramChatView) {
-        view.refresh();
+      if (view instanceof EngramView) {
+        void view.refreshTab(tabId);
       }
     }
   }
 
-  resetChatViewBootstrap(): void {
-    for (const leaf of this.app.workspace.getLeavesOfType(CHAT_VIEW_TYPE)) {
+  /** Clear chat tab bootstrap cache across open views. */
+  resetChatBootstrap(): void {
+    for (const leaf of this.app.workspace.getLeavesOfType(ENGRAM_VIEW_TYPE)) {
       const { view } = leaf;
-      if (view instanceof EngramChatView) {
-        view.resetBootstrap();
-      }
-    }
-  }
-
-  refreshDreamsView(): void {
-    for (const leaf of this.app.workspace.getLeavesOfType(DREAMS_VIEW_TYPE)) {
-      const { view } = leaf;
-      if (view instanceof EngramDreamsView) {
-        void view.refresh();
+      if (!(view instanceof EngramView)) continue;
+      const chat = view.getTab('chat');
+      if (chat instanceof ChatTab) {
+        chat.resetBootstrap();
       }
     }
   }
@@ -259,22 +253,6 @@ export default class EngramPlugin extends Plugin {
     return this.settings.providers[providerId];
   }
 
-  private async activateView(viewType: string): Promise<void> {
-    const existingLeaves = this.app.workspace.getLeavesOfType(viewType);
-    if (existingLeaves.length > 0) {
-      await this.app.workspace.revealLeaf(existingLeaves[0]);
-      return;
-    }
-
-    const leaf = this.app.workspace.getRightLeaf(false);
-    if (leaf === null) {
-      return;
-    }
-
-    await leaf.setViewState({ type: viewType, active: true });
-    await this.app.workspace.revealLeaf(leaf);
-  }
-
   // ─── Settings ──────────────────────────────────────────────────────────
 
   async loadSettings(): Promise<void> {
@@ -283,10 +261,12 @@ export default class EngramPlugin extends Plugin {
     this.settings = {
       ...DEFAULT_SETTINGS,
       ...loadedSettings,
+      dreams: {
+        ...DEFAULT_SETTINGS.dreams,
+        ...(loadedSettings.dreams ?? {}),
+      },
       providers: { ...DEFAULT_SETTINGS.providers },
     };
-    // Deep-merge provider configs so new fields (enabledModels, customModels, etc.)
-    // are present even when loading an older saved config.
     for (const [id, defaults] of Object.entries(DEFAULT_SETTINGS.providers)) {
       this.settings.providers[id] = {
         ...defaults,

@@ -1,11 +1,12 @@
-import { ItemView, type WorkspaceLeaf, setIcon } from 'obsidian';
+import { type App, setIcon } from 'obsidian';
 import { MemoryState, MemoryType } from '@interwebalchemy/engram-core';
 import type { VaultNote } from '@interwebalchemy/engram-core';
 import type EngramPlugin from '../main';
-import { MEMORY_VIEW_TYPE } from '../constants';
+import type { EngramTabId } from '../constants';
+import type { EngramTab } from './tab';
 
-const MEMORY_VIEW_TITLE = 'Engram Memories';
-const MEMORY_VIEW_ICON = 'database';
+const MEMORIES_TAB_TITLE = 'Memories';
+const MEMORIES_TAB_ICON = 'database';
 const PREVIEW_LENGTH = 120;
 const STATE_CYCLE = [
   MemoryState.Default,
@@ -25,58 +26,44 @@ const MEMORY_STATE_OPTIONS = [
   MemoryState.Forgotten,
 ];
 
-export class EngramMemoryView extends ItemView {
+export class MemoriesTab implements EngramTab {
+  readonly id: EngramTabId = 'memories';
+  readonly label = MEMORIES_TAB_TITLE;
+  readonly icon = MEMORIES_TAB_ICON;
+
+  private readonly app: App;
   private readonly plugin: EngramPlugin;
-  private readonly viewType = MEMORY_VIEW_TYPE;
-  private readonly displayText = MEMORY_VIEW_TITLE;
-  private readonly iconName = MEMORY_VIEW_ICON;
-  private listContainer!: HTMLElement;
+  private parent: HTMLElement | null = null;
+  private listContainer: HTMLElement | null = null;
   private filterState: MemoryState | undefined;
   private filterType: MemoryType | undefined;
 
-  constructor(leaf: WorkspaceLeaf, plugin: EngramPlugin) {
-    super(leaf);
+  constructor(app: App, plugin: EngramPlugin) {
+    this.app = app;
     this.plugin = plugin;
   }
 
-  getViewType(): string {
-    return this.viewType;
+  mount(parent: HTMLElement): void {
+    parent.empty();
+    parent.addClass('engram-memory-container');
+    this.parent = parent;
+    this.renderFilters(parent);
+    this.listContainer = parent.createDiv({ cls: 'engram-memory-list' });
+    void this.refresh();
   }
 
-  getDisplayText(): string {
-    return this.displayText;
-  }
-
-  getIcon(): string {
-    return this.iconName;
-  }
-
-  // ─── Lifecycle ────────────────────────────────────────────────────────
-
-  async onOpen(): Promise<void> {
-    const container = this.containerEl.children.item(1);
-    if (!(container instanceof HTMLElement)) {
-      throw new Error('Memory view container was not available.');
+  unmount(): void {
+    if (this.parent !== null) {
+      this.parent.empty();
+      this.parent.removeClass('engram-memory-container');
+      this.parent = null;
+      this.listContainer = null;
     }
-    container.empty();
-    container.addClass('engram-memory-container');
-
-    this.renderFilters(container);
-    this.listContainer = container.createDiv({ cls: 'engram-memory-list' });
-    await this.refresh();
   }
-
-  async onClose(): Promise<void> {
-    this.listContainer.empty();
-    await Promise.resolve();
-  }
-
-  // ─── Filters ──────────────────────────────────────────────────────────
 
   private renderFilters(parent: HTMLElement): void {
     const bar = parent.createDiv({ cls: 'engram-memory-filters' });
 
-    // Type filter
     const typeSelect = bar.createEl('select', { cls: 'engram-filter-select' });
     typeSelect.createEl('option', { value: '', text: 'All types' });
     for (const type of MEMORY_TYPE_OPTIONS) {
@@ -87,7 +74,6 @@ export class EngramMemoryView extends ItemView {
       void this.refresh();
     });
 
-    // State filter
     const stateSelect = bar.createEl('select', { cls: 'engram-filter-select' });
     stateSelect.createEl('option', { value: '', text: 'All states' });
     for (const state of MEMORY_STATE_OPTIONS) {
@@ -98,7 +84,6 @@ export class EngramMemoryView extends ItemView {
       void this.refresh();
     });
 
-    // Refresh button
     const refreshBtn = bar.createEl('button', {
       cls: 'engram-toolbar-btn',
       attr: { 'aria-label': 'Refresh' },
@@ -109,9 +94,10 @@ export class EngramMemoryView extends ItemView {
     });
   }
 
-  // ─── Rendering ────────────────────────────────────────────────────────
-
   async refresh(): Promise<void> {
+    if (this.listContainer === null) {
+      return;
+    }
     this.listContainer.empty();
 
     try {
@@ -129,6 +115,9 @@ export class EngramMemoryView extends ItemView {
   }
 
   private renderNotes(notes: VaultNote[]): void {
+    if (this.listContainer === null) {
+      return;
+    }
     if (notes.length === 0) {
       this.listContainer.createDiv({
         cls: 'engram-empty',
@@ -137,7 +126,6 @@ export class EngramMemoryView extends ItemView {
       return;
     }
 
-    // Group by type
     const groups = new Map<string, VaultNote[]>();
     for (const note of notes) {
       const type = resolveMemoryTypeLabel(note);
@@ -155,6 +143,9 @@ export class EngramMemoryView extends ItemView {
   }
 
   private renderGroup(type: string, notes: VaultNote[]): void {
+    if (this.listContainer === null) {
+      return;
+    }
     const group = this.listContainer.createDiv({ cls: 'engram-memory-group' });
     group.createEl('h4', { text: `${type} (${notes.length})`, cls: 'engram-group-header' });
 
@@ -168,18 +159,15 @@ export class EngramMemoryView extends ItemView {
 
     const header = item.createDiv({ cls: 'engram-memory-item-header' });
 
-    // File name
     const fileName = note.path.split('/').pop() ?? note.path;
     const nameEl = header.createSpan({
       cls: 'engram-memory-name',
       text: fileName.replace(/\.md$/u, ''),
     });
-    // Click to open in editor
     nameEl.addEventListener('click', () => {
       void this.app.workspace.openLinkText(note.path, '', false);
     });
 
-    // State badge (clickable to cycle)
     const state = note.frontmatter.memory_state ?? MemoryState.Default;
     const badge = header.createSpan({
       cls: `engram-memory-badge engram-memory-${state}`,
@@ -189,7 +177,6 @@ export class EngramMemoryView extends ItemView {
       void this.cycleMemoryState(note.path, state);
     });
 
-    // Tags
     const tags = (note.frontmatter.tags) ?? [];
     if (tags.length > 0) {
       const tagRow = item.createDiv({ cls: 'engram-memory-tags' });
@@ -198,7 +185,6 @@ export class EngramMemoryView extends ItemView {
       }
     }
 
-    // Preview
     item.createDiv({
       cls: 'engram-memory-preview',
       text: buildPreview(note.content),

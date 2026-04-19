@@ -1,12 +1,114 @@
 /* ─── Layout ──────────────────────────────────────────────────────────────── */
 
-.engram-chat-container,
-.engram-memory-container,
-.engram-dreams-container {
+.engram-view-container {
   display: flex;
   flex-direction: column;
   height: 100%;
   padding: 0;
+}
+
+.engram-chat-container,
+.engram-memory-container,
+.engram-dreams-container,
+.engram-snapshots-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 0;
+  min-height: 0;
+}
+
+/* ─── Tab strip ───────────────────────────────────────────────────────────── */
+
+.engram-tab-strip {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  padding: 6px 8px 0;
+  border-bottom: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+}
+
+.engram-tab-strip.is-menu {
+  justify-content: flex-end;
+}
+
+.engram-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-top-left-radius: var(--radius-s);
+  border-top-right-radius: var(--radius-s);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: var(--font-ui-small);
+}
+
+.engram-tab-strip.is-icons-only .engram-tab-btn {
+  justify-content: center;
+  padding: 6px 10px;
+}
+
+.engram-tab-strip.is-icons-only .engram-tab-label {
+  display: none;
+}
+
+.engram-tab-btn:hover {
+  color: var(--text-normal);
+  background: var(--background-modifier-hover);
+}
+
+.engram-tab-btn.is-active {
+  color: var(--text-normal);
+  background: var(--background-primary);
+  border-color: var(--background-modifier-border);
+  margin-bottom: -1px;
+}
+
+.engram-tab-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+.engram-tab-label {
+  line-height: 1;
+}
+
+.engram-tab-menu-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  margin-left: auto;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  background: var(--background-primary);
+  color: var(--text-normal);
+  cursor: pointer;
+}
+
+.engram-tab-menu-btn:hover {
+  background: var(--background-modifier-hover);
+}
+
+.engram-tab-menu-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+}
+
+.engram-tab-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 /* ─── Toolbar ─────────────────────────────────────────────────────────────── */

@@ -2,6 +2,7 @@ import { type App, PluginSettingTab, SecretComponent, Setting } from 'obsidian';
 import type EngramPlugin from './main';
 import { DEFAULT_SETTINGS, KNOWN_MODELS, BUILTIN_PROVIDER_IDS } from './constants';
 import type { ProviderSettings } from './constants';
+import { renderDreamsModelDefaults } from './dreams-settings';
 
 const MAX_MEMORY_COUNT = 50;
 const TEMPERATURE_MAX = 2;
@@ -56,6 +57,7 @@ export class EngramSettingTab extends PluginSettingTab {
           this.plugin.settings.activeProviderId = providerId;
           providers[providerId].defaultModel = modelId;
           await this.plugin.saveSettings();
+          this.refreshModelBackedViews();
         });
       });
 
@@ -87,6 +89,18 @@ export class EngramSettingTab extends PluginSettingTab {
     for (const id of customIds) {
       this.renderProviderSection(customInner, id, true);
     }
+
+    // ─── Dreams ───────────────────────────────────────────────────────────
+
+    containerEl.createEl('h2', { text: 'Dreams' });
+    containerEl.createEl('p', {
+      text: 'Pick the default analysis model for Dream planning, plus an optional separate narrative model for the dream text itself.',
+      cls: 'setting-item-description',
+    });
+
+    renderDreamsModelDefaults(containerEl, this.plugin, () => {
+      this.display();
+    });
 
     // ─── Memory ───────────────────────────────────────────────────────────
 
@@ -263,7 +277,7 @@ export class EngramSettingTab extends PluginSettingTab {
                 this.plugin.settings.activeProviderId = 'openrouter';
               }
               await this.plugin.saveSettings();
-              this.plugin.refreshChatView();
+              this.refreshModelBackedViews();
               this.display();
             }),
         );
@@ -343,7 +357,7 @@ export class EngramSettingTab extends PluginSettingTab {
           this.plugin.settings.providers[id] = newProvider;
           this.plugin.reinitializeProvider(id);
           await this.plugin.saveSettings();
-          this.plugin.refreshChatView();
+          this.refreshModelBackedViews();
           this.display();
         }),
       );
@@ -383,7 +397,7 @@ export class EngramSettingTab extends PluginSettingTab {
               if (cfg.defaultModel === model.id) cfg.defaultModel = firstModelOrEmpty(cfg.enabledModels);
             }
             await this.plugin.saveSettings();
-            this.plugin.refreshChatView();
+            this.refreshModelBackedViews();
             this.display();
           }),
         );
@@ -405,7 +419,7 @@ export class EngramSettingTab extends PluginSettingTab {
               cfg.enabledModels = cfg.enabledModels.filter((m) => m !== customId);
               if (cfg.defaultModel === customId) cfg.defaultModel = firstModelOrEmpty(cfg.enabledModels);
               await this.plugin.saveSettings();
-              this.plugin.refreshChatView();
+              this.refreshModelBackedViews();
               this.display();
             }),
         );
@@ -433,7 +447,7 @@ export class EngramSettingTab extends PluginSettingTab {
           }
           newModelId = '';
           await this.plugin.saveSettings();
-          this.plugin.refreshChatView();
+          this.refreshModelBackedViews();
           this.display();
         }),
       );
@@ -453,7 +467,7 @@ export class EngramSettingTab extends PluginSettingTab {
           dd.onChange(async (value) => {
             cfg.defaultModel = value;
             await this.plugin.saveSettings();
-            this.plugin.refreshChatView();
+            this.refreshModelBackedViews();
           });
         });
     } else {
@@ -470,6 +484,10 @@ export class EngramSettingTab extends PluginSettingTab {
             }),
         );
     }
+  }
+  private refreshModelBackedViews(): void {
+    this.plugin.refreshEngramView('chat');
+    this.plugin.refreshEngramView('dreams');
   }
 }
 

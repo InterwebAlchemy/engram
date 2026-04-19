@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parseDreamsResponse, protectCoreMemoryActions } from './runner';
-import type { DreamsAction, DreamsReport } from './types';
+import { resolveNarrativeProvider } from './runner-support';
+import type { DreamsAction, DreamsReport, DreamsRunnerOptions } from './types';
 
 test('parseDreamsResponse normalizes type and camelCase thread fields', () => {
   const response = parseDreamsResponse(JSON.stringify({
@@ -97,4 +98,41 @@ test('protectCoreMemoryActions converts core mutations into review flags', () =>
       reason: 'Tighten the core note.',
     },
   ]);
+});
+
+test('resolveNarrativeProvider returns null when no narrative override is configured', () => {
+  const options: DreamsRunnerOptions = {
+    vaultPath: '/tmp/vault',
+    provider: 'anthropic',
+    model: 'claude-sonnet-4-6',
+    apiKey: 'analysis-key',
+    baseURL: 'https://api.anthropic.com',
+  };
+
+  assert.equal(resolveNarrativeProvider(options), null);
+  assert.equal(resolveNarrativeProvider({ ...options, narrative: {} }), null);
+});
+
+test('resolveNarrativeProvider merges partial narrative overrides with analysis config', () => {
+  const options: DreamsRunnerOptions = {
+    vaultPath: '/tmp/vault',
+    provider: 'anthropic',
+    model: 'claude-sonnet-4-6',
+    apiKey: 'analysis-key',
+    baseURL: 'https://api.anthropic.com',
+    narrative: {
+      provider: 'openai',
+      model: 'gpt-5-mini',
+    },
+  };
+
+  assert.deepEqual(resolveNarrativeProvider(options), {
+    provider: 'openai',
+    config: {
+      model: 'gpt-5-mini',
+      apiKey: 'analysis-key',
+      baseURL: 'https://api.anthropic.com',
+      maxTokens: 1_024,
+    },
+  });
 });

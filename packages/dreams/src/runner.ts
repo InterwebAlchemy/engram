@@ -27,6 +27,7 @@ import {
   buildFallbackDreamNarrative,
   buildReportSummary,
   estimateDreamMaxTokens,
+  resolveNarrativeProvider,
   writeDreamScratchEntry,
   writeDreamStartEntry,
 } from './runner-support';
@@ -87,6 +88,10 @@ export async function runDreams(options: DreamsRunnerOptions): Promise<DreamsRun
     baseURL: options.baseURL,
     maxTokens: estimateDreamMaxTokens(messages),
   });
+  const narrativeOverride = resolveNarrativeProvider(options);
+  const narrativeProvider = narrativeOverride === null
+    ? provider
+    : createDreamsProvider(narrativeOverride.provider, narrativeOverride.config);
   const shouldApply = options.dryRun !== true;
 
   if (shouldApply) {
@@ -111,7 +116,7 @@ export async function runDreams(options: DreamsRunnerOptions): Promise<DreamsRun
     completionContent: completion.content,
     dryRun: options.dryRun,
     engramContext: resolvedContext,
-    provider,
+    provider: narrativeProvider,
     report,
   });
 

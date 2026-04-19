@@ -1,9 +1,10 @@
 import { setIcon } from 'obsidian';
 import type { ModelOption } from './dreams-view-support';
 
+const NARRATIVE_REUSE_VALUE = '';
+
 interface RenderDreamToolbarOptions {
   parent: HTMLElement;
-  onCreateSnapshot: () => void;
   onRefresh: () => void;
 }
 
@@ -12,8 +13,11 @@ interface RenderDreamControlsOptions {
   options: ModelOption[];
   selectedProviderId: string;
   selectedModelId: string;
+  narrativeProviderId: string;
+  narrativeModelId: string;
   onDream: () => void;
   onModelChange: (providerId: string, modelId: string) => void;
+  onNarrativeChange: (providerId: string, modelId: string) => void;
   onPowerNap: () => void;
 }
 
@@ -33,12 +37,6 @@ export function renderDreamToolbar(options: RenderDreamToolbarOptions): void {
   });
   setIcon(refreshButton, 'refresh-cw');
   refreshButton.addEventListener('click', options.onRefresh);
-
-  const snapshotButton = actions.createEl('button', {
-    cls: 'mod-cta',
-    text: 'Create snapshot',
-  });
-  snapshotButton.addEventListener('click', options.onCreateSnapshot);
 }
 
 export function renderDreamControls(options: RenderDreamControlsOptions): void {
@@ -51,30 +49,8 @@ export function renderDreamControls(options: RenderDreamControlsOptions): void {
   });
 
   const form = section.createDiv({ cls: 'engram-dreams-controls-form' });
-  const modelSelect = form.createEl('select', {
-    cls: 'engram-filter-select',
-    attr: { 'aria-label': 'Dreams provider and model' },
-  });
-
-  if (options.options.length === 0) {
-    modelSelect.createEl('option', {
-      value: '',
-      text: 'No enabled models. Configure one in Settings.',
-    });
-    modelSelect.disabled = true;
-  } else {
-    for (const option of options.options) {
-      modelSelect.createEl('option', {
-        value: `${option.providerId}::${option.modelId}`,
-        text: `${option.providerName} - ${option.modelName}`,
-      });
-    }
-    modelSelect.value = `${options.selectedProviderId}::${options.selectedModelId}`;
-    modelSelect.addEventListener('change', () => {
-      const [providerId = '', modelId = ''] = modelSelect.value.split('::');
-      options.onModelChange(providerId, modelId);
-    });
-  }
+  renderAnalysisPicker(form, options);
+  renderNarrativePicker(form, options);
 
   const dreamButton = form.createEl('button', {
     cls: 'mod-cta',
@@ -87,4 +63,81 @@ export function renderDreamControls(options: RenderDreamControlsOptions): void {
     text: 'Power Nap',
   });
   powerNapButton.addEventListener('click', options.onPowerNap);
+}
+
+function renderAnalysisPicker(
+  form: HTMLElement,
+  options: RenderDreamControlsOptions,
+): void {
+  const field = form.createDiv({ cls: 'engram-dreams-controls-field' });
+  field.createEl('label', {
+    cls: 'engram-dreams-controls-label',
+    text: 'Analysis',
+  });
+  const modelSelect = field.createEl('select', {
+    cls: 'engram-filter-select',
+    attr: { 'aria-label': 'Dreams analysis provider and model' },
+  });
+
+  if (options.options.length === 0) {
+    modelSelect.createEl('option', {
+      value: '',
+      text: 'No enabled models. Configure one in Settings.',
+    });
+    modelSelect.disabled = true;
+    return;
+  }
+
+  for (const option of options.options) {
+    modelSelect.createEl('option', {
+      value: `${option.providerId}::${option.modelId}`,
+      text: `${option.providerName} - ${option.modelName}`,
+    });
+  }
+  modelSelect.value = `${options.selectedProviderId}::${options.selectedModelId}`;
+  modelSelect.addEventListener('change', () => {
+    const [providerId = '', modelId = ''] = modelSelect.value.split('::');
+    options.onModelChange(providerId, modelId);
+  });
+}
+
+function renderNarrativePicker(
+  form: HTMLElement,
+  options: RenderDreamControlsOptions,
+): void {
+  const field = form.createDiv({ cls: 'engram-dreams-controls-field' });
+  field.createEl('label', {
+    cls: 'engram-dreams-controls-label',
+    text: 'Narrative',
+  });
+  const narrativeSelect = field.createEl('select', {
+    cls: 'engram-filter-select',
+    attr: { 'aria-label': 'Dreams narrative provider and model' },
+  });
+
+  narrativeSelect.createEl('option', {
+    value: NARRATIVE_REUSE_VALUE,
+    text: 'Same as analysis',
+  });
+  for (const option of options.options) {
+    narrativeSelect.createEl('option', {
+      value: `${option.providerId}::${option.modelId}`,
+      text: `${option.providerName} - ${option.modelName}`,
+    });
+  }
+
+  const reuseNarrative = options.narrativeProviderId.length === 0
+    || options.narrativeModelId.length === 0;
+  narrativeSelect.value = reuseNarrative
+    ? NARRATIVE_REUSE_VALUE
+    : `${options.narrativeProviderId}::${options.narrativeModelId}`;
+  narrativeSelect.disabled = options.options.length === 0;
+  narrativeSelect.addEventListener('change', () => {
+    if (narrativeSelect.value === NARRATIVE_REUSE_VALUE) {
+      options.onNarrativeChange('', '');
+      return;
+    }
+    const [providerId = '', modelId = ''] = narrativeSelect.value.split('::');
+    options.onNarrativeChange(providerId, modelId);
+  });
 }

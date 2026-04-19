@@ -10,7 +10,11 @@ import {
   stdout,
 } from 'node:process';
 import { runDreams, runDreamsCleanup } from './runner';
-import type { DreamsFocus, DreamsRunnerOptions } from './types';
+import type {
+  DreamsFocus,
+  DreamsNarrativeOptions,
+  DreamsRunnerOptions,
+} from './types';
 
 const DEFAULT_MODEL = 'claude-sonnet-4-6';
 const CLI_ARG_START_INDEX = 2;
@@ -44,6 +48,7 @@ async function main(): Promise<void> {
     baseURL: args.baseURL,
     dryRun: args.dryRun,
     focus: args.focus,
+    narrative: args.narrative,
   };
 
   if (args.powerNap) {
@@ -102,6 +107,7 @@ interface ParsedArgs {
   dryRun: boolean;
   powerNap: boolean;
   focus?: DreamsFocus[];
+  narrative?: DreamsNarrativeOptions;
 }
 
 function parseArgs(argv: string[]): ParsedArgs {
@@ -112,6 +118,7 @@ function parseArgs(argv: string[]): ParsedArgs {
     baseURL: env.ENGRAM_DREAMS_BASE_URL,
     dryRun: false,
     powerNap: false,
+    narrative: narrativeFromEnv(),
   };
 
   let index = 0;
@@ -156,6 +163,30 @@ function parseArgs(argv: string[]): ParsedArgs {
       case '--cleanup-only':
         parsed.powerNap = true;
         break;
+      case '--narrative-provider':
+        index += 1;
+        parsed.narrative = mergeNarrative(parsed.narrative, {
+          provider: normalizeProvider(argv.at(index)),
+        });
+        break;
+      case '--narrative-model':
+        index += 1;
+        parsed.narrative = mergeNarrative(parsed.narrative, {
+          model: argv.at(index),
+        });
+        break;
+      case '--narrative-api-key':
+        index += 1;
+        parsed.narrative = mergeNarrative(parsed.narrative, {
+          apiKey: argv.at(index),
+        });
+        break;
+      case '--narrative-base-url':
+        index += 1;
+        parsed.narrative = mergeNarrative(parsed.narrative, {
+          baseURL: argv.at(index),
+        });
+        break;
       case '--help':
       case '-h':
         printHelp();
@@ -168,6 +199,36 @@ function parseArgs(argv: string[]): ParsedArgs {
   }
 
   return parsed;
+}
+
+function narrativeFromEnv(): DreamsNarrativeOptions | undefined {
+  const candidate: DreamsNarrativeOptions = {};
+  const {
+    ENGRAM_DREAMS_NARRATIVE_PROVIDER: rawProvider,
+    ENGRAM_DREAMS_NARRATIVE_MODEL: narrativeModel,
+    ENGRAM_DREAMS_NARRATIVE_API_KEY: narrativeApiKey,
+    ENGRAM_DREAMS_NARRATIVE_BASE_URL: narrativeBaseUrl,
+  } = env;
+  if (typeof rawProvider === 'string' && rawProvider.length > 0) {
+    candidate.provider = normalizeProvider(rawProvider);
+  }
+  if (typeof narrativeModel === 'string' && narrativeModel.length > 0) {
+    candidate.model = narrativeModel;
+  }
+  if (typeof narrativeApiKey === 'string' && narrativeApiKey.length > 0) {
+    candidate.apiKey = narrativeApiKey;
+  }
+  if (typeof narrativeBaseUrl === 'string' && narrativeBaseUrl.length > 0) {
+    candidate.baseURL = narrativeBaseUrl;
+  }
+  return Object.keys(candidate).length > 0 ? candidate : undefined;
+}
+
+function mergeNarrative(
+  current: DreamsNarrativeOptions | undefined,
+  patch: DreamsNarrativeOptions,
+): DreamsNarrativeOptions {
+  return { ...(current ?? {}), ...patch };
 }
 
 function normalizeProvider(value: string | undefined): 'anthropic' | 'openai' {
@@ -238,6 +299,12 @@ function printHelp(): void {
   writeLine('Usage: engram-dreams [nap] --vault <path> [--engram-root <dir>] [--provider anthropic|openai] [--model <id>] [--api-key <key>] [--base-url <url>] [--dry-run] [--power-nap]');
   writeLine('  `nap` / `--power-nap` runs heuristic-only cleanup without any LLM calls.');
   writeLine('  `--cleanup-only` is kept as a backward-compatible alias.');
+  writeLine('');
+  writeLine('Narrative overrides (reuse analysis when omitted):');
+  writeLine('  --narrative-provider <anthropic|openai>  ENGRAM_DREAMS_NARRATIVE_PROVIDER');
+  writeLine('  --narrative-model <id>                   ENGRAM_DREAMS_NARRATIVE_MODEL');
+  writeLine('  --narrative-api-key <key>                ENGRAM_DREAMS_NARRATIVE_API_KEY');
+  writeLine('  --narrative-base-url <url>               ENGRAM_DREAMS_NARRATIVE_BASE_URL');
 }
 
 function parseFocusList(value: string | undefined): DreamsFocus[] | undefined {
