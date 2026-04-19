@@ -32,10 +32,17 @@ export function renderChatInputArea(
   cb: ChatInputCallbacks,
 ): ChatInputRefs {
   const inputContainer = parent.createDiv({ cls: 'engram-input-container' });
+  inputContainer.createDiv({
+    cls: 'engram-input-hint',
+    text: 'Enter sends. Shift+Enter adds a new line.',
+  });
 
   const inputEl = inputContainer.createEl('textarea', {
     cls: 'engram-input',
-    attr: { placeholder: 'Type a message…', rows: '3' },
+    attr: {
+      placeholder: 'Ask Engram about your vault or continue the conversation…',
+      rows: '3',
+    },
   });
   inputEl.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -149,8 +156,13 @@ interface FooterRefs {
 
 function renderFooter(parent: HTMLElement, cb: ChatInputCallbacks): FooterRefs {
   const footer = parent.createDiv({ cls: 'engram-input-footer' });
+  const selection = footer.createDiv({ cls: 'engram-input-selection' });
+  selection.createEl('label', {
+    cls: 'engram-input-selection-label',
+    text: 'Model',
+  });
 
-  const combinedModelSelect = footer.createEl('select', {
+  const combinedModelSelect = selection.createEl('select', {
     cls: 'engram-model-select',
     attr: { 'aria-label': 'Provider / model' },
   });

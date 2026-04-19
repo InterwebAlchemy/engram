@@ -1,4 +1,7 @@
-import { defaultMemoryConfig } from '@interwebalchemy/engram-core';
+import {
+  type VaultNote,
+  defaultMemoryConfig,
+} from '@interwebalchemy/engram-core';
 import type EngramPlugin from '../main';
 import type { EngramTabId } from '../constants';
 import type { EngramTab } from './tab';
@@ -24,21 +27,17 @@ import { Ciph3rTextAnimator } from '../utils/ciph3r';
 import { DreamCanvas } from '../utils/dream-canvas';
 import {
   renderDreamResultsSection,
-  renderFindingsSections,
-  renderSummarySection,
-  renderUsageHistorySection,
   showNotice,
 } from './dreams-view-helpers';
+import { renderSummarySection } from './dreams-view-summary';
 import {
+  confirmDreamRun,
   renderDreamControls,
-  renderDreamToolbar,
 } from './dreams-view-controls';
 import {
   type DreamSelectionState,
   getNarrativeOverrideOption,
   persistDreamSelectionSettings,
-  updateAnalysisSelection,
-  updateNarrativeSelection,
 } from './dreams-view-selection';
 import {
   buildDreamCompletionNotice,
@@ -67,7 +66,7 @@ export class DreamsTab implements EngramTab {
   private parent: HTMLElement | null = null;
   private report: DreamsReport | null = null;
   private snapshotCount = 0;
-  private runHistory: DreamsRunHistory | null = null;
+  private memoryNotes: VaultNote[] = [];
   private latestPlan: DreamsPlanResult | null = null;
   private latestExecution: DreamsExecutionResult | null = null;
   private latestRunSnapshot: SnapshotRecord | null = null;
@@ -107,23 +106,7 @@ export class DreamsTab implements EngramTab {
     this.error = null;
     this.render();
     try {
-      const analyzer = new DreamsAnalyzer(this.plugin.memoryManager);
-      const snapshotManager = DreamsTab.createSnapshotManager();
-      const basePath = this.plugin.getVaultBasePath();
-      const [report, snapshots, history] = await Promise.all([
-        analyzer.analyze(),
-        snapshotManager.list(),
-        readDreamsRunHistory(
-          this.plugin.fileAdapter,
-          basePath,
-          this.plugin.settings.engramRoot,
-          'working',
-        ),
-      ]);
-      this.report = report;
-      const { length: snapshotCount } = snapshots;
-      this.snapshotCount = snapshotCount;
-      this.runHistory = history;
+      await this.loadDashboardData();
       this.syncSelection();
     } catch (error) {
       this.error = error instanceof Error ? error.message : String(error);
@@ -143,26 +126,6 @@ export class DreamsTab implements EngramTab {
       this.renderDreamingOverlay();
       return;
     }
-    renderDreamToolbar({
-      parent: this.parent.createDiv({ cls: 'engram-dreams-toolbar' }),
-      onRefresh: () => { void this.refresh(); },
-    });
-    renderDreamControls({
-      parent: this.parent,
-      options: this.syncSelection(),
-      selectedProviderId: this.selectedProviderId,
-      selectedModelId: this.selectedModelId,
-      narrativeProviderId: this.narrativeProviderId,
-      narrativeModelId: this.narrativeModelId,
-      onModelChange: (providerId, modelId) => {
-        this.setAnalysisSelection(providerId, modelId);
-      },
-      onNarrativeChange: (providerId, modelId) => {
-        this.setNarrativeSelection(providerId, modelId);
-      },
-      onDream: () => { void this.handleDream(); },
-      onPowerNap: () => { void this.handlePowerNap(); },
-    });
     if (this.loading) {
       this.parent.createDiv({
         cls: 'engram-dreams-empty',
@@ -184,8 +147,13 @@ export class DreamsTab implements EngramTab {
       });
       return;
     }
-    renderSummarySection(this.parent, this.report, this.snapshotCount);
-    renderUsageHistorySection(this.parent, this.runHistory);
+    renderSummarySection(this.parent, this.report, this.snapshotCount, this.memoryNotes);
+    renderDreamControls({
+      parent: this.parent,
+      hasModels: this.syncSelection().length > 0,
+      onDream: () => { this.handleDream(); },
+      onPowerNap: () => { void this.handlePowerNap(); },
+    });
     renderDreamResultsSection({
       parent: this.parent,
       latestPlan: this.latestPlan,
@@ -200,7 +168,6 @@ export class DreamsTab implements EngramTab {
         this.latestExecution,
       ),
     });
-    renderFindingsSections(this.parent, this.report);
   }
   private renderDreamingOverlay(): void {
     if (this.parent === null) {
@@ -225,18 +192,35 @@ export class DreamsTab implements EngramTab {
       this.dreamAnimator = null;
     }
   }
-  private async handleDream(): Promise<void> {
+  private handleDream(): void {
     if (this.running) {
       return;
     }
-    const selection = findSelectedOption(this.syncSelection(), {
-      providerId: this.selectedProviderId,
-      modelId: this.selectedModelId,
-    });
-    if (selection === null) {
+    const options = this.syncSelection();
+    if (options.length === 0) {
       showNotice('No Dreams model is configured yet. Enable one in Settings first.');
       return;
     }
+    confirmDreamRun({
+      app: this.plugin.app,
+      initialState: this.getSelectionState(),
+      onConfirm: (nextSelectionState) => {
+        this.applySelectionState(nextSelectionState);
+        const selection = findSelectedOption(options, {
+          providerId: this.selectedProviderId,
+          modelId: this.selectedModelId,
+        });
+        if (selection === null) {
+          showNotice('No Dreams model is configured yet. Enable one in Settings first.');
+          return;
+        }
+        void this.beginDreamRun(selection);
+      },
+      options,
+    });
+  }
+
+  private async beginDreamRun(selection: ModelOption): Promise<void> {
     this.beginRun(DREAMING_LABEL);
     try {
       await this.runDream(selection);
@@ -309,7 +293,7 @@ export class DreamsTab implements EngramTab {
     const { report } = plan;
     this.report = report;
     this.latestExecution = await this.applyDreamPlan(plan, snapshot);
-    this.runHistory = await this.recordDreamRun(selection, plan);
+    await this.recordDreamRun(selection, plan);
     if (this.latestExecution !== null) {
       await writeDreamScratchEntry({
         manager: this.plugin.memoryManager,
@@ -319,8 +303,7 @@ export class DreamsTab implements EngramTab {
         dream: plan.dream,
       });
     }
-    const { length: snapshotCount } = await snapshotManager.list();
-    this.snapshotCount = snapshotCount;
+    await this.loadDashboardData({ includeHistory: false });
     this.plugin.refreshEngramView('snapshots');
     showNotice(buildDreamCompletionNotice(plan, this.latestExecution));
   }
@@ -336,6 +319,7 @@ export class DreamsTab implements EngramTab {
     const { length: snapshotCount } = snapshots;
     this.snapshotCount = snapshotCount;
     this.latestRunSnapshot = snapshot;
+    this.memoryNotes = await this.plugin.memoryManager.list();
     this.plugin.refreshEngramView('snapshots');
     showNotice(
       `Power Nap complete: ${preCleanup.tagsFixed} tags fixed, ${preCleanup.tagsNormalized} tags normalized, ${preCleanup.scratchEntriesPurged} scratch entries purged, ${preCleanup.orphanedDreamStartsResolved} orphaned dream starts resolved.`,
@@ -378,6 +362,37 @@ export class DreamsTab implements EngramTab {
   private static createSnapshotManager(): SnapshotManager {
     return new SnapshotManager();
   }
+  private async loadDashboardData(options: { includeHistory?: boolean } = {}): Promise<void> {
+    const { includeHistory = true } = options;
+    const analyzer = new DreamsAnalyzer(this.plugin.memoryManager);
+    const snapshotManager = DreamsTab.createSnapshotManager();
+    const basePath = this.plugin.getVaultBasePath();
+    const reportPromise = analyzer.analyze();
+    const snapshotsPromise = snapshotManager.list();
+    const notesPromise = this.plugin.memoryManager.list();
+    const historyPromise = includeHistory
+      ? readDreamsRunHistory(
+        this.plugin.fileAdapter,
+        basePath,
+        this.plugin.settings.engramRoot,
+        'working',
+      )
+      : Promise.resolve<DreamsRunHistory | null>(null);
+    const [report, snapshots, notes, history] = await Promise.all([
+      reportPromise,
+      snapshotsPromise,
+      notesPromise,
+      historyPromise,
+    ]);
+    this.report = report;
+    const { length: snapshotCount } = snapshots;
+    this.snapshotCount = snapshotCount;
+    this.memoryNotes = notes;
+    if (history !== null) {
+      /* History loaded for future use; currently not displayed. */
+    }
+  }
+
   private syncSelection(): ModelOption[] {
     const options = getModelOptions(this.plugin.settings);
     const analysisFallback = getDreamAnalysisSelection(this.plugin.settings, options);
@@ -403,16 +418,6 @@ export class DreamsTab implements EngramTab {
       narrativeSelection,
     });
     return options;
-  }
-  private setAnalysisSelection(providerId: string, modelId: string): void {
-    this.applySelectionState(
-      updateAnalysisSelection(this.getSelectionState(), providerId, modelId),
-    );
-  }
-  private setNarrativeSelection(providerId: string, modelId: string): void {
-    this.applySelectionState(
-      updateNarrativeSelection(this.getSelectionState(), providerId, modelId),
-    );
   }
   private getSelectionState(): DreamSelectionState {
     return {

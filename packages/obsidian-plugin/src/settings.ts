@@ -487,7 +487,7 @@ export class EngramSettingTab extends PluginSettingTab {
   }
   private refreshModelBackedViews(): void {
     this.plugin.refreshEngramView('chat');
-    this.plugin.refreshEngramView('dreams');
+    this.plugin.refreshEngramView('memories');
   }
 }
 
