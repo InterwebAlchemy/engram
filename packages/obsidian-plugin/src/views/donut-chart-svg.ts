@@ -25,6 +25,10 @@ const BOOTSTRAP_LABEL_OFFSET = 20;
 const RECLAIM_PAD = 2;
 const CONTEXT_CAP_OUTER_PAD = 1.5;
 const CONTEXT_CAP_THICKNESS = 7;
+const THREAD_BOOTSTRAP_OVERLAY_OUTER_PAD = 1;
+const THREAD_BOOTSTRAP_OVERLAY_INNER_PAD = 1;
+const THREAD_BOOTSTRAP_OUTLINE_OUTER_PAD = 0.25;
+const THREAD_BOOTSTRAP_OUTLINE_INNER_PAD = 0.25;
 
 export function createSvg(): SVGSVGElement {
   const svg = document.createElementNS(SVG_NS, 'svg');
@@ -88,29 +92,57 @@ export function appendArc(opts: ArcOpts): SVGPathElement {
  * Dashed outline around the full two-ring bootstrap wedge.
  */
 export function appendBootstrapOutline(svg: SVGElement, startDeg: number, endDeg: number): SVGPathElement {
-  const path = document.createElementNS(SVG_NS, 'path');
-  path.setAttribute('d', describeArc(
-    OUTER_R_OUT + BOOTSTRAP_OUTLINE_OUTER_PAD,
-    INNER_R_IN - BOOTSTRAP_OUTLINE_INNER_PAD,
-    startDeg,
+  return appendOverlayPath(svg, {
+    classes: ['engram-donut-bootstrap-arc'],
     endDeg,
-  ));
-  path.classList.add('engram-donut-bootstrap-arc');
-  svg.appendChild(path);
-  return path;
+    rIn: INNER_R_IN - BOOTSTRAP_OUTLINE_INNER_PAD,
+    rOut: OUTER_R_OUT + BOOTSTRAP_OUTLINE_OUTER_PAD,
+    startDeg,
+  });
 }
 
 export function appendBootstrapOverlay(svg: SVGElement, startDeg: number, endDeg: number): SVGPathElement {
-  const path = document.createElementNS(SVG_NS, 'path');
-  path.setAttribute('d', describeArc(
-    OUTER_R_OUT + BOOTSTRAP_OUTLINE_OUTER_PAD,
-    INNER_R_IN - BOOTSTRAP_OVERLAY_INNER_PAD,
-    startDeg,
+  return appendOverlayPath(svg, {
+    classes: ['engram-donut-bootstrap-overlay'],
     endDeg,
-  ));
-  path.classList.add('engram-donut-bootstrap-overlay');
-  svg.appendChild(path);
-  return path;
+    rIn: INNER_R_IN - BOOTSTRAP_OVERLAY_INNER_PAD,
+    rOut: OUTER_R_OUT + BOOTSTRAP_OUTLINE_OUTER_PAD,
+    startDeg,
+  });
+}
+
+export function appendThreadBootstrapOutline(
+  svg: SVGElement,
+  startDeg: number,
+  endDeg: number,
+  thicknessRatio: number,
+): SVGPathElement {
+  return appendThreadBootstrapBand(svg, {
+    className: 'engram-donut-thread-bootstrap-outline',
+    endDeg,
+    padIn: THREAD_BOOTSTRAP_OUTLINE_INNER_PAD,
+    padOut: THREAD_BOOTSTRAP_OUTLINE_OUTER_PAD,
+    startDeg,
+    strokeOnly: true,
+    thicknessRatio,
+  });
+}
+
+export function appendThreadBootstrapOverlay(
+  svg: SVGElement,
+  startDeg: number,
+  endDeg: number,
+  thicknessRatio: number,
+): SVGPathElement {
+  return appendThreadBootstrapBand(svg, {
+    className: 'engram-donut-thread-bootstrap-overlay',
+    endDeg,
+    padIn: THREAD_BOOTSTRAP_OVERLAY_INNER_PAD,
+    padOut: THREAD_BOOTSTRAP_OVERLAY_OUTER_PAD,
+    startDeg,
+    strokeOnly: false,
+    thicknessRatio,
+  });
 }
 
 export function appendBootstrapLabel(svg: SVGElement, startDeg: number, endDeg: number): SVGTextElement {
@@ -140,14 +172,82 @@ export function appendReclaimArc(svg: SVGElement, startDeg: number, endDeg: numb
 }
 
 export function appendContextCap(svg: SVGElement, startDeg: number, endDeg: number): SVGPathElement {
-  const path = document.createElementNS(SVG_NS, 'path');
-  path.setAttribute('d', describeArc(
-    OUTER_R_OUT + CONTEXT_CAP_OUTER_PAD,
-    OUTER_R_OUT - CONTEXT_CAP_THICKNESS,
-    startDeg,
+  return appendOverlayPath(svg, {
+    classes: ['engram-donut-context-cap'],
     endDeg,
-  ));
-  path.classList.add('engram-donut-context-cap');
+    rIn: OUTER_R_OUT - CONTEXT_CAP_THICKNESS,
+    rOut: OUTER_R_OUT + CONTEXT_CAP_OUTER_PAD,
+    startDeg,
+  });
+}
+
+function appendOverlayPath(
+  svg: SVGElement,
+  opts: {
+    classes: string[];
+    endDeg: number;
+    rIn: number;
+    rOut: number;
+    startDeg: number;
+  },
+): SVGPathElement {
+  const {
+    classes,
+    endDeg,
+    rIn,
+    rOut,
+    startDeg,
+  } = opts;
+  const path = document.createElementNS(SVG_NS, 'path');
+  path.setAttribute('d', describeArc(rOut, rIn, startDeg, endDeg));
+  path.classList.add(...classes);
   svg.appendChild(path);
   return path;
+}
+
+function appendThreadBootstrapBand(
+  svg: SVGElement,
+  opts: {
+    className: 'engram-donut-thread-bootstrap-outline' | 'engram-donut-thread-bootstrap-overlay';
+    endDeg: number;
+    padIn: number;
+    padOut: number;
+    startDeg: number;
+    strokeOnly: boolean;
+    thicknessRatio: number;
+  },
+): SVGPathElement {
+  const {
+    className,
+    endDeg,
+    padIn,
+    padOut,
+    startDeg,
+    strokeOnly,
+    thicknessRatio,
+  } = opts;
+  const rOut = OUTER_R_OUT - padOut;
+  const minInner = INNER_R_IN + padIn;
+  const bandThickness = Math.max(rOut - minInner, 0) * clampRatio(thicknessRatio);
+  const rIn = Math.max(rOut - bandThickness, minInner);
+
+  return appendOverlayPath(svg, {
+    classes: strokeOnly
+      ? ['engram-donut-bootstrap-arc', className]
+      : ['engram-donut-bootstrap-overlay', className],
+    endDeg,
+    rIn,
+    rOut,
+    startDeg,
+  });
+}
+
+function clampRatio(value: number): number {
+  if (value <= 0) {
+    return 0;
+  }
+  if (value >= 1) {
+    return 1;
+  }
+  return value;
 }

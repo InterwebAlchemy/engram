@@ -41,6 +41,10 @@ export function decorateInteractiveElement(
   }
 
   if (!interactive) {
+    if (element instanceof SVGElement) {
+      const svgElement = element;
+      svgElement.style.pointerEvents = 'none';
+    }
     return;
   }
 

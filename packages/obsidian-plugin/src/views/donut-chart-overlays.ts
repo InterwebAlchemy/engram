@@ -1,4 +1,8 @@
-import { appendContextCap } from './donut-chart-svg';
+import {
+  appendContextCap,
+  appendThreadBootstrapOutline,
+  appendThreadBootstrapOverlay,
+} from './donut-chart-svg';
 import {
   bindTooltip,
 } from './donut-chart-legend';
@@ -48,6 +52,36 @@ export function renderContextCapOverlay(opts: {
   }
 
   const ratio = Math.min(bootstrapValue / totalValue, 1);
+  if (segment.kind === 'thread') {
+    const overlay = appendThreadBootstrapOverlay(svg, startDeg, endDeg, ratio);
+    const outline = appendThreadBootstrapOutline(svg, startDeg, endDeg, ratio);
+    applyThreadBootstrapAppearance(overlay, outline, segment);
+
+    bindTooltip(overlay, { tooltip, wrapper }, () => overlayTooltipBody(formatCount, segment));
+    decorateInteractiveElement(
+      overlay,
+      { frame, interaction },
+      { kind: 'overlay', key: overlayTargetKey(segment) },
+      {
+        bootstrap: isCurrentBootstrapOverlay(segment, data.resolvedThreadId),
+        innerKey: segment.key,
+        relatedKey: segment.key,
+      },
+    );
+    decorateInteractiveElement(
+      outline,
+      { frame, interaction },
+      { kind: 'overlay', key: overlayTargetKey(segment) },
+      {
+        bootstrap: isCurrentBootstrapOverlay(segment, data.resolvedThreadId),
+        innerKey: segment.key,
+        interactive: false,
+        relatedKey: segment.key,
+      },
+    );
+    return;
+  }
+
   const capEndDeg = startDeg + ((endDeg - startDeg) * ratio);
   const cap = appendContextCap(svg, startDeg, capEndDeg);
   applyContextCapAppearance(cap, segment);
@@ -78,16 +112,22 @@ function getBootstrapValue(
 
 function applyContextCapAppearance(
   cap: SVGPathElement,
-  segment: Extract<InnerSegment, { kind: 'global-inbox' | 'thread' }>,
+  segment: Extract<InnerSegment, { kind: 'global-inbox' }>,
 ): void {
   cap.style.setProperty(
     '--engram-context-cap-color',
-    segment.kind === 'thread'
-      ? 'color-mix(in srgb, white 92%, var(--text-normal) 8%)'
-      : segment.color,
+    segment.color,
   );
-  cap.classList.add(segment.kind === 'thread' ? 'is-thread-cap' : 'is-global-inbox-cap');
-  if (segment.kind === 'thread' && segment.isResolved) {
-    cap.classList.add('is-current-thread');
+  cap.classList.add('is-global-inbox-cap');
+}
+
+function applyThreadBootstrapAppearance(
+  overlay: SVGPathElement,
+  outline: SVGPathElement,
+  segment: Extract<InnerSegment, { kind: 'thread' }>,
+): void {
+  if (segment.isResolved) {
+    overlay.classList.add('is-current-thread');
+    outline.classList.add('is-current-thread');
   }
 }

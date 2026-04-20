@@ -26,8 +26,12 @@ import {
   stateTooltipBody,
   threadTooltipBody,
   typeTooltipBody,
-  type LegendItem,
 } from './donut-chart-legend';
+import {
+  buildBootstrapLegendItems,
+  buildStateLegendItems,
+  buildTypeLegendItems,
+} from './donut-chart-legend-builders';
 import {
   applyInteractionState,
   decorateInteractiveElement,
@@ -35,8 +39,6 @@ import {
 import {
   buildInnerSegments,
   getInnerValue,
-  innerLegendLabel,
-  innerLegendMeta,
   type InnerSegment,
 } from './donut-chart-inner';
 import {
@@ -85,6 +87,11 @@ interface InnerLayout {
 }
 
 const MIN_THREAD_SPAN_DEG = 3.5;
+const THOUSAND = 1_000;
+const TEN = 10;
+const HUNDRED = 100;
+const ONE_DECIMAL_DIGITS = 1;
+const TWO_DECIMAL_DIGITS = 2;
 
 export function renderDonutChart(
   parent: HTMLElement,
@@ -94,13 +101,8 @@ export function renderDonutChart(
   const frame = parent.createDiv({ cls: 'engram-donut-frame' });
   const wrapper = frame.createDiv({ cls: 'engram-donut-wrapper' });
   const ring = wrapper.createDiv({ cls: 'engram-donut-ring' });
-  const caption = wrapper.createDiv({
-    cls: 'engram-donut-caption',
-    text: 'Solid wedges show stored Engram footprint. Dotted caps show bootstrap context pressure.',
-  });
   const tooltip = frame.createDiv({ cls: 'engram-donut-tooltip' });
   tooltip.style.opacity = '0';
-  caption.setAttribute('aria-hidden', 'true');
 
   const ctx: RenderContext = {
     data,
@@ -411,12 +413,14 @@ function renderReclaimOverlay(svg: SVGElement, ctx: RenderContext, layout: Inner
 }
 
 function renderLegendForCtx(ctx: RenderContext, legendOpen: boolean, onLegendToggle: () => void): void {
-  const columns = buildLegendColumns(
-    ctx.formatCount,
-    buildInnerLegendItems(ctx),
-    ctx.data.stateBreakdown,
-    ctx.data.typeColorByLabel,
-  );
+  const columns = buildLegendColumns({
+    bootstrapItems: buildBootstrapLegendItems(ctx.data, ctx.formatCount),
+    formatCount: ctx.formatCount,
+    innerItems: buildStateLegendItems(ctx.data, ctx.formatCount),
+    outerItems: buildTypeLegendItems(ctx.data, ctx.formatCount),
+    stateBreakdown: ctx.data.stateBreakdown,
+    typeColorByLabel: ctx.data.typeColorByLabel,
+  });
   renderLegend(ctx.frame, {
     columns,
     legendOpen,
@@ -444,8 +448,8 @@ function updateCenterDisplay(ctx: RenderContext): void {
     return;
   }
   const focus = resolveFocusedCenter(ctx.data, ctx.interaction.activeTarget);
-  centerValueEl.setText(`~${ctx.formatCount(focus.value)} ${ctx.data.unit === 'tokens' ? 'tokens' : 'items'}`);
-  centerLabelEl.setText('');
+  centerValueEl.setText(`~${formatCompactCount(focus.value)}`);
+  centerLabelEl.setText(ctx.data.unit === 'tokens' ? 'tokens' : 'items');
 }
 
 function updateAccessibleSummary(ctx: RenderContext): void {
@@ -453,6 +457,31 @@ function updateAccessibleSummary(ctx: RenderContext): void {
   ctx.ring.setAttribute('aria-label', buildAccessibleSummary(ctx.data, ctx.formatCount));
 }
 
-function buildInnerLegendItems(ctx: RenderContext): LegendItem[] {
-  return buildInnerSegments(ctx.data).map((segment) => ({ color: segment.color, label: innerLegendLabel(segment), meta: innerLegendMeta(ctx.formatCount, segment), target: { kind: 'inner', key: segment.key } as const }));
+function formatCompactCount(value: number): string {
+  const absolute = Math.abs(value);
+  if (absolute < THOUSAND) {
+    return Math.round(value).toLocaleString();
+  }
+
+  const units = [
+    { suffix: 'T', value: 1_000_000_000_000 },
+    { suffix: 'B', value: 1_000_000_000 },
+    { suffix: 'M', value: 1_000_000 },
+    { suffix: 'K', value: 1_000 },
+  ] as const;
+
+  for (const unit of units) {
+    if (absolute < unit.value) {
+      continue;
+    }
+    const scaled = value / unit.value;
+    const digits = Math.abs(scaled) >= HUNDRED ? 0 : (Math.abs(scaled) >= TEN ? ONE_DECIMAL_DIGITS : TWO_DECIMAL_DIGITS);
+    return `${stripTrailingZeroes(scaled.toFixed(digits))}${unit.suffix}`;
+  }
+
+  return Math.round(value).toLocaleString();
+}
+
+function stripTrailingZeroes(value: string): string {
+  return value.replace(/\.0+$|(?<decimal>\.\d*[1-9])0+$/u, '$<decimal>');
 }

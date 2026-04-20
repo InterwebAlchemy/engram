@@ -12,11 +12,17 @@ export interface LegendItem {
   color: string;
   label: string;
   meta: string;
+  swatchVariant?: 'context' | 'solid';
   target: DonutTarget;
 }
 
-export interface LegendColumn {
+export interface LegendSection {
   items: LegendItem[];
+  title?: string;
+}
+
+export interface LegendColumn {
+  sections: LegendSection[];
   title: string;
 }
 
@@ -36,23 +42,46 @@ export interface TooltipCtx {
 }
 
 export function buildLegendColumns(
-  formatCount: (value: number) => string,
-  innerItems: LegendItem[],
-  stateBreakdown: StateSegment[],
-  typeColorByLabel: Record<string, string>,
+  opts: {
+    bootstrapItems: LegendItem[];
+    formatCount: (value: number) => string;
+    innerItems: LegendItem[];
+    outerItems: LegendItem[];
+    stateBreakdown: StateSegment[];
+    typeColorByLabel: Record<string, string>;
+  },
 ): LegendColumn[] {
-  const outerItems = aggregateTypeTotals(stateBreakdown)
+  const {
+    bootstrapItems,
+    formatCount,
+    innerItems,
+    outerItems,
+    stateBreakdown,
+    typeColorByLabel,
+  } = opts;
+  const typeItems = outerItems.length > 0
+    ? outerItems
+    : aggregateTypeTotals(stateBreakdown)
     .filter(([, totals]) => totals.count > 0)
     .map(([label, totals]) => ({
       color: typeColorByLabel[label] ?? 'var(--text-muted)',
       label,
-      meta: `${formatCount(totals.count)} · ~${formatCount(totals.tokens)} tok`,
+      meta: `~${formatCount(totals.tokens)} tok`,
       target: { kind: 'outer', key: label } as const,
     }));
 
   return [
-    { items: innerItems, title: 'Inner Ring' },
-    { items: outerItems, title: 'Outer Ring' },
+    {
+      sections: [{ items: innerItems }],
+      title: 'Memory State',
+    },
+    {
+      sections: [
+        { items: typeItems },
+        ...(bootstrapItems.length > 0 ? [{ items: bootstrapItems, title: 'Bootstrap' }] : []),
+      ],
+      title: 'Memory Type',
+    },
   ];
 }
 
@@ -74,9 +103,14 @@ export function renderLegend(parent: HTMLElement, ctx: LegendCtx): void {
   for (const column of ctx.columns) {
     const columnEl = drawer.createDiv({ cls: 'engram-donut-legend-column' });
     columnEl.createDiv({ cls: 'engram-donut-legend-title', text: column.title });
-    const list = columnEl.createDiv({ cls: 'engram-donut-legend-list' });
-    for (const item of column.items) {
-      addLegendItem(list, item, ctx);
+    for (const section of column.sections) {
+      if (section.title !== undefined) {
+        columnEl.createDiv({ cls: 'engram-donut-legend-subtitle', text: section.title });
+      }
+      const list = columnEl.createDiv({ cls: 'engram-donut-legend-list' });
+      for (const item of section.items) {
+        addLegendItem(list, item, ctx);
+      }
     }
   }
 }
@@ -101,6 +135,7 @@ function addLegendItem(parent: HTMLElement, item: LegendItem, ctx: LegendCtx): v
   const swatch = row.createSpan({ cls: 'engram-donut-legend-swatch' });
   const { style } = swatch;
   style.background = color;
+  swatch.classList.toggle('is-context', item.swatchVariant === 'context');
 
   const text = row.createDiv({ cls: 'engram-donut-legend-text' });
   text.createSpan({ cls: 'engram-donut-legend-label', text: label });
@@ -152,15 +187,15 @@ export function bindTooltip(target: SVGElement, ctx: TooltipCtx, body: () => str
 }
 
 export function stateTooltipBody(formatCount: (n: number) => string, state: StateSegment): string {
-  return `${state.label} · ${formatCount(state.count)} memories · ~${formatCount(state.tokens)} tokens`;
+  return `${state.label} · ${formatCount(state.count)} · ~${formatCount(state.tokens)} tok`;
 }
 
 export function typeTooltipBody(formatCount: (n: number) => string, stateLabel: string, type: TypeSegment): string {
-  return `${stateLabel} · ${type.label} · ${formatCount(type.count)} · ~${formatCount(type.tokens)} tokens`;
+  return `${stateLabel} / ${type.label} · ${formatCount(type.count)} · ~${formatCount(type.tokens)} tok`;
 }
 
 export function soulTooltipBody(formatCount: (n: number) => string, tokens: number): string {
-  return `Soul · identity anchor · 1 doc · ~${formatCount(tokens)} tokens · loaded at bootstrap`;
+  return `Soul · 1 doc · ~${formatCount(tokens)} tok`;
 }
 
 export function globalInboxTooltipBody(
@@ -173,15 +208,14 @@ export function globalInboxTooltipBody(
   },
 ): string {
   const {
-    bootstrapCount,
     bootstrapTokens,
     storedCount,
     storedTokens,
   } = details;
-  const bootstrapDetail = bootstrapCount > 0
-    ? ` · bootstrap ${formatCount(bootstrapCount)} section · ~${formatCount(bootstrapTokens)} tokens`
+  const bootstrapDetail = bootstrapTokens > 0
+    ? ` · ctx ~${formatCount(bootstrapTokens)} tok`
     : '';
-  return `Global inbox · ${formatCount(storedCount)} stored notes · ~${formatCount(storedTokens)} tokens${bootstrapDetail}`;
+  return `Global Inbox · ${formatCount(storedCount)} · ~${formatCount(storedTokens)} tok${bootstrapDetail}`;
 }
 
 export function threadTooltipBody(
@@ -196,22 +230,11 @@ export function threadTooltipBody(
   },
 ): string {
   const {
-    bootstrapCount,
-    bootstrapTokens,
     label,
     storedCount,
     storedTokens,
-    threadInboxIncluded,
   } = details;
-  const includedParts = [
-    bootstrapCount > 0 ? 'thread summary' : null,
-    threadInboxIncluded ? 'thread inbox' : null,
-  ].filter((detail): detail is string => detail !== null);
-  const bootstrapDetail = bootstrapCount > 0
-    ? ` · bootstrap ${formatCount(bootstrapCount)} sections · ~${formatCount(bootstrapTokens)} tokens`
-    : '';
-  const suffix = includedParts.length > 0 ? ` · includes ${includedParts.join(', ')}` : '';
-  return `Thread · ${label} · ${formatCount(storedCount)} stored items · ~${formatCount(storedTokens)} tokens${bootstrapDetail}${suffix}`;
+  return `${label} · ${formatCount(storedCount)} · ~${formatCount(storedTokens)} tok`;
 }
 
 export function threadBootstrapTooltipBody(
@@ -225,26 +248,19 @@ export function threadBootstrapTooltipBody(
   },
 ): string {
   const {
-    bootstrapCount,
     bootstrapTokens,
     isResolved,
     label,
-    threadInboxIncluded,
   } = details;
-  const parts = [
-    'thread summary',
-    threadInboxIncluded ? 'thread inbox' : null,
-  ].filter((part): part is string => part !== null);
-  const scope = isResolved ? 'current bootstrap' : 'if initialized from this thread';
-  return `Thread bootstrap · ${label} · ${scope} · ${formatCount(bootstrapCount)} sections · ~${formatCount(bootstrapTokens)} tokens${parts.length > 0 ? ` · ${parts.join(', ')}` : ''}`;
+  const scope = isResolved ? ' · current' : '';
+  return `${label} Context · ~${formatCount(bootstrapTokens)} tok${scope}`;
 }
 
 export function globalInboxBootstrapTooltipBody(
   formatCount: (n: number) => string,
-  bootstrapCount: number,
   bootstrapTokens: number,
 ): string {
-  return `Global inbox bootstrap · ${formatCount(bootstrapCount)} section · ~${formatCount(bootstrapTokens)} tokens`;
+  return `Global Inbox Context · ~${formatCount(bootstrapTokens)} tok`;
 }
 
 export function scratchBootstrapTooltipBody(
@@ -256,8 +272,8 @@ export function scratchBootstrapTooltipBody(
   const activeSessions = sessions.filter((session) => session.bootstrapEntryCount > 0);
   const detail = activeSessions.length === 0
     ? ''
-    : ` · ${activeSessions.map((session) => `${session.label} ${formatCount(session.bootstrapEntryCount)}`).join(', ')}`;
-  return `Scratch · in bootstrap · ${formatCount(entries)} entries · ~${formatCount(tokens)} rendered tokens${detail}`;
+    : ` · ${activeSessions.map((session) => session.label).join(', ')}`;
+  return `Scratch Context · ${formatCount(entries)} · ~${formatCount(tokens)} tok${detail}`;
 }
 
 export function scratchColdTooltipBody(
@@ -265,5 +281,5 @@ export function scratchColdTooltipBody(
   entries: number,
   tokens: number,
 ): string {
-  return `Scratch · cold (vault only) · ${formatCount(entries)} entries · ~${formatCount(tokens)} stored tokens`;
+  return `Scratch Cold · ${formatCount(entries)} · ~${formatCount(tokens)} tok`;
 }

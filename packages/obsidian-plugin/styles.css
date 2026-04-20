@@ -1077,6 +1077,20 @@ details[open] > .engram-reasoning-summary::before {
   transform: translateY(-1px);
 }
 
+.engram-donut-thread-bootstrap-overlay {
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.engram-donut-thread-bootstrap-overlay.is-current-thread {
+  opacity: 0.96;
+}
+
+.engram-donut-thread-bootstrap-outline.is-current-thread {
+  stroke-width: 2.3;
+  opacity: 0.92;
+}
+
 .engram-donut-context-cap {
   fill: color-mix(in srgb, var(--engram-context-cap-color, currentColor) 14%, transparent);
   stroke: var(--engram-context-cap-color, currentColor);
@@ -1133,13 +1147,15 @@ details[open] > .engram-reasoning-summary::before {
   font-size: 24px;
   font-weight: 700;
   line-height: 1;
-  max-width: 72%;
+  max-width: 82%;
+  overflow-wrap: anywhere;
 }
 
 .engram-donut-center-label {
   color: var(--text-muted);
   font-size: var(--font-ui-small);
-  min-height: 0;
+  min-height: 1.2em;
+  margin-top: 4px;
 }
 
 .engram-donut-caption {
@@ -1148,6 +1164,31 @@ details[open] > .engram-reasoning-summary::before {
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
   line-height: 1.45;
+}
+
+.engram-donut-annotation {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  max-width: 360px;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  line-height: 1.4;
+  text-align: center;
+}
+
+.engram-donut-annotation-swatch {
+  width: 18px;
+  height: 10px;
+  flex: 0 0 auto;
+  border: 1.5px dashed var(--text-accent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-accent) 14%, transparent);
+}
+
+.engram-donut-annotation-text {
+  max-width: 320px;
 }
 
 /* ─── Soul / scratch outer slices, tooltip, legend ────────────────────────── */
@@ -1240,6 +1281,8 @@ details[open] > .engram-reasoning-summary::before {
   background: color-mix(in srgb, var(--background-secondary) 94%, transparent);
   box-shadow: 0 16px 36px rgba(0, 0, 0, 0.2);
   backdrop-filter: blur(14px);
+  justify-items: stretch;
+  text-align: left;
   transform: translateX(22px);
   opacity: 0;
   pointer-events: none;
@@ -1257,8 +1300,10 @@ details[open] > .engram-reasoning-summary::before {
 .engram-donut-legend-column {
   display: flex;
   flex-direction: column;
+  align-items: stretch;
   gap: 10px;
   min-width: 0;
+  text-align: left;
 }
 
 .engram-donut-legend-title {
@@ -1267,11 +1312,20 @@ details[open] > .engram-reasoning-summary::before {
   text-transform: uppercase;
   letter-spacing: 0.8px;
   color: var(--text-faint);
+  text-align: left;
+}
+
+.engram-donut-legend-subtitle {
+  font-size: var(--font-ui-smaller);
+  font-weight: 700;
+  color: var(--text-muted);
+  text-align: left;
 }
 
 .engram-donut-legend-list {
   display: flex;
   flex-direction: column;
+  align-items: stretch;
   gap: 6px;
 }
 
@@ -1285,6 +1339,7 @@ details[open] > .engram-reasoning-summary::before {
   border-radius: var(--radius-s);
   background: transparent;
   color: inherit;
+  justify-content: flex-start;
   text-align: left;
   cursor: pointer;
   transition:
@@ -1323,21 +1378,36 @@ details[open] > .engram-reasoning-summary::before {
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--background-modifier-border) 72%, transparent);
 }
 
+.engram-donut-legend-swatch.is-context {
+  border: 1.5px dashed var(--text-accent);
+  background: color-mix(in srgb, var(--text-accent) 14%, transparent) !important;
+  box-shadow: none;
+}
+
 .engram-donut-legend-text {
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
+  flex: 1 1 auto;
   min-width: 0;
+  text-align: left;
 }
 
 .engram-donut-legend-label {
+  display: block;
   font-size: var(--font-ui-small);
   font-weight: 600;
   color: var(--text-normal);
+  text-align: left;
+  width: 100%;
 }
 
 .engram-donut-legend-meta {
+  display: block;
   font-size: var(--font-ui-smaller);
   color: var(--text-faint);
+  text-align: left;
+  width: 100%;
 }
 
 .engram-dreams-storage-legend {

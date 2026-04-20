@@ -293,8 +293,8 @@ export function buildThreadInfo(parts: {
   const threadInboxStoredTokens = inboxItems.reduce((sum, item) => sum + estimateTokens(item.content), 0);
 
   const label = typeof thread.frontmatter.name === 'string' && thread.frontmatter.name.trim().length > 0
-    ? thread.frontmatter.name.trim()
-    : threadId;
+    ? formatThreadDisplayLabel(thread.frontmatter.name)
+    : formatThreadDisplayLabel(threadId);
 
   return {
     bootstrapCount: bootstrapSections.length,
@@ -316,6 +316,12 @@ export function colorForThread(seed: number | string): string {
     ? seed
     : Array.from(seed).reduce((sum, char) => sum + char.charCodeAt(0), 0);
   return THREAD_PALETTE[index % THREAD_PALETTE.length];
+}
+
+function formatThreadDisplayLabel(value: string): string {
+  const trimmed = value.trim();
+  const baseTitle = trimmed.split(/\s+[—–-]\s+/u, 1)[0]?.trim() ?? trimmed;
+  return `Thread: ${baseTitle.length > 0 ? baseTitle : trimmed}`;
 }
 
 function scratchEntryKey(entry: ScratchEntry): string {

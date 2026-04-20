@@ -121,11 +121,11 @@ export function buildInnerSegments(data: DonutChartData): InnerSegment[] {
       tokens: data.globalInbox.storedTokens,
     });
   }
-  for (const thread of data.threads) {
-    segments.push(threadToInnerSegment(thread, data.resolvedThreadId));
-  }
   for (const state of bootstrapStates) {
     segments.push(stateToInnerSegment(state));
+  }
+  for (const thread of data.threads) {
+    segments.push(threadToInnerSegment(thread, data.resolvedThreadId));
   }
   for (const state of coldStates) {
     segments.push(stateToInnerSegment(state));

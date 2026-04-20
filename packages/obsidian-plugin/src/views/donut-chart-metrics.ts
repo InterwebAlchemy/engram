@@ -109,7 +109,6 @@ export function overlayTooltipBody(
     case 'global-inbox':
       return globalInboxBootstrapTooltipBody(
         formatCount,
-        segment.bootstrapCount,
         segment.bootstrapTokens,
       );
     default:
@@ -127,7 +126,9 @@ export function isCurrentBootstrapOverlay(segment: InnerSegment, resolvedThreadI
 function overlayCenterLabel(segment: InnerSegment): string {
   switch (segment.kind) {
     case 'thread':
-      return segment.isResolved ? `Thread bootstrap · ${segment.label} · current` : `Thread bootstrap · ${segment.label}`;
+      return segment.isResolved
+        ? `Thread context add-on · ${segment.label} · current`
+        : `Thread context add-on · ${segment.label}`;
     case 'global-inbox':
       return 'Global inbox bootstrap';
     default:
