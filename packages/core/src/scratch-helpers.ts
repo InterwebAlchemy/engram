@@ -290,6 +290,102 @@ export function bootstrapScratchEntries(
   return limited;
 }
 
+export const BOOTSTRAP_ENTRY_MAX_CHARS = 200;
+const MS_PER_MINUTE = SECONDS_PER_MINUTE * MILLISECONDS_PER_SECOND;
+const MS_PER_HOUR = MINUTES_PER_HOUR * MS_PER_MINUTE;
+const MS_PER_DAY = HOURS_PER_DAY * MS_PER_HOUR;
+
+export interface BootstrapScratchRendered {
+  entry: ScratchEntry;
+  rendered: string;
+}
+
+export interface RenderBootstrapScratchOptions {
+  limit?: number;
+  since?: string;
+  tokenBudget?: number;
+  /** Token estimator; defaults to chars/4 for dependency-free use. */
+  estimateTokens?: (text: string) => number;
+  now?: number;
+}
+
+export interface RenderBootstrapScratchResult {
+  included: BootstrapScratchRendered[];
+  excluded: ScratchEntry[];
+}
+
+/**
+ * Format a scratch entry the way the bootstrap read emits it: drop the
+ * session UUID, replace the timestamp with `[Xd ago]`, strip the
+ * `[COMPACTED] ` prefix, and truncate content at `BOOTSTRAP_ENTRY_MAX_CHARS`.
+ */
+export function formatBootstrapScratchEntry(
+  entry: ScratchEntry,
+  now: number = Date.now(),
+): string {
+  const ageMs = now - new Date(entry.timestamp).getTime();
+  const ageMinutes = Math.floor(ageMs / MS_PER_MINUTE);
+  const ageHours = Math.floor(ageMs / MS_PER_HOUR);
+  const ageDays = Math.floor(ageMs / MS_PER_DAY);
+  const rel =
+    ageDays >= 1 ? `${String(ageDays)}d ago`
+    : ageHours >= 1 ? `${String(ageHours)}h ago`
+    : `${String(ageMinutes)}m ago`;
+  const raw = entry.content.startsWith(`${COMPACTED_PREFIX} `)
+    ? entry.content.slice(COMPACTED_PREFIX.length + 1)
+    : entry.content;
+  const truncated =
+    raw.length > BOOTSTRAP_ENTRY_MAX_CHARS
+      ? `${raw.slice(0, BOOTSTRAP_ENTRY_MAX_CHARS)}…`
+      : raw;
+  return `[${rel}] ${truncated}`;
+}
+
+const FALLBACK_CHARS_PER_TOKEN = 4;
+const DEFAULT_BOOTSTRAP_SCRATCH_LIMIT = 5;
+
+function fallbackEstimate(text: string): number {
+  return Math.ceil(text.length / FALLBACK_CHARS_PER_TOKEN);
+}
+
+/**
+ * Apply the full bootstrap transform that the MCP `scratch(read, bootstrap)`
+ * tool produces: filter by retention + Dream summary extraction, reformat each
+ * line, and (if a `tokenBudget` is provided) drop oldest entries until the
+ * rendered output fits. The caller gets the included set with its rendered
+ * form plus the excluded originals, so the Memories donut can show exactly
+ * which scratch entries will and won't land in the next session bootstrap.
+ */
+export function renderBootstrapScratch(
+  entries: ScratchEntry[],
+  options: RenderBootstrapScratchOptions = {},
+): RenderBootstrapScratchResult {
+  const now = options.now ?? Date.now();
+  const limit = options.limit ?? DEFAULT_BOOTSTRAP_SCRATCH_LIMIT;
+  const filtered = bootstrapScratchEntries(entries, limit, options.since, now);
+  let included = filtered.map((entry) => ({
+    entry,
+    rendered: formatBootstrapScratchEntry(entry, now),
+  }));
+
+  if (typeof options.tokenBudget === 'number') {
+    const estimate = options.estimateTokens ?? fallbackEstimate;
+    while (included.length > 1) {
+      const total = included.reduce((sum, r) => sum + estimate(r.rendered) + 1, 0);
+      if (total <= options.tokenBudget) break;
+      included = included.slice(1);
+    }
+  }
+
+  const includedKeys = new Set(included.map(({ entry }) => entryKey(entry)));
+  const excluded = entries.filter((entry) => !includedKeys.has(entryKey(entry)));
+  return { included, excluded };
+}
+
+function entryKey(entry: ScratchEntry): string {
+  return `${entry.sessionId}|${entry.timestamp}|${entry.content}`;
+}
+
 export function compactScratchLog(
   raw: string,
   options: ScratchCompactOptions,

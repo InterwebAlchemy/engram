@@ -3,12 +3,29 @@
 .engram-view-container {
   --engram-state-core: var(--color-accent);
   --engram-state-remembered: var(--background-modifier-success);
-  --engram-state-default: var(--background-modifier-border-hover);
+  --engram-state-default: #85bbd8;
   --engram-state-forgotten: var(--background-modifier-error);
   --engram-type-fact: #4b84ff;
   --engram-type-entity: #2fbe88;
   --engram-type-reflection: #f0a63b;
   --engram-type-other: var(--text-muted);
+  --engram-soul: #d6b86b;
+  --engram-global-inbox: #7ab7cf;
+  --engram-thread: #f09a6b;
+  --engram-thread-1: #f09a6b;
+  --engram-thread-2: #8ab6ff;
+  --engram-thread-3: #8dd0a6;
+  --engram-thread-4: #cf9cff;
+  --engram-thread-5: #f0c86a;
+  --engram-thread-6: #de7f9f;
+  --engram-scratch-base: #8a7fff;
+  --engram-scratch-cold: color-mix(in srgb, var(--text-faint) 70%, var(--engram-scratch-base) 30%);
+  --engram-scratch-1: #6c8aff;
+  --engram-scratch-2: #8ad1c2;
+  --engram-scratch-3: #d2a3ff;
+  --engram-scratch-4: #ffb38a;
+  --engram-scratch-5: #f78ca7;
+  --engram-scratch-6: #a8c97f;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -952,17 +969,25 @@ details[open] > .engram-reasoning-summary::before {
 
 /* ─── SVG donut chart ─────────────────────────────────────────────────────── */
 
+.engram-donut-frame {
+  position: relative;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
 .engram-donut-wrapper {
   display: flex;
   flex-direction: column;
   align-items: center;
   width: 100%;
+  gap: 12px;
 }
 
 .engram-donut-ring {
   position: relative;
   width: 100%;
-  max-width: 280px;
+  max-width: 320px;
   aspect-ratio: 1;
 }
 
@@ -978,11 +1003,34 @@ details[open] > .engram-reasoning-summary::before {
 }
 
 .engram-donut-segment {
-  transition: opacity 120ms ease;
+  cursor: pointer;
+  transform-box: fill-box;
+  transform-origin: center;
+  transition:
+    opacity 140ms ease,
+    transform 140ms ease,
+    filter 140ms ease;
 }
 
-.engram-donut-segment:hover {
-  opacity: 0.8;
+.engram-donut-segment.is-emphasized {
+  transform: scale(1.035);
+  filter: saturate(1.08) brightness(1.04);
+}
+
+.engram-donut-segment.is-dimmed {
+  opacity: 0.24;
+  filter: saturate(0.72);
+}
+
+.engram-donut-bootstrap-overlay {
+  fill: color-mix(in srgb, var(--text-accent) 14%, transparent);
+  stroke: color-mix(in srgb, var(--text-accent) 28%, transparent);
+  stroke-width: 1;
+  opacity: 0.85;
+  pointer-events: none;
+  transition:
+    opacity 140ms ease,
+    filter 140ms ease;
 }
 
 .engram-donut-bootstrap-arc {
@@ -991,6 +1039,10 @@ details[open] > .engram-reasoning-summary::before {
   stroke-width: 2;
   stroke-dasharray: 6 3;
   opacity: 0.7;
+  pointer-events: none;
+  transition:
+    opacity 140ms ease,
+    filter 140ms ease;
 }
 
 .engram-donut-bootstrap-label {
@@ -999,11 +1051,71 @@ details[open] > .engram-reasoning-summary::before {
   font-weight: 600;
   letter-spacing: 0.5px;
   text-transform: uppercase;
+  cursor: pointer;
+  pointer-events: auto;
+  transition:
+    opacity 140ms ease,
+    filter 140ms ease,
+    transform 140ms ease;
+}
+
+.engram-donut-bootstrap-overlay.is-emphasized,
+.engram-donut-bootstrap-arc.is-emphasized,
+.engram-donut-bootstrap-label.is-emphasized {
+  opacity: 1;
+  filter: saturate(1.08) brightness(1.05);
+}
+
+.engram-donut-bootstrap-overlay.is-dimmed,
+.engram-donut-bootstrap-arc.is-dimmed,
+.engram-donut-bootstrap-label.is-dimmed {
+  opacity: 0.24;
+  filter: saturate(0.72);
+}
+
+.engram-donut-bootstrap-label.is-emphasized {
+  transform: translateY(-1px);
+}
+
+.engram-donut-context-cap {
+  fill: color-mix(in srgb, var(--engram-context-cap-color, currentColor) 14%, transparent);
+  stroke: var(--engram-context-cap-color, currentColor);
+  stroke-width: 1.6;
+  stroke-dasharray: 3 2;
+  opacity: 0.9;
+  cursor: pointer;
+  transition:
+    opacity 140ms ease,
+    filter 140ms ease,
+    transform 140ms ease;
+}
+
+.engram-donut-context-cap.is-current-thread {
+  stroke-width: 2.1;
+  opacity: 1;
+}
+
+.engram-donut-context-cap.is-thread-cap {
+  fill: transparent;
+}
+
+.engram-donut-context-cap.is-thread-cap.is-current-thread {
+  stroke-width: 2.3;
+}
+
+.engram-donut-context-cap.is-emphasized {
+  filter: saturate(1.08) brightness(1.05);
+}
+
+.engram-donut-context-cap.is-dimmed {
+  opacity: 0.24;
+  filter: saturate(0.72);
 }
 
 .engram-donut-reclaim-arc {
   fill: var(--background-modifier-error);
   opacity: 0.18;
+  pointer-events: none;
 }
 
 .engram-donut-center {
@@ -1018,57 +1130,212 @@ details[open] > .engram-reasoning-summary::before {
 }
 
 .engram-donut-center-value {
-  font-size: 28px;
+  font-size: 24px;
   font-weight: 700;
   line-height: 1;
+  max-width: 72%;
 }
 
 .engram-donut-center-label {
   color: var(--text-muted);
   font-size: var(--font-ui-small);
+  min-height: 0;
 }
 
-.engram-donut-annotations {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  justify-content: center;
-  margin-top: 10px;
-}
-
-.engram-donut-chip {
-  padding: 6px 10px;
-  border-radius: var(--radius-s);
-  background: var(--background-primary);
-  border: 1px solid var(--background-modifier-border);
+.engram-donut-caption {
+  max-width: 360px;
   text-align: center;
-  min-width: 80px;
-}
-
-.engram-donut-chip.is-bootstrap {
-  border-color: var(--text-accent);
-}
-
-.engram-donut-chip.is-nap {
-  border-color: var(--background-modifier-success);
-}
-
-.engram-donut-chip.is-dream {
-  border-color: var(--color-accent);
-}
-
-.engram-donut-chip-value {
-  font-size: 16px;
-  font-weight: 700;
-  line-height: 1.2;
-}
-
-.engram-donut-chip-label {
-  font-size: var(--font-ui-smaller);
   color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  line-height: 1.45;
 }
 
-.engram-donut-chip-detail {
+/* ─── Soul / scratch outer slices, tooltip, legend ────────────────────────── */
+
+.engram-donut-soul-slice {
+  filter: drop-shadow(0 0 3px color-mix(in srgb, var(--engram-soul, var(--text-accent)) 55%, transparent));
+}
+
+.engram-donut-global-inbox-slice {
+  filter: drop-shadow(0 0 3px color-mix(in srgb, var(--engram-global-inbox) 42%, transparent));
+}
+
+.engram-donut-thread-slice {
+  filter: drop-shadow(0 0 3px color-mix(in srgb, var(--engram-thread, var(--color-orange)) 45%, transparent));
+}
+
+.engram-donut-thread-slice.is-current-thread {
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--text-accent) 36%, transparent));
+}
+
+.engram-donut-scratch-bootstrap {
+  stroke: color-mix(in srgb, var(--engram-scratch-base) 60%, transparent);
+  stroke-width: 0.5;
+}
+
+.engram-donut-scratch-cold {
+  opacity: 0.75;
+}
+
+.engram-donut-tooltip {
+  position: absolute;
+  pointer-events: none;
+  z-index: 10;
+  padding: 6px 9px;
+  border-radius: var(--radius-s);
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  color: var(--text-normal);
+  font-size: var(--font-ui-smaller);
+  line-height: 1.3;
+  white-space: nowrap;
+  transition: opacity 80ms ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+}
+
+.engram-donut-legend-shell {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.engram-donut-legend-toggle {
+  position: relative;
+  z-index: 1;
+  padding: 8px 12px;
+  border: 1px solid color-mix(in srgb, var(--background-modifier-border) 82%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--background-primary) 86%, transparent);
+  color: var(--text-normal);
+  font-size: var(--font-ui-smaller);
+  font-weight: 600;
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+  transition:
+    background 120ms ease,
+    border-color 120ms ease,
+    transform 120ms ease;
+  pointer-events: auto;
+}
+
+.engram-donut-legend-toggle:hover {
+  background: color-mix(in srgb, var(--background-secondary) 92%, transparent);
+  border-color: color-mix(in srgb, var(--text-accent) 28%, var(--background-modifier-border));
+  transform: translateX(-2px);
+}
+
+.engram-donut-legend-drawer {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  width: min(540px, calc(100vw - 120px));
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--background-modifier-border) 78%, transparent);
+  border-radius: var(--radius-m);
+  background: color-mix(in srgb, var(--background-secondary) 94%, transparent);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(14px);
+  transform: translateX(22px);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 160ms ease,
+    transform 160ms ease;
+}
+
+.engram-donut-legend-shell.is-open .engram-donut-legend-drawer {
+  transform: translateX(0);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.engram-donut-legend-column {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.engram-donut-legend-title {
+  font-size: var(--font-ui-smaller);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-faint);
+}
+
+.engram-donut-legend-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.engram-donut-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease,
+    opacity 120ms ease,
+    transform 120ms ease;
+}
+
+.engram-donut-legend-item:hover {
+  background: color-mix(in srgb, var(--background-primary) 68%, transparent);
+  border-color: color-mix(in srgb, var(--background-modifier-border) 78%, transparent);
+}
+
+.engram-donut-legend-item.is-emphasized {
+  transform: translateX(-3px);
+  background: color-mix(in srgb, var(--background-primary) 74%, transparent);
+  border-color: color-mix(in srgb, var(--text-accent) 24%, var(--background-modifier-border));
+}
+
+.engram-donut-legend-item.is-dimmed {
+  opacity: 0.38;
+}
+
+.engram-donut-legend-item[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--background-primary) 82%, transparent);
+  border-color: color-mix(in srgb, var(--text-accent) 30%, var(--background-modifier-border));
+}
+
+.engram-donut-legend-swatch {
+  width: 11px;
+  height: 11px;
+  border-radius: 999px;
+  flex: 0 0 auto;
+  background: var(--background-modifier-border);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--background-modifier-border) 72%, transparent);
+}
+
+.engram-donut-legend-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.engram-donut-legend-label {
+  font-size: var(--font-ui-small);
+  font-weight: 600;
+  color: var(--text-normal);
+}
+
+.engram-donut-legend-meta {
   font-size: var(--font-ui-smaller);
   color: var(--text-faint);
 }
@@ -1141,6 +1408,45 @@ details[open] > .engram-reasoning-summary::before {
 .engram-dreams-storage-type-label {
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
+}
+
+@media (max-width: 960px) {
+  .engram-donut-frame {
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .engram-donut-legend-shell {
+    display: flex;
+    position: static;
+    width: 100%;
+    pointer-events: auto;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .engram-donut-legend-toggle {
+    position: static;
+    align-self: flex-end;
+  }
+
+  .engram-donut-legend-drawer {
+    position: static;
+    width: 100%;
+    max-width: none;
+    transform: translateY(-10px);
+  }
+
+  .engram-donut-legend-shell.is-open .engram-donut-legend-drawer {
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 700px) {
+  .engram-donut-legend-drawer {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* ─── Dreams overlay (active dreaming state) ─────────────────────────────── */

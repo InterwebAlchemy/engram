@@ -27,6 +27,17 @@ export { MemoryManager } from './memory';
 export { MemoryStateManager } from './memory-state';
 export { ContextBuilder } from './context';
 export { Conversation } from './conversation';
+export { estimateTokens } from './tokenizer';
+export {
+  BOOTSTRAP_ENTRY_MAX_CHARS,
+  formatBootstrapScratchEntry,
+  renderBootstrapScratch,
+} from './scratch-helpers';
+export type {
+  BootstrapScratchRendered,
+  RenderBootstrapScratchOptions,
+  RenderBootstrapScratchResult,
+} from './scratch-helpers';
 
 export type { FileSystemAdapter } from './adapters/types';
 export { NodeAdapter } from './adapters/node';

@@ -1,4 +1,4 @@
-import { encode } from 'gpt-tokenizer';
+import { estimateTokens as baseEstimateTokens } from './tokenizer';
 import type { ContextSection } from './types';
 
 const INITIAL_CORRECTION_FACTOR = 1;
@@ -15,7 +15,7 @@ export class ContextBuilder {
   constructor(public correctionFactor = INITIAL_CORRECTION_FACTOR) {}
 
   estimateTokens(text: string): number {
-    return Math.ceil(encode(text).length * this.correctionFactor);
+    return Math.ceil(baseEstimateTokens(text) * this.correctionFactor);
   }
 
   /**

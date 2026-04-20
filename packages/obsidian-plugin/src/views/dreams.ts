@@ -1,4 +1,5 @@
 import {
+  type ScratchEntry,
   type VaultNote,
   defaultMemoryConfig,
 } from '@interwebalchemy/engram-core';
@@ -6,10 +7,12 @@ import type EngramPlugin from '../main';
 import type { EngramTabId } from '../constants';
 import type { EngramTab } from './tab';
 import { DreamsAnalyzer } from '../../../dreams/src/analyzer';
+import { appendDreamsRunHistory } from '../../../dreams/src/history';
 import {
-  appendDreamsRunHistory,
-  readDreamsRunHistory,
-} from '../../../dreams/src/history';
+  loadDashboardData,
+  loadMemoryArtifacts,
+  type ThreadChartData,
+} from './dreams-view-dashboard-data';
 import {
   executeDreamsActions,
   writeDreamStartEntry,
@@ -65,8 +68,10 @@ export class DreamsTab implements EngramTab {
   private readonly plugin: EngramPlugin;
   private parent: HTMLElement | null = null;
   private report: DreamsReport | null = null;
-  private snapshotCount = 0;
   private memoryNotes: VaultNote[] = [];
+  private soulNote: VaultNote | null = null;
+  private scratchEntries: ScratchEntry[] = [];
+  private threadData: ThreadChartData | null = null;
   private latestPlan: DreamsPlanResult | null = null;
   private latestExecution: DreamsExecutionResult | null = null;
   private latestRunSnapshot: SnapshotRecord | null = null;
@@ -147,7 +152,13 @@ export class DreamsTab implements EngramTab {
       });
       return;
     }
-    renderSummarySection(this.parent, this.report, this.snapshotCount, this.memoryNotes);
+    renderSummarySection(this.parent, {
+      memoryNotes: this.memoryNotes,
+      report: this.report,
+      scratchEntries: this.scratchEntries,
+      soulNote: this.soulNote,
+      threadData: this.threadData,
+    });
     renderDreamControls({
       parent: this.parent,
       hasModels: this.syncSelection().length > 0,
@@ -314,12 +325,14 @@ export class DreamsTab implements EngramTab {
       vaultPath: this.plugin.getVaultBasePath(),
       engramRoot: this.plugin.settings.engramRoot,
     });
-    const { preCleanup, report, snapshots, snapshot } = result;
+    const { preCleanup, report, snapshot } = result;
     this.report = report;
-    const { length: snapshotCount } = snapshots;
-    this.snapshotCount = snapshotCount;
     this.latestRunSnapshot = snapshot;
-    this.memoryNotes = await this.plugin.memoryManager.list();
+    const { memoryNotes, soulNote, scratchEntries, threadData } = await loadMemoryArtifacts(this.plugin);
+    this.memoryNotes = memoryNotes;
+    this.soulNote = soulNote;
+    this.scratchEntries = scratchEntries;
+    this.threadData = threadData;
     this.plugin.refreshEngramView('snapshots');
     showNotice(
       `Power Nap complete: ${preCleanup.tagsFixed} tags fixed, ${preCleanup.tagsNormalized} tags normalized, ${preCleanup.scratchEntriesPurged} scratch entries purged, ${preCleanup.orphanedDreamStartsResolved} orphaned dream starts resolved.`,
@@ -363,34 +376,12 @@ export class DreamsTab implements EngramTab {
     return new SnapshotManager();
   }
   private async loadDashboardData(options: { includeHistory?: boolean } = {}): Promise<void> {
-    const { includeHistory = true } = options;
-    const analyzer = new DreamsAnalyzer(this.plugin.memoryManager);
-    const snapshotManager = DreamsTab.createSnapshotManager();
-    const basePath = this.plugin.getVaultBasePath();
-    const reportPromise = analyzer.analyze();
-    const snapshotsPromise = snapshotManager.list();
-    const notesPromise = this.plugin.memoryManager.list();
-    const historyPromise = includeHistory
-      ? readDreamsRunHistory(
-        this.plugin.fileAdapter,
-        basePath,
-        this.plugin.settings.engramRoot,
-        'working',
-      )
-      : Promise.resolve<DreamsRunHistory | null>(null);
-    const [report, snapshots, notes, history] = await Promise.all([
-      reportPromise,
-      snapshotsPromise,
-      notesPromise,
-      historyPromise,
-    ]);
+    const { report, memoryNotes, soulNote, scratchEntries, threadData } = await loadDashboardData(this.plugin, options);
     this.report = report;
-    const { length: snapshotCount } = snapshots;
-    this.snapshotCount = snapshotCount;
-    this.memoryNotes = notes;
-    if (history !== null) {
-      /* History loaded for future use; currently not displayed. */
-    }
+    this.memoryNotes = memoryNotes;
+    this.soulNote = soulNote;
+    this.scratchEntries = scratchEntries;
+    this.threadData = threadData;
   }
 
   private syncSelection(): ModelOption[] {
