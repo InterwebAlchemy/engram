@@ -10,6 +10,7 @@ export default [
       'packages/**/*.test.ts',
       'packages/obsidian-plugin/main.js',
       'packages/obsidian-plugin/main.js.map',
+      'packages/cli/obsidian-plugin/**',
     ],
   },
   {

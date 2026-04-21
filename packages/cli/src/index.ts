@@ -24,6 +24,7 @@ import {
 import type { Placement } from './markers';
 import {
   getBootstrapFileInfo,
+  installObsidianPlugin,
   injectBootstrap,
   writeCopilotInstructions,
   configureWindsurfMcp,
@@ -87,6 +88,8 @@ const HARNESSES: HarnessOption[] = [
 
 const CLI_ARG_START_INDEX = 2;
 const REPO_ROOT_SEGMENTS_UP = '../../..';
+const OBSIDIAN_PLUGIN_FILES = ['main.js', 'manifest.json', 'styles.css'] as const;
+const OBSIDIAN_PLUGIN_PACKAGE_RELATIVE = '../obsidian-plugin';
 
 // ── Output helpers ──────────────────────────────────────────────────────────
 
@@ -152,7 +155,15 @@ async function runInit(repoRoot: string, envPath: string, repoContext: boolean):
     await persistInitState({ answers, envPath, existing, repoContext, repoRoot, harnesses: HARNESSES });
 
     if (answers.runSetup) {
-      await runSetup(repoRoot, answers.vaultPath, answers.engramRoot, envUpdates);
+      await runSetup({
+        repoRoot,
+        vaultPath: answers.vaultPath,
+        engramRoot: answers.engramRoot,
+        installObsidianPluginNow: answers.installObsidianPlugin,
+        envUpdates,
+      });
+    } else if (answers.installObsidianPlugin) {
+      await installPluginFromCli(repoRoot, answers.vaultPath);
     }
 
     await syncSoulDocument(templatePath, answers, rl);
@@ -167,8 +178,10 @@ async function runInit(repoRoot: string, envPath: string, repoContext: boolean):
     writeLine();
     writeLine('Next steps:');
     writeLine('1. Review the generated Soul document and make it yours.');
-    if (repoContext && answers.runSetup) {
+    if (answers.installObsidianPlugin) {
       writeLine('2. Open the vault in Obsidian and enable the Engram plugin if you have not already.');
+    } else if (repoContext && answers.runSetup) {
+      writeLine('2. Plugin install was skipped. Rerun init later if you want to install it into this vault.');
     } else if (repoContext) {
       writeLine('2. Run the repo setup later when you are ready to scaffold the dev vault and plugin wiring.');
     } else {
@@ -265,6 +278,10 @@ async function askInitQuestions(
     ? await askYesNo(rl, 'Run repo setup now?', true)
     : false;
 
+  writeLine();
+  writeLine('Obsidian plugin');
+  const installObsidianPluginNow = await askYesNo(rl, 'Install the Engram Obsidian plugin into this vault now?', true);
+
   return {
     agentName,
     gitName,
@@ -278,6 +295,7 @@ async function askInitQuestions(
     voicePreset,
     shellProfilePath,
     runSetup,
+    installObsidianPlugin: installObsidianPluginNow,
   };
 }
 
@@ -318,16 +336,30 @@ function createEmptyHarnessSelections(): Record<string, boolean> {
 
 // ── Setup + Soul ────────────────────────────────────────────────────────────
 
-async function runSetup(
-  repoRoot: string,
-  vaultPath: string,
-  engramRoot: string,
-  envUpdates: Record<string, string>,
-): Promise<void> {
+async function runSetup(options: {
+  repoRoot: string;
+  vaultPath: string;
+  engramRoot: string;
+  installObsidianPluginNow: boolean;
+  envUpdates: Record<string, string>;
+}): Promise<void> {
+  const {
+    repoRoot,
+    vaultPath,
+    engramRoot,
+    installObsidianPluginNow,
+    envUpdates,
+  } = options;
   const child = spawn('bash', ['scripts/setup-dev.sh', vaultPath], {
     cwd: repoRoot,
     stdio: 'inherit',
-    env: { ...process.env, ...envUpdates, ENGRAM_VAULT_PATH: vaultPath, ENGRAM_ROOT: engramRoot },
+    env: {
+      ...process.env,
+      ...envUpdates,
+      ENGRAM_VAULT_PATH: vaultPath,
+      ENGRAM_ROOT: engramRoot,
+      ENGRAM_INSTALL_OBSIDIAN_PLUGIN: installObsidianPluginNow ? 'true' : 'false',
+    },
   });
   const exitPromise = once(child, 'exit');
   const errorPromise = once(child, 'error').then(([err]: unknown[]) => {
@@ -340,6 +372,44 @@ async function runSetup(
     const codeStr = typeof code === 'number' ? String(code) : 'unknown';
     throw new Error(`setup-dev.sh exited with code ${codeStr}`);
   }
+}
+
+async function installPluginFromCli(repoRoot: string, vaultPath: string): Promise<void> {
+  const sourcePluginDir = await resolveObsidianPluginSource(repoRoot);
+  if (sourcePluginDir === null) {
+    writeLine('Obsidian plugin install skipped (plugin assets not found near this CLI build).');
+    return;
+  }
+
+  const actions = await installObsidianPlugin(vaultPath, sourcePluginDir);
+  for (const action of actions) {
+    writeLine(`Plugin install → ${action}`);
+  }
+}
+
+async function resolveObsidianPluginSource(repoRoot: string): Promise<string | null> {
+  const repoPluginDir = path.join(repoRoot, 'packages', 'obsidian-plugin');
+  if (await hasPluginAssets(repoPluginDir)) return repoPluginDir;
+
+  const packagedPluginDir = path.resolve(__dirname, OBSIDIAN_PLUGIN_PACKAGE_RELATIVE);
+  if (await hasPluginAssets(packagedPluginDir)) return packagedPluginDir;
+
+  return null;
+}
+
+async function hasPluginAssets(dirPath: string): Promise<boolean> {
+  const checks = await Promise.all(
+    OBSIDIAN_PLUGIN_FILES.map(async (fileName) => {
+      const filePath = path.join(dirPath, fileName);
+      try {
+        await fs.access(filePath);
+        return true;
+      } catch {
+        return false;
+      }
+    }),
+  );
+  return checks.every((check) => check);
 }
 
 // ── Prompt helpers ──────────────────────────────────────────────────────────

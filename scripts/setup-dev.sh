@@ -64,13 +64,14 @@ ENGRAM_ROOT="${ENGRAM_ROOT:-engram}"
 ENGRAM_ROOT="${ENGRAM_ROOT#/}"
 ENGRAM_ROOT="${ENGRAM_ROOT%/}"
 ENGRAM_ROOT="${ENGRAM_ROOT:-engram}"
+INSTALL_OBSIDIAN_PLUGIN="${ENGRAM_INSTALL_OBSIDIAN_PLUGIN:-true}"
 
 echo "Vault path: $VAULT_PATH"
 echo "Engram root: $ENGRAM_ROOT"
 
 # ─── Create vault structure ────────────────────────────────────────────────
 
-mkdir -p "$VAULT_PATH/.obsidian/plugins/engram"
+mkdir -p "$VAULT_PATH/.obsidian"
 
 # Scaffold the Engram directory structure inside the vault
 # so the plugin has somewhere to write immediately
@@ -87,85 +88,88 @@ done
 
 echo "Vault directory structure created."
 
-# ─── Enable the plugin in Obsidian config ──────────────────────────────────
+if [ "$INSTALL_OBSIDIAN_PLUGIN" = "true" ]; then
+  mkdir -p "$VAULT_PATH/.obsidian/plugins/engram"
 
-COMMUNITY_PLUGINS="$VAULT_PATH/.obsidian/community-plugins.json"
+  # ─── Enable the plugin in Obsidian config ────────────────────────────────
 
-if [ ! -f "$COMMUNITY_PLUGINS" ]; then
-  echo '["engram"]' > "$COMMUNITY_PLUGINS"
-  echo "Created community-plugins.json with engram enabled."
-elif ! grep -q '"engram"' "$COMMUNITY_PLUGINS"; then
-  sed -i.bak 's/\]$/,"engram"]/' "$COMMUNITY_PLUGINS" && rm -f "$COMMUNITY_PLUGINS.bak"
-  echo "Added engram to community-plugins.json."
-else
-  echo "Plugin already listed in community-plugins.json."
-fi
+  COMMUNITY_PLUGINS="$VAULT_PATH/.obsidian/community-plugins.json"
 
-# ─── Install Hot Reload plugin ────────────────────────────────────────────
-# pjeby/hot-reload — triggers Obsidian plugin reloads on file changes,
-# so the dev loop works without manually toggling the plugin.
-# https://github.com/pjeby/hot-reload
-
-HOT_RELOAD_DIR="$VAULT_PATH/.obsidian/plugins/hot-reload"
-mkdir -p "$HOT_RELOAD_DIR"
-
-for asset in main.js manifest.json; do
-  if [ ! -f "$HOT_RELOAD_DIR/$asset" ]; then
-    echo "Downloading hot-reload/$asset..."
-    curl -fsSL --retry 3 \
-      "https://github.com/pjeby/hot-reload/releases/latest/download/$asset" \
-      -o "$HOT_RELOAD_DIR/$asset" \
-      || echo "Warning: could not download hot-reload/$asset — check your connection."
+  if [ ! -f "$COMMUNITY_PLUGINS" ]; then
+    echo '["engram"]' > "$COMMUNITY_PLUGINS"
+    echo "Created community-plugins.json with engram enabled."
+  elif ! grep -q '"engram"' "$COMMUNITY_PLUGINS"; then
+    sed -i.bak 's/\]$/,"engram"]/' "$COMMUNITY_PLUGINS" && rm -f "$COMMUNITY_PLUGINS.bak"
+    echo "Added engram to community-plugins.json."
+  else
+    echo "Plugin already listed in community-plugins.json."
   fi
-done
 
-if ! grep -q '"hot-reload"' "$COMMUNITY_PLUGINS"; then
-  node -e "
+  # ─── Install Hot Reload plugin ──────────────────────────────────────────
+  # pjeby/hot-reload — triggers Obsidian plugin reloads on file changes,
+  # so the dev loop works without manually toggling the plugin.
+  # https://github.com/pjeby/hot-reload
+
+  HOT_RELOAD_DIR="$VAULT_PATH/.obsidian/plugins/hot-reload"
+  mkdir -p "$HOT_RELOAD_DIR"
+
+  for asset in main.js manifest.json; do
+    if [ ! -f "$HOT_RELOAD_DIR/$asset" ]; then
+      echo "Downloading hot-reload/$asset..."
+      curl -fsSL --retry 3 \
+        "https://github.com/pjeby/hot-reload/releases/latest/download/$asset" \
+        -o "$HOT_RELOAD_DIR/$asset" \
+        || echo "Warning: could not download hot-reload/$asset — check your connection."
+    fi
+  done
+
+  if ! grep -q '"hot-reload"' "$COMMUNITY_PLUGINS"; then
+    node -e "
 const fs = require('fs');
 const plugins = JSON.parse(fs.readFileSync('$COMMUNITY_PLUGINS', 'utf8'));
 if (!plugins.includes('hot-reload')) plugins.push('hot-reload');
 fs.writeFileSync('$COMMUNITY_PLUGINS', JSON.stringify(plugins, null, 2) + '\n');
 "
-  echo "Added hot-reload to community-plugins.json."
-else
-  echo "Hot Reload already listed in community-plugins.json."
-fi
-
-# ─── Build the plugin ──────────────────────────────────────────────────────
-
-echo "Building plugin..."
-node "$PLUGIN_DIR/esbuild.config.mjs"
-
-# ─── Symlink build artifacts ──────────────────────────────────────────────
-
-DEST="$VAULT_PATH/.obsidian/plugins/engram"
-
-for file in main.js manifest.json styles.css; do
-  source="$PLUGIN_DIR/$file"
-  link="$DEST/$file"
-
-  if [ -L "$link" ]; then
-    rm "$link"
-  elif [ -e "$link" ]; then
-    echo "Warning: $link exists and is not a symlink — skipping"
-    continue
+    echo "Added hot-reload to community-plugins.json."
+  else
+    echo "Hot Reload already listed in community-plugins.json."
   fi
 
-  ln -s "$source" "$link"
-done
+  # ─── Build the plugin ────────────────────────────────────────────────────
 
-echo "Symlinks created."
+  echo "Building plugin..."
+  node "$PLUGIN_DIR/esbuild.config.mjs"
 
-# ─── Apply local dev settings ─────────────────────────────────────────────
-# If .dev-settings.json exists, deep-merge it into the plugin's data.json so
-# local preferences (active provider, custom models, etc.) survive vault resets.
-# Copy .example.dev-settings.json → .dev-settings.json to get started.
+  # ─── Symlink build artifacts ────────────────────────────────────────────
 
-DEV_SETTINGS="$REPO_ROOT/.dev-settings.json"
-DATA_JSON="$VAULT_PATH/.obsidian/plugins/engram/data.json"
+  DEST="$VAULT_PATH/.obsidian/plugins/engram"
 
-if [ -f "$DEV_SETTINGS" ]; then
-  node -e "
+  for file in main.js manifest.json styles.css; do
+    source="$PLUGIN_DIR/$file"
+    link="$DEST/$file"
+
+    if [ -L "$link" ]; then
+      rm "$link"
+    elif [ -e "$link" ]; then
+      echo "Warning: $link exists and is not a symlink — skipping"
+      continue
+    fi
+
+    ln -s "$source" "$link"
+  done
+
+  echo "Symlinks created."
+
+  # ─── Apply local dev settings ───────────────────────────────────────────
+  # If .dev-settings.json exists, deep-merge it into the plugin's data.json so
+  # local preferences (active provider, custom models, etc.) survive vault resets.
+  # Copy .example.dev-settings.json → .dev-settings.json to get started.
+
+  DEV_SETTINGS="$REPO_ROOT/.dev-settings.json"
+  DATA_JSON="$VAULT_PATH/.obsidian/plugins/engram/data.json"
+
+  if [ -f "$DEV_SETTINGS" ]; then
+    node -e "
 const fs = require('fs');
 const devSettings = JSON.parse(fs.readFileSync('$DEV_SETTINGS', 'utf8'));
 
@@ -190,8 +194,11 @@ if (clean.providers) {
 fs.writeFileSync('$DATA_JSON', JSON.stringify(merged, null, 2) + '\n');
 console.log('Applied .dev-settings.json → data.json');
 "
+  else
+    echo "No .dev-settings.json found — copy .example.dev-settings.json to create one."
+  fi
 else
-  echo "No .dev-settings.json found — copy .example.dev-settings.json to create one."
+  echo "Skipping Obsidian plugin install (ENGRAM_INSTALL_OBSIDIAN_PLUGIN=$INSTALL_OBSIDIAN_PLUGIN)."
 fi
 
 # ─── Persist vault path to .env ───────────────────────────────────────────

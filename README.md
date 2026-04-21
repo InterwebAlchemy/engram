@@ -184,12 +184,14 @@ Cross-device continuity is established by any of the available [synchronization 
    4. the directory inside of that Obsidian Vault to use as the Engram's root directory
    5. the harnesses you want to configure
    6. a starter voiceprint preset to seed the Engram's personality and communication style
-3. Review the generated Soul document at `<vault>/<engram-root>/memory/soul.md` and make it yours. Each session bootstraps by calling `soul(action: "get")`, then `thread(action: "resolve")` (auto-detects or creates the active Thread from the working directory), then `context(action: "load")`, then `scratch(action: "read", bootstrap: true)`.
-4. Optionally, copy `packages/obsidian-plugin/` into your vault's `.obsidian/plugins/` directory to chat with the Engram directly from Obsidian using various providers, visualize and explore the Engram's memories, and trigger Dreams, or Power Naps, to clean up and synthesize information across the Engram's memory from within Obsidian UI.
+   7. (optional) installing the Engram Obisidan Plugin for better Memory and Dream visualization and direct interaction with the Engram from the Obsidian UI using any model provider; you can revisit the plugin installation later via `npm run cli`
+3. Review the generated Soul document at `<vault>/<engram-root>/memory/soul.md` and make it yours.
+
+**Note**: Each new Engram session bootstraps by calling `soul(action: "get")`, then `thread(action: "resolve")` (auto-detects or creates the active Thread from the working directory), then `context(action: "load")`, then `scratch(action: "read", bootstrap: true)` to gather the relevant starting context for the session.
 
 ### Bootstrapping a session
 
-The reusable bootstrap instructions live in [`templates/engram-bootstrap.tmpl.md`](templates/engram-bootstrap.tmpl.md). Harness-specific files like `CLAUDE.md` should be treated as duplicates of that template. For repo-specific contributor instructions, edit [`agent-instructions.tmpl.md`](agent-instructions.tmpl.md) and generate harness-visible files with `npm run agents` or `npm run agents:claude`. As more harnesses are verified, they should be added here explicitly rather than implied.
+The reusable bootstrap instructions live in [`templates/engram-bootstrap.tmpl.md`](templates/engram-bootstrap.tmpl.md). Harness-specific files like `CLAUDE.md` should be treated as duplicates of that template. For repo-specific contributor instructions, edit [`agent-instructions.tmpl.md`](agent-instructions.tmpl.md) and generate harness-visible files with `npm run agents` or `npm run agents:claude`.
 
 If the Engram does not bootstrap from an ambient greeting (e.g. `Hey there!`, `Let's get to work`, etc.), use this invocation:
 
@@ -197,9 +199,9 @@ If the Engram does not bootstrap from an ambient greeting (e.g. `Hey there!`, `L
 load your engram
 ```
 
-This is the minimum reliable Engram invocation across the harnesses and models we have tested so far. It is intent-framed, which causes the model to chain through the MCP bootstrap tools even when it would otherwise answer the greeting directly.
+This is the minimum reliable Engram invocation across the harnesses and models we have tested so far. It is intent-framed, which causes the model to chain through the MCP bootstrap tools rather than answer a greeting directly.
 
-> **Known Issue:** Claude Code running Opus 4.6 or 4.7 with [Adaptive Thinking](https://news.ycombinator.com/item?id=47664442) generally treats bare greetings as low-effort and can skip bootstrap instructions entirely, including `CLAUDE.md`.
+> **Known Issue:** Claude Code running Opus 4.6 or 4.7 with [Adaptive Thinking](https://news.ycombinator.com/item?id=47664442) generally treats bare greetings as low-effort and can skip bootstrap instructions entirely, including your global or local `CLAUDE.md` files.
 >
 > However, the `load your engram` invocation works
 >
@@ -227,7 +229,7 @@ Unlike the currently verified local setups, it appears to require a remote MCP s
 
 That likely means testing it will require either a remotely hosted Engram MCP server, an Engram app-style integration, or a temporary local tunnel.
 
-Given the in-development status of the Engram project, this is currently out of scope until more important features are finalized.
+**Note**: Given the in-development status of the Engram project, this is currently out of scope until more important core features are finalized.
 
 ## Prior Art
 

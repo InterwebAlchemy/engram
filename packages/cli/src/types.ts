@@ -45,6 +45,7 @@ export interface InitAnswers {
   voicePreset: VoicePresetId;
   shellProfilePath: string | null;
   runSetup: boolean;
+  installObsidianPlugin: boolean;
 }
 
 export interface PersistedConfig {

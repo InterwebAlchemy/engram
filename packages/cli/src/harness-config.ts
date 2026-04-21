@@ -295,6 +295,68 @@ export async function writeCopilotInstructions(body: string): Promise<string> {
 
 // ── Obsidian plugin cleanup ─────────────────────────────────────────────────
 
+const OBSIDIAN_PLUGIN_FILES = ['main.js', 'manifest.json', 'styles.css'] as const;
+
+export async function installObsidianPlugin(
+  vaultPath: string,
+  sourcePluginDir: string,
+): Promise<string[]> {
+  const actions: string[] = [];
+  const pluginDir = path.join(vaultPath, '.obsidian', 'plugins', 'engram');
+  const communityPluginsPath = path.join(vaultPath, '.obsidian', 'community-plugins.json');
+
+  await fs.mkdir(pluginDir, { recursive: true });
+
+  const fileActions = await Promise.all(
+    OBSIDIAN_PLUGIN_FILES.map(async (fileName) => {
+      const sourcePath = path.join(sourcePluginDir, fileName);
+      const targetPath = path.join(pluginDir, fileName);
+
+      if (!(await fileExists(sourcePath))) {
+        return `missing ${fileName} in ${sourcePluginDir}`;
+      }
+
+      await fs.copyFile(sourcePath, targetPath);
+      return `copied ${fileName}`;
+    }),
+  );
+  actions.push(...fileActions);
+  const hasMissingAsset = fileActions.some((action) => action.startsWith('missing '));
+  if (hasMissingAsset) {
+    actions.push('skipped community-plugins enablement because one or more plugin assets are missing');
+    return actions;
+  }
+
+  let plugins: string[] = [];
+  let canWriteCommunityPlugins = true;
+  if (await fileExists(communityPluginsPath)) {
+    try {
+      const raw = await fs.readFile(communityPluginsPath, 'utf8');
+      const parsed: unknown = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        plugins = parsed.filter((item): item is string => typeof item === 'string');
+      } else {
+        actions.push('community-plugins.json is not an array; skipped enablement');
+        canWriteCommunityPlugins = false;
+      }
+    } catch (error) {
+      actions.push(`failed to parse community-plugins.json: ${String(error)}`);
+      canWriteCommunityPlugins = false;
+    }
+  }
+
+  if (canWriteCommunityPlugins && !plugins.includes('engram')) {
+    plugins.push('engram');
+    await fs.mkdir(path.dirname(communityPluginsPath), { recursive: true });
+    await fs.writeFile(communityPluginsPath, `${JSON.stringify(plugins, null, JSON_INDENT)}\n`, 'utf8');
+    actions.push('enabled engram in community-plugins.json');
+  } else if (canWriteCommunityPlugins) {
+    actions.push('engram already enabled in community-plugins.json');
+  }
+
+  return actions;
+}
+
 export async function removeObsidianPlugin(vaultPath: string): Promise<string[]> {
   const actions: string[] = [];
   const pluginDir = path.join(vaultPath, '.obsidian', 'plugins', 'engram');
