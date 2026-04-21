@@ -2,7 +2,7 @@
 
 Engram is a **Continuity Layer** that helps your [agents](https://www.promptingguide.ai/research/llm-agents) persist who they are, what they've done, and what they've learned across sessions, [harnesses](https://openai.com/index/harness-engineering/), models, and providers without any vendor lock-in.
 
-Without an Engram, each agent is just a tool, but **the Engram is a collaborator**.
+Without an Engram, each agent is just a tool, but the Engram is a collaborator.
 
 ![engram banner](./assets/engram.png)
 
@@ -14,7 +14,38 @@ Engram stores your agent's identity and memory in an [Obsidian Vault](https://ob
 
 Built on the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/), Engram is designed to move across any model, harness, or provider that supports MCP.
 
-The Engram is the constant. The tools are interchangeable.
+**The Engram is the constant. The tools are interchangeable.**
+
+## Status
+
+Currently in **BETA** development.
+
+Engram has been verified to intialize and operate across the following harnesses:
+
+- Claude Code
+  - CLI
+  - VS Code Extension
+- Claude Desktop App
+  - Chat
+  - Cowork
+  - Code
+- Codex
+  - Desktop App
+  - VS Code Extension
+- Cursor
+- GitHub Copilot
+  - CLI
+  - VS Code Chat
+- Windsurf
+
+Other harnesses and clients may be configurable via MCP, but they should be considered unverified until they are tested end-to-end and added to the list above.
+
+### Upcoming Features
+
+- **More harness verifications** for additional MCP clients such as OpenCode, Pi, Aider and other MCP-capable tools.
+- **Semantic search** for more precise context retrieval and lower token overhead.
+- **Context-specific memories** that allow the Engram to load some non-Threaded memories only when they are relevant, for example: only loading context about another person when you are working on a project with them or writing them an email.
+- **Streamlined setup** with guided onboarding and a single installation command via `brew` or `npx`.
 
 ## Example Use Cases
 
@@ -175,33 +206,6 @@ This is the minimum reliable Engram invocation across the harnesses and models w
 > Setting `CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING=1` also works, but is heavy-handed, may affect unrelated Claude Code behavior, and is incompatible with Opus 4.7, which only supports Adaptive Thinking.
 >
 > We currently recommend the invocation rather than disabling Adaptive Thinking.
-
-## Status
-
-Currently in **BETA development**.
-
-Verified bootstrap harnesses:
-
-- `Claude Code CLI`
-- `Claude Code Desktop App`
-- `Claude Code VS Code extension`
-- `Claude Desktop App`
-- `Codex Desktop App`
-- `Codex VS Code extension`
-- `Cursor`
-- `GitHub Copilot CLI`
-- `GitHub Copilot in VS Code`
-- `Windsurf App`
-
-Other clients may be configurable via MCP, but they should be considered unverified until they are tested end-to-end and added to the list above.
-
-Current focus areas are:
-
-- **Semantic search** for more precise context retrieval and lower token overhead.
-- **Context-specific memories** that allow the Engram to load some non-Threaded memories only when they are relevant, for example: only loading context about another person when you are working on a project with them or writing them an email.
-- **Harness verification** for additional MCP clients such as OpenCode, Pi, Aider and other MCP-capable tools.
-- **Streamlined setup** with guided onboarding and a single installation command via `brew` or `npx`.
-- **Memory tooling** to allow better exploration, connection, synthesis, and management of the Engram from within the Obsidian UI.
 
 ## Harness Limitations
 
