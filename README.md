@@ -20,7 +20,7 @@ Built on the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/), E
 
 Currently in **BETA** development.
 
-Engram has been verified to intialize and operate across the following harnesses:
+Engram has been verified to initialize and operate across the following harnesses:
 
 - Claude Code
   - CLI
@@ -37,6 +37,7 @@ Engram has been verified to intialize and operate across the following harnesses
   - CLI
   - VS Code Chat
 - Windsurf
+- OpenCode
 
 Other harnesses and clients may be configurable via MCP, but they should be considered unverified until they are tested end-to-end and added to the list above.
 

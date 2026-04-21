@@ -16,6 +16,8 @@ import {
   removeVsCodeMcp,
   removeWindsurfMcp,
   removeWindsurfGlobalRules,
+  removeOpencodeMcp,
+  removeOpencodeGlobalRules,
   type HarnessRemovalResult,
 } from './harness-config';
 import { removeClaudeCodeMcp } from './remove-claude-code';
@@ -76,6 +78,7 @@ async function removeHarnessConfigs(existing: ExistingConfig): Promise<void> {
   if (existing.harnesses.vscode) results.push(await removeVsCodeMcp());
   if (existing.harnesses.copilot) results.push(await removeCopilotMcp());
   if (existing.harnesses.windsurf) results.push(await removeWindsurfMcp());
+  if (existing.harnesses.opencode) results.push(await removeOpencodeMcp());
   if (existing.harnesses.claudeCode) results.push(await removeClaudeCodeMcp());
 
   for (const result of results) {
@@ -106,6 +109,18 @@ async function removeBootstrapFiles(existing: ExistingConfig): Promise<void> {
         break;
       case 'not_found':
         writeLine('No Engram bootstrap found in Windsurf global rules');
+        break;
+    }
+  }
+
+  if (existing.harnesses.opencode) {
+    const opencodeResult = await removeOpencodeGlobalRules();
+    switch (opencodeResult.action) {
+      case 'stripped':
+        writeLine(`Stripped Engram block from ${opencodeResult.path}`);
+        break;
+      case 'not_found':
+        writeLine('No Engram bootstrap found in OpenCode global rules');
         break;
     }
   }

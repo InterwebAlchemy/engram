@@ -29,6 +29,8 @@ import {
   writeCopilotInstructions,
   configureWindsurfMcp,
   injectWindsurfGlobalRules,
+  configureOpencodeMcp,
+  injectOpencodeGlobalRules,
 } from './harness-config';
 import { buildEnvUpdates } from './env-file';
 import {
@@ -83,6 +85,12 @@ const HARNESSES: HarnessOption[] = [
     label: 'Windsurf',
     envKey: 'MCP_CONFIGURE_WINDSURF',
     description: 'Registers the MCP server in Windsurf.',
+  },
+  {
+    key: 'opencode',
+    label: 'OpenCode',
+    envKey: 'MCP_CONFIGURE_OPENCODE',
+    description: 'Configures MCP server in OpenCode config and adds bootstrap rules.',
   },
 ];
 
@@ -217,6 +225,13 @@ async function injectBootstrapFiles(
     const rulesResult = await injectWindsurfGlobalRules(agentsTemplate);
     writeLine(`Bootstrap → ${rulesResult.path} (${rulesResult.action})`);
   }
+
+  if (answers.harnesses.opencode) {
+    const mcpPath = await configureOpencodeMcp(mcpScriptPath);
+    writeLine(`MCP config → ${mcpPath}`);
+    const rulesResult = await injectOpencodeGlobalRules(agentsTemplate);
+    writeLine(`Bootstrap → ${rulesResult.path} (${rulesResult.action})`);
+  }
 }
 
 // ── Init questions ──────────────────────────────────────────────────────────
@@ -331,7 +346,7 @@ async function askHarnesses(
 }
 
 function createEmptyHarnessSelections(): Record<string, boolean> {
-  return { claudeCode: false, claudeDesktop: false, cursor: false, vscode: false, copilot: false, windsurf: false };
+  return { claudeCode: false, claudeDesktop: false, cursor: false, vscode: false, copilot: false, windsurf: false, opencode: false };
 }
 
 // ── Setup + Soul ────────────────────────────────────────────────────────────

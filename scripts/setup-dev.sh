@@ -496,8 +496,12 @@ echo "Setup complete!"
 echo ""
 echo "  Vault:  $VAULT_PATH"
 echo "  Root:   $ENGRAM_ROOT"
-echo "  Plugin: $DEST"
-echo "  Verified bootstrap harnesses: Claude Code CLI, Claude Code Desktop App, Claude Code VS Code extension, Claude Desktop, Codex Desktop App, Codex VS Code extension, Cursor, GitHub Copilot CLI, GitHub Copilot in VS Code, Windsurf App"
+if [ "$INSTALL_OBSIDIAN_PLUGIN" = "true" ]; then
+  echo "  Plugin: $DEST"
+else
+  echo "  Plugin: (skipped - set INSTALL_OBSIDIAN_PLUGIN=true to enable)"
+fi
+echo "  Verified bootstrap harnesses: Claude Code CLI, Claude Code Desktop App, Claude Code VS Code extension, Claude Desktop, Codex Desktop App, Codex VS Code extension, Cursor, GitHub Copilot CLI, GitHub Copilot in VS Code, Windsurf App, OpenCode"
 echo ""
 echo "Next steps:"
 echo "  1. Open the vault in Obsidian (File → Open vault → Open folder as vault)"

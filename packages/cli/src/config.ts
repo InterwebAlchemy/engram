@@ -45,6 +45,7 @@ function defaultHarnesses(): Record<HarnessKey, boolean> {
     vscode: false,
     copilot: false,
     windsurf: false,
+    opencode: false,
   };
 }
 
@@ -59,6 +60,7 @@ function coerceBooleanRecord(value: unknown): Record<HarnessKey, boolean> {
     vscode: value.vscode === true,
     copilot: value.copilot === true,
     windsurf: value.windsurf === true,
+    opencode: value.opencode === true,
   };
 }
 
@@ -227,6 +229,7 @@ function buildEnvFallbackConfig(
       vscode: envValues.MCP_CONFIGURE_VSCODE === TRUE_VALUE,
       copilot: envValues.MCP_CONFIGURE_COPILOT === TRUE_VALUE,
       windsurf: envValues.MCP_CONFIGURE_WINDSURF === TRUE_VALUE,
+      opencode: envValues.MCP_CONFIGURE_OPENCODE === TRUE_VALUE,
     },
     claudeCodeScope: envValues.MCP_CLAUDE_CODE_SCOPE === 'user' ? 'user' : DEFAULT_CLAUDE_CODE_SCOPE,
     voicePreset: isVoicePreset(envValues.ENGRAM_VOICE_PRESET) ? envValues.ENGRAM_VOICE_PRESET : 'collaborator',

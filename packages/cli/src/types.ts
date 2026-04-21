@@ -7,7 +7,8 @@ export type HarnessKey =
   | 'cursor'
   | 'vscode'
   | 'copilot'
-  | 'windsurf';
+  | 'windsurf'
+  | 'opencode';
 
 export interface HarnessOption {
   key: HarnessKey;

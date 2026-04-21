@@ -45,6 +45,14 @@ function windsurfMcpPath(): string {
   return path.join(homeDir(), '.codeium', 'windsurf', 'mcp_config.json');
 }
 
+function opencodeMcpPath(): string {
+  return path.join(homeDir(), '.config', 'opencode', 'opencode.json');
+}
+
+function opencodeGlobalRulesPath(): string {
+  return path.join(homeDir(), '.config', 'opencode', 'AGENTS.md');
+}
+
 function claudeCodeBootstrapPath(): string {
   return path.join(homeDir(), '.claude', 'CLAUDE.md');
 }
@@ -153,6 +161,10 @@ export async function removeWindsurfMcp(): Promise<HarnessRemovalResult> {
   return await removeFromJsonConfig('Windsurf', windsurfMcpPath(), 'mcpServers');
 }
 
+export async function removeOpencodeMcp(): Promise<HarnessRemovalResult> {
+  return await removeFromJsonConfig('OpenCode', opencodeMcpPath(), 'mcp');
+}
+
 async function removeFromJsonConfig(
   harness: string,
   configPath: string,
@@ -242,6 +254,25 @@ export async function configureWindsurfMcp(command: string): Promise<string> {
   return configPath;
 }
 
+export async function configureOpencodeMcp(command: string): Promise<string> {
+  const configPath = opencodeMcpPath();
+  const cfg = await readJsonFile(configPath);
+  const mcpSection = getSection(cfg, 'mcp') ?? {};
+  const updated = {
+    ...cfg,
+    mcp: {
+      ...mcpSection,
+      engram: {
+        type: 'local',
+        command: command.split(' '),
+        enabled: true,
+      },
+    },
+  };
+  await writeJsonFile(configPath, updated);
+  return configPath;
+}
+
 // ── Windsurf global rules ──────────────────────────────────────────────────
 
 function windsurfGlobalRulesPath(): string {
@@ -272,6 +303,34 @@ export async function removeWindsurfGlobalRules(): Promise<{
     return { path: filePath, action: 'not_found' };
   }
   // Don't delete the file — Windsurf manages it. Just strip the Engram block.
+  const cleaned = isOnlyMarkedBlock(content) ? '' : stripMarkedBlock(content);
+  await fs.writeFile(filePath, cleaned, 'utf8');
+  return { path: filePath, action: 'stripped' };
+}
+
+export async function injectOpencodeGlobalRules(
+  body: string,
+): Promise<{ path: string; action: 'created' | 'injected' | 'updated' }> {
+  const filePath = opencodeGlobalRulesPath();
+  const existing = (await readTextFile(filePath)) ?? '';
+  const result = injectMarkedBlock(existing, body, 'bottom');
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  await fs.writeFile(filePath, result, 'utf8');
+
+  if (existing.trim().length === 0) return { path: filePath, action: 'created' };
+  if (hasMarkedBlock(existing)) return { path: filePath, action: 'updated' };
+  return { path: filePath, action: 'injected' };
+}
+
+export async function removeOpencodeGlobalRules(): Promise<{
+  path: string;
+  action: 'stripped' | 'not_found';
+}> {
+  const filePath = opencodeGlobalRulesPath();
+  const content = await readTextFile(filePath);
+  if (content === null || !hasMarkedBlock(content)) {
+    return { path: filePath, action: 'not_found' };
+  }
   const cleaned = isOnlyMarkedBlock(content) ? '' : stripMarkedBlock(content);
   await fs.writeFile(filePath, cleaned, 'utf8');
   return { path: filePath, action: 'stripped' };
