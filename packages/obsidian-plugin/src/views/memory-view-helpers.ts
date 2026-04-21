@@ -1,31 +1,47 @@
 import { type App, setIcon } from 'obsidian';
 import {
   MemoryState,
-  MemoryType,
   type VaultNote,
 } from '@interwebalchemy/engram-core';
 import type { MemoryMode } from './memory';
 
 const PREVIEW_LENGTH = 120;
 const RELATED_TAG_LIMIT = 4;
+const MEMORY_DIR_SEGMENT = '/memory/';
+const ENGRAM_DIR_SEGMENTS = [
+  '/threads/',
+  '/skills/',
+  '/notes/',
+  '/inbox/',
+  '/conversations/',
+  '/working/',
+  '/archive/',
+] as const;
 const MEMORY_STATE_BY_VALUE: Record<string, MemoryState> = {
   [MemoryState.Core]: MemoryState.Core,
   [MemoryState.Remembered]: MemoryState.Remembered,
   [MemoryState.Default]: MemoryState.Default,
   [MemoryState.Forgotten]: MemoryState.Forgotten,
 };
-const MEMORY_TYPE_BY_VALUE: Record<string, MemoryType> = {
-  [MemoryType.Fact]: MemoryType.Fact,
-  [MemoryType.Entity]: MemoryType.Entity,
-  [MemoryType.Reflection]: MemoryType.Reflection,
-};
+const MEMORY_TYPE_VALUES = new Set<string>([
+  'fact',
+  'entity',
+  'reflection',
+  'thread',
+  'skill',
+  'note',
+  'inbox',
+  'conversation',
+  'working',
+  'archive',
+  'unknown',
+]);
 
 export const MEMORY_MODE_LABELS: Record<MemoryMode, string> = {
   overview: 'Overview',
   explore: 'Explore',
-  edit: 'Edit',
 };
-export const MEMORY_MODE_ORDER = ['overview', 'explore', 'edit'] as const;
+export const MEMORY_MODE_ORDER = ['overview', 'explore'] as const;
 export const MEMORY_STATE_ORDER = [
   MemoryState.Core,
   MemoryState.Remembered,
@@ -33,9 +49,17 @@ export const MEMORY_STATE_ORDER = [
   MemoryState.Forgotten,
 ] as const;
 export const MEMORY_TYPE_OPTIONS = [
-  MemoryType.Fact,
-  MemoryType.Entity,
-  MemoryType.Reflection,
+  'fact',
+  'entity',
+  'reflection',
+  'thread',
+  'skill',
+  'note',
+  'inbox',
+  'conversation',
+  'working',
+  'archive',
+  'unknown',
 ] as const;
 export const MEMORY_STATE_OPTIONS = [
   MemoryState.Core,
@@ -47,11 +71,13 @@ export const MEMORY_STATE_OPTIONS = [
 interface RenderLibraryControlsOptions {
   description: string;
   filterState: MemoryState | undefined;
-  filterType: MemoryType | undefined;
+  filterType: string | undefined;
+  includeArchived?: boolean;
+  onIncludeArchivedToggle?: (value: boolean) => void;
   onQueryChange: (value: string) => void;
   onRefresh: () => void;
   onStateChange: (value: MemoryState | undefined) => void;
-  onTypeChange: (value: MemoryType | undefined) => void;
+  onTypeChange: (value: string | undefined) => void;
   parent: HTMLElement;
   query: string;
 }
@@ -63,19 +89,13 @@ interface RenderExploreBoardOptions {
   relationshipCounts: Map<string, number>;
 }
 
-interface RenderEditableNotesOptions {
-  app: App;
-  notes: VaultNote[];
-  onStateChange: (path: string, nextValue: string) => void;
-  parent: HTMLElement;
-  updatingPaths: Set<string>;
-}
-
 export function renderLibraryControls(options: RenderLibraryControlsOptions): void {
   const {
     description,
     filterState,
     filterType,
+    includeArchived,
+    onIncludeArchivedToggle,
     onQueryChange,
     onRefresh,
     onStateChange,
@@ -116,6 +136,21 @@ export function renderLibraryControls(options: RenderLibraryControlsOptions): vo
   stateSelect.addEventListener('change', () => {
     onStateChange(parseMemoryState(stateSelect.value));
   });
+
+  if (onIncludeArchivedToggle !== undefined) {
+    const archiveToggle = bar.createEl('button', {
+      cls: 'engram-toolbar-btn engram-memory-archive-toggle',
+      attr: { 'aria-label': 'Toggle archived notes', type: 'button' },
+    });
+    const isActive = includeArchived === true;
+    archiveToggle.toggleClass('is-active', isActive);
+    archiveToggle.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+    setIcon(archiveToggle, 'archive');
+    archiveToggle.createSpan({ text: isActive ? 'Hide archive' : 'Show archive' });
+    archiveToggle.addEventListener('click', () => {
+      onIncludeArchivedToggle(!isActive);
+    });
+  }
 
   const refreshBtn = bar.createEl('button', {
     cls: 'engram-toolbar-btn',
@@ -168,53 +203,8 @@ export function renderExploreBoard(options: RenderExploreBoardOptions): void {
   }
 }
 
-export function renderEditableNotes(options: RenderEditableNotesOptions): void {
-  const {
-    app,
-    notes,
-    onStateChange,
-    parent,
-    updatingPaths,
-  } = options;
-  if (notes.length === 0) {
-    parent.createDiv({
-      cls: 'engram-empty',
-      text: 'No memories match the current filters.',
-    });
-    return;
-  }
-
-  const groups = new Map<string, VaultNote[]>();
-  for (const note of notes) {
-    const type = resolveMemoryTypeLabel(note);
-    const groupNotes = groups.get(type);
-    if (groupNotes === undefined) {
-      groups.set(type, [note]);
-    } else {
-      groupNotes.push(note);
-    }
-  }
-
-  for (const [type, groupNotes] of groups) {
-    const group = parent.createDiv({ cls: 'engram-memory-group' });
-    group.createEl('h4', {
-      cls: 'engram-group-header',
-      text: `${capitalize(type)} (${String(groupNotes.length)})`,
-    });
-    for (const note of groupNotes) {
-      renderEditableNote({
-        app,
-        note,
-        onStateChange,
-        parent: group,
-        updatingPaths,
-      });
-    }
-  }
-}
-
-export function parseMemoryType(value: string): MemoryType | undefined {
-  return MEMORY_TYPE_BY_VALUE[value];
+export function parseMemoryType(value: string): string | undefined {
+  return MEMORY_TYPE_VALUES.has(value) ? value : undefined;
 }
 
 export function parseMemoryState(value: string): MemoryState | undefined {
@@ -248,15 +238,8 @@ export function resolveMemoryTypeLabel(note: VaultNote): string {
     : 'unknown';
 }
 
-export function normalizeMemoryType(value: unknown): MemoryType | undefined {
-  switch (value) {
-    case MemoryType.Fact:
-    case MemoryType.Entity:
-    case MemoryType.Reflection:
-      return value;
-    default:
-      return undefined;
-  }
+export function normalizeMemoryType(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
 }
 
 export function resolveMemoryState(note: VaultNote): MemoryState {
@@ -275,6 +258,31 @@ export function readTags(note: VaultNote): string[] {
   return Array.isArray(tags)
     ? tags.filter((tag): tag is string => typeof tag === 'string' && tag.length > 0)
     : [];
+}
+
+export function readConnectionRefs(note: VaultNote): string[] {
+  const {
+    frontmatter: { connections },
+  } = note;
+  return Array.isArray(connections)
+    ? connections.filter((value): value is string => typeof value === 'string' && value.length > 0)
+    : [];
+}
+
+export function pathToConnectionRef(notePath: string): string {
+  const normalized = notePath.replace(/\\/gu, '/');
+  const memoryIndex = normalized.lastIndexOf(MEMORY_DIR_SEGMENT);
+  if (memoryIndex === -1) {
+    for (const segment of ENGRAM_DIR_SEGMENTS) {
+      const index = normalized.lastIndexOf(segment);
+      if (index !== -1) {
+        return normalized.slice(index + 1);
+      }
+    }
+    return normalized;
+  }
+
+  return normalized.slice(memoryIndex + MEMORY_DIR_SEGMENT.length);
 }
 
 export function readFrontmatterString(value: unknown): string {
@@ -334,69 +342,6 @@ function renderExplorerCard(app: App, parent: HTMLElement, note: VaultNote, rela
   }
 
   card.createDiv({
-    cls: 'engram-memory-preview',
-    text: buildPreview(note.content),
-  });
-}
-
-function renderEditableNote(options: {
-  app: App;
-  note: VaultNote;
-  onStateChange: (path: string, nextValue: string) => void;
-  parent: HTMLElement;
-  updatingPaths: Set<string>;
-}): void {
-  const {
-    app,
-    note,
-    onStateChange,
-    parent,
-    updatingPaths,
-  } = options;
-  const item = parent.createDiv({ cls: 'engram-memory-item' });
-  const header = item.createDiv({ cls: 'engram-memory-item-header' });
-  const fileName = baseName(note.path);
-
-  const nameEl = header.createSpan({
-    cls: 'engram-memory-name',
-    text: fileName,
-  });
-  nameEl.addEventListener('click', () => {
-    void app.workspace.openLinkText(note.path, '', false);
-  });
-
-  const stateControls = header.createDiv({ cls: 'engram-memory-state-controls' });
-  stateControls.createSpan({
-    cls: 'engram-memory-state-label',
-    text: 'State',
-  });
-
-  const state = resolveMemoryState(note);
-  const stateSelect = stateControls.createEl('select', {
-    cls: 'engram-memory-state-select',
-    attr: { 'aria-label': `Memory state for ${fileName}` },
-  });
-  for (const option of MEMORY_STATE_OPTIONS) {
-    stateSelect.createEl('option', {
-      value: option,
-      text: capitalize(option),
-    });
-  }
-  stateSelect.value = state;
-  stateSelect.disabled = updatingPaths.has(note.path);
-  stateSelect.addEventListener('change', () => {
-    onStateChange(note.path, stateSelect.value);
-  });
-
-  const tags = readTags(note);
-  if (tags.length > 0) {
-    const tagRow = item.createDiv({ cls: 'engram-memory-tags' });
-    for (const tag of tags) {
-      tagRow.createSpan({ cls: 'engram-tag', text: `#${tag}` });
-    }
-  }
-
-  item.createDiv({
     cls: 'engram-memory-preview',
     text: buildPreview(note.content),
   });

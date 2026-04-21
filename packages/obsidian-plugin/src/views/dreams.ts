@@ -55,12 +55,14 @@ import {
   syncModelSelection,
   type ModelOption,
 } from './dreams-view-support';
+import { renderDreamerWordsOverlay } from './dreams-view-overlay';
 const DREAMS_TAB_TITLE = 'Dreams';
 const DREAMS_TAB_ICON = 'moon-star';
 const DREAMING_LABEL = 'Dreaming...';
 const POWER_NAP_LABEL = 'Power Napping...';
 const DREAMING_ANIMATION_MS = 250;
 const NARRATIVE_MAX_TOKENS = 512;
+const DREAMER_WORDS_DISMISS_TEXT = 'Wake';
 export class DreamsTab implements EngramTab {
   readonly id: EngramTabId = 'dreams';
   readonly label = DREAMS_TAB_TITLE;
@@ -85,6 +87,7 @@ export class DreamsTab implements EngramTab {
   private dreamCanvas: DreamCanvas | null = null;
   private dreamAnimator: Ciph3rTextAnimator | null = null;
   private overlayLabel = DREAMING_LABEL;
+  private dreamerWords: string | null = null;
   constructor(plugin: EngramPlugin) {
     this.plugin = plugin;
   }
@@ -120,7 +123,6 @@ export class DreamsTab implements EngramTab {
       this.render();
     }
   }
-
   private render(): void {
     if (this.parent === null) {
       return;
@@ -129,6 +131,18 @@ export class DreamsTab implements EngramTab {
     this.parent.empty();
     if (this.running) {
       this.renderDreamingOverlay();
+      return;
+    }
+    if (this.dreamerWords !== null) {
+      this.dreamCanvas = renderDreamerWordsOverlay({
+        parent: this.parent,
+        words: this.dreamerWords,
+        dismissText: DREAMER_WORDS_DISMISS_TEXT,
+        onDismiss: () => {
+          this.dreamerWords = null;
+          this.render();
+        },
+      });
       return;
     }
     if (this.loading) {
@@ -230,7 +244,6 @@ export class DreamsTab implements EngramTab {
       options,
     });
   }
-
   private async beginDreamRun(selection: ModelOption): Promise<void> {
     this.beginRun(DREAMING_LABEL);
     try {
@@ -261,6 +274,7 @@ export class DreamsTab implements EngramTab {
   private beginRun(label: string): void {
     this.running = true;
     this.overlayLabel = label;
+    this.dreamerWords = null;
     this.error = null;
     this.latestPlan = null;
     this.latestExecution = null;
@@ -300,6 +314,8 @@ export class DreamsTab implements EngramTab {
       narrativeSelection: narrativeOverride ?? undefined,
       narrativeProvider,
     });
+    const dreamerWords = plan.dream?.trim() ?? '';
+    this.dreamerWords = dreamerWords.length > 0 ? dreamerWords : null;
     this.latestPlan = plan;
     const { report } = plan;
     this.report = report;
@@ -334,9 +350,7 @@ export class DreamsTab implements EngramTab {
     this.scratchEntries = scratchEntries;
     this.threadData = threadData;
     this.plugin.refreshEngramView('snapshots');
-    showNotice(
-      `Power Nap complete: ${preCleanup.tagsFixed} tags fixed, ${preCleanup.tagsNormalized} tags normalized, ${preCleanup.scratchEntriesPurged} scratch entries purged, ${preCleanup.orphanedDreamStartsResolved} orphaned dream starts resolved.`,
-    );
+    showNotice(`Power Nap complete: ${preCleanup.tagsFixed} tags fixed, ${preCleanup.tagsNormalized} tags normalized, ${preCleanup.scratchEntriesPurged} scratch entries purged, ${preCleanup.orphanedDreamStartsResolved} orphaned dream starts resolved.`);
   }
   private async applyDreamPlan(
     plan: DreamsPlanResult,
@@ -383,7 +397,6 @@ export class DreamsTab implements EngramTab {
     this.scratchEntries = scratchEntries;
     this.threadData = threadData;
   }
-
   private syncSelection(): ModelOption[] {
     const options = getModelOptions(this.plugin.settings);
     const analysisFallback = getDreamAnalysisSelection(this.plugin.settings, options);

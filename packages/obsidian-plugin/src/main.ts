@@ -1,4 +1,5 @@
 import { Plugin } from 'obsidian';
+import reactFlowStyles from 'reactflow/dist/style.css';
 import {
   MemoryManager,
   Conversation,
@@ -20,6 +21,8 @@ import {
   type ProviderSettings,
 } from './constants';
 
+const REACT_FLOW_STYLE_ELEMENT_ID = 'engram-reactflow-style';
+
 export default class EngramPlugin extends Plugin {
   settings!: EngramSettings;
   memoryManager!: MemoryManager;
@@ -31,6 +34,7 @@ export default class EngramPlugin extends Plugin {
   // ─── Lifecycle ──────────────────────────────────────────────────────────
 
   async onload(): Promise<void> {
+    injectReactFlowStyles();
     await this.loadSettings();
 
     const adapter = new ObsidianAdapter(this.app);
@@ -66,8 +70,8 @@ export default class EngramPlugin extends Plugin {
 
     this.addCommand({
       id: 'open-memory-manager',
-      name: 'Open memory editor',
-      callback: async () => { await this.activateMemoryMode('edit'); },
+      name: 'Open memory explorer',
+      callback: async () => { await this.activateMemoryMode('explore'); },
     });
 
     this.addCommand({
@@ -102,6 +106,7 @@ export default class EngramPlugin extends Plugin {
   }
 
   onunload(): void {
+    removeReactFlowStyles();
     this.stopAutosave();
   }
 
@@ -210,9 +215,6 @@ export default class EngramPlugin extends Plugin {
         case 'explore':
           memoryTab.showExplore();
           break;
-        case 'edit':
-          memoryTab.showEdit();
-          break;
       }
     }
   }
@@ -318,6 +320,20 @@ function getStringProperty(value: unknown, key: string): string | undefined {
   }
 
   return undefined;
+}
+
+function injectReactFlowStyles(): void {
+  if (document.getElementById(REACT_FLOW_STYLE_ELEMENT_ID) !== null) {
+    return;
+  }
+  const styleEl = document.createElement('style');
+  styleEl.id = REACT_FLOW_STYLE_ELEMENT_ID;
+  styleEl.textContent = reactFlowStyles;
+  document.head.appendChild(styleEl);
+}
+
+function removeReactFlowStyles(): void {
+  document.getElementById(REACT_FLOW_STYLE_ELEMENT_ID)?.remove();
 }
 
 function isSettingsRecord(value: unknown): value is Partial<EngramSettings> {

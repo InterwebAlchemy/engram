@@ -200,6 +200,19 @@
   color: var(--text-normal);
 }
 
+.engram-memory-archive-toggle {
+  gap: 6px;
+  padding: 4px 10px;
+  font-size: var(--font-ui-smaller);
+  border: 1px solid var(--background-modifier-border);
+}
+
+.engram-memory-archive-toggle.is-active {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+  border-color: var(--interactive-accent);
+}
+
 /* ─── Messages ────────────────────────────────────────────────────────────── */
 
 .engram-messages {
@@ -1552,6 +1565,56 @@ details[open] > .engram-reasoning-summary::before {
   font-family: var(--font-monospace);
 }
 
+.engram-dreams-overlay-card {
+  display: flex;
+  height: 100%;
+  box-sizing: border-box;
+  min-height: 0;
+  flex-direction: column;
+  align-items: center;
+  max-width: min(640px, calc(100vw - 64px));
+  width: min(640px, calc(100% - 2rem));
+  padding: 2rem 1rem;
+  text-align: center;
+  animation: engram-dreams-fade-in 320ms ease-out both;
+}
+
+.engram-dreams-overlay-dream-text {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 0.25rem;
+  color: var(--text-muted);
+  line-height: 1.6;
+  font-size: var(--font-ui-medium);
+  font-style: italic;
+  font-weight: normal;
+  white-space: pre-wrap;
+  text-wrap: balance;
+  margin: 0;
+}
+
+.engram-dreams-overlay-dismiss {
+  margin-top: 1rem;
+  flex-shrink: 0;
+  min-width: 110px;
+  padding: 8px 14px;
+}
+
+@keyframes engram-dreams-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 /* ─── Settings: accordion sections ───────────────────────────────────────── */
 
 .engram-section-details,
@@ -2013,6 +2076,303 @@ details[open] > .engram-params-summary::before {
   margin: 8px 0;
 }
 
+.engram-memory-graph-host {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.engram-memory-graph-shell {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  padding: 0 12px 12px;
+}
+
+.engram-memory-graph-viewport {
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  background: var(--background-primary);
+}
+
+.engram-memory-graph-flow {
+  height: 100%;
+  min-height: 560px;
+}
+
+.engram-memory-graph-flow .react-flow {
+  height: 100%;
+}
+
+.engram-memory-graph-flow .react-flow__edge {
+  cursor: pointer;
+}
+
+.engram-memory-graph-flow .react-flow__edge.engram-memory-graph-edge.is-manual .react-flow__edge-path {
+  stroke: var(--interactive-accent);
+  stroke-width: 2;
+}
+
+.engram-memory-graph-flow .react-flow__edge.engram-memory-graph-edge.is-thread .react-flow__edge-path {
+  stroke: var(--engram-thread);
+}
+
+.engram-memory-graph-flow .react-flow__edge.engram-memory-graph-edge.is-tag .react-flow__edge-path {
+  stroke-dasharray: 4 4;
+  opacity: 0.7;
+}
+
+.engram-memory-graph-flow .react-flow__node.engram-memory-graph-flow-node {
+  width: 180px;
+  padding: 10px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 3px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--background-secondary) 70%, transparent);
+  text-align: center;
+}
+
+.engram-memory-graph-flow .react-flow__node.engram-memory-graph-flow-node.is-core {
+  border-left: 3px solid var(--engram-state-core);
+}
+
+.engram-memory-graph-flow .react-flow__node.engram-memory-graph-flow-node.is-remembered {
+  border-left: 3px solid var(--engram-state-remembered);
+}
+
+.engram-memory-graph-flow .react-flow__node.engram-memory-graph-flow-node.is-default {
+  border-left: 3px solid var(--engram-state-default);
+}
+
+.engram-memory-graph-flow .react-flow__node.engram-memory-graph-flow-node.is-forgotten {
+  border-left: 3px solid var(--engram-state-forgotten);
+}
+
+.engram-memory-graph-flow .react-flow__node.engram-memory-graph-flow-node.is-archived {
+  opacity: 0.55;
+  border-style: dashed;
+}
+
+.engram-memory-graph-flow .react-flow__node.engram-memory-graph-flow-node.is-archived:hover {
+  opacity: 0.9;
+}
+
+.engram-memory-graph-flow .react-flow__node.selected.engram-memory-graph-flow-node {
+  box-shadow: 0 0 0 2px var(--interactive-accent);
+}
+
+.engram-memory-graph-node {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.engram-memory-graph-node-title {
+  font-weight: 600;
+  line-height: 1.25;
+  word-break: break-word;
+}
+
+.engram-memory-graph-node-type {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+}
+
+.engram-memory-graph-action-btn {
+  font-size: var(--font-ui-smaller);
+  padding: 2px 8px;
+}
+
+.engram-memory-graph-node-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.engram-memory-graph-state-select {
+  width: 100%;
+}
+
+.engram-memory-graph-pill-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.engram-memory-graph-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--background-secondary);
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: var(--font-ui-smaller);
+}
+
+.engram-memory-graph-pill > button {
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  line-height: 1;
+  padding: 0;
+}
+
+.engram-memory-graph-pill > button:hover {
+  color: var(--text-normal);
+}
+
+.engram-memory-graph-inline-editor {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.engram-memory-graph-inline-editor .engram-memory-search {
+  flex: 1;
+  min-width: 0;
+}
+
+.engram-memory-graph-empty,
+.engram-memory-graph-empty-inline {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+
+.engram-memory-graph-empty {
+  font-style: italic;
+}
+
+/* ── Drawer ────────────────────────────────────────────────────────────── */
+
+.engram-memory-graph-drawer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(340px, 90%);
+  background: var(--background-primary);
+  border-left: 1px solid var(--background-modifier-border);
+  box-shadow: -4px 0 12px color-mix(in srgb, var(--background-secondary) 60%, transparent);
+  padding: 16px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  z-index: 10;
+  animation: engram-drawer-slide-in 160ms ease-out;
+}
+
+@keyframes engram-drawer-slide-in {
+  from {
+    transform: translateX(16px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.engram-memory-graph-drawer-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.engram-memory-graph-drawer-title {
+  font-weight: 600;
+  line-height: 1.25;
+  word-break: break-word;
+  flex: 1;
+}
+
+.engram-memory-graph-drawer-close {
+  flex: 0 0 auto;
+  background: transparent;
+  border: 0;
+  font-size: 22px;
+  line-height: 1;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.engram-memory-graph-drawer-close:hover {
+  color: var(--text-normal);
+}
+
+.engram-memory-graph-drawer-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.engram-memory-graph-drawer-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.engram-memory-graph-drawer-label {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.engram-memory-graph-drawer-open {
+  margin-top: 4px;
+}
+
+/* ── Controls + MiniMap theming ────────────────────────────────────────── */
+
+.engram-memory-graph-flow .react-flow__controls {
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  box-shadow: none;
+}
+
+.engram-memory-graph-flow .react-flow__controls-button {
+  background: var(--background-secondary);
+  border-bottom: 1px solid var(--background-modifier-border);
+  color: var(--text-normal);
+  fill: var(--text-normal);
+}
+
+.engram-memory-graph-flow .react-flow__controls-button:hover {
+  background: var(--background-modifier-hover);
+}
+
+.engram-memory-graph-flow .react-flow__controls-button svg {
+  fill: currentColor;
+}
+
+.engram-memory-graph-flow .react-flow__minimap {
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+}
+
+.engram-memory-graph-flow .react-flow__minimap-mask {
+  fill: color-mix(in srgb, var(--background-primary) 55%, transparent);
+  stroke: var(--background-modifier-border);
+}
+
+.engram-memory-graph-flow .react-flow__minimap-node {
+  fill: var(--text-faint);
+  stroke: none;
+}
+
 /* ─── Tool call cards (inline in assistant bubble) ─────────────────────────── */
 
 .engram-tool-calls {
@@ -2186,6 +2546,20 @@ details[open] > .engram-params-summary::before {
   .engram-memory-mode-strip {
     flex-wrap: wrap;
   }
+
+  .engram-memory-graph-shell {
+    grid-template-columns: 1fr;
+    padding-inline: 10px;
+  }
+
+  .engram-memory-graph-viewport {
+    min-height: 420px;
+  }
+
+  .engram-memory-graph-inline-editor {
+    flex-direction: column;
+    align-items: stretch;
+  }
 }
 
 @media (max-width: 520px) {
@@ -2206,5 +2580,9 @@ details[open] > .engram-params-summary::before {
   .engram-dreams-toolbar,
   .engram-dreams-controls {
     padding-inline: 10px;
+  }
+
+  .engram-memory-graph-shell {
+    gap: 10px;
   }
 }

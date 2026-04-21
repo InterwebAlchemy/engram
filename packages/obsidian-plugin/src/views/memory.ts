@@ -1,5 +1,6 @@
+import * as path from 'node:path';
 import { type App, setIcon } from 'obsidian';
-import type { MemoryState, MemoryType, VaultNote } from '@interwebalchemy/engram-core';
+import { type MemoryState, VaultNote } from '@interwebalchemy/engram-core';
 import type EngramPlugin from '../main';
 import type { EngramTabId } from '../constants';
 import type { EngramTab } from './tab';
@@ -8,23 +9,23 @@ import {
   MEMORY_MODE_LABELS,
   MEMORY_MODE_ORDER,
   baseName,
-  buildRelationshipCounts,
   getErrorMessage,
   normalizeMemoryType,
   parseMemoryState,
+  pathToConnectionRef,
+  readConnectionRefs,
   readFrontmatterString,
   readTags,
-  renderEditableNotes,
-  renderExploreBoard,
   renderLibraryControls,
   resolveMemoryState,
   resolveMemoryTypeLabel,
 } from './memory-view-helpers';
+import { renderExploreGraph } from './memory-graph';
 
 const MEMORY_TAB_TITLE = 'Memory';
 const MEMORY_TAB_ICON = 'database';
 
-export type MemoryMode = 'overview' | 'explore' | 'edit';
+export type MemoryMode = 'overview' | 'explore';
 
 export class MemoriesTab implements EngramTab {
   readonly id: EngramTabId = 'memories';
@@ -39,10 +40,13 @@ export class MemoriesTab implements EngramTab {
   private bodyEl: HTMLElement | null = null;
   private error: string | null = null;
   private filterState: MemoryState | undefined;
-  private filterType: MemoryType | undefined;
+  private filterType: string | undefined;
   private modeStripEl: HTMLElement | null = null;
   private notes: VaultNote[] = [];
   private parent: HTMLElement | null = null;
+  private disposeExploreGraph: (() => void) | null = null;
+  private selectedExplorePath: string | null = null;
+  private includeArchived = false;
   private query = '';
 
   constructor(app: App, plugin: EngramPlugin) {
@@ -64,6 +68,7 @@ export class MemoriesTab implements EngramTab {
   }
 
   unmount(): void {
+    this.clearExploreGraph();
     this.dreamsTab.unmount();
     if (this.parent !== null) {
       this.parent.empty();
@@ -82,10 +87,6 @@ export class MemoriesTab implements EngramTab {
     await this.renderCurrentMode({ forceReload: true });
   }
 
-  showEdit(): void {
-    void this.switchMode('edit');
-  }
-
   showExplore(): void {
     void this.switchMode('explore');
   }
@@ -100,7 +101,7 @@ export class MemoriesTab implements EngramTab {
     copy.createEl('h3', { text: MEMORY_TAB_TITLE });
     copy.createEl('p', {
       cls: 'setting-item-description',
-      text: 'See memory pressure, explore relationships across the vault, and edit note state from one place.',
+      text: 'Explore the full Engram graph with inline node editing and connection controls.',
     });
 
     const actions = toolbar.createDiv({ cls: 'engram-toolbar-actions' });
@@ -147,6 +148,7 @@ export class MemoriesTab implements EngramTab {
     if (this.bodyEl === null) {
       return;
     }
+    this.clearExploreGraph();
     this.bodyEl.empty();
 
     if (this.activeMode === 'overview') {
@@ -165,22 +167,25 @@ export class MemoriesTab implements EngramTab {
     if (this.error !== null) {
       this.bodyEl.createDiv({
         cls: 'engram-empty',
-        text: `Could not load memories: ${this.error}`,
+        text: `Could not load Engram graph: ${this.error}`,
       });
       return;
     }
 
-    if (this.activeMode === 'explore') {
-      this.renderExploreMode();
-      return;
-    }
-
-    this.renderEditMode();
+    this.renderExploreMode();
   }
 
   private async loadNotes(): Promise<void> {
     try {
-      this.notes = await this.plugin.memoryManager.list();
+      const engramRootPath = path.resolve(this.plugin.getVaultBasePath(), this.plugin.settings.engramRoot);
+      const notePaths = await this.plugin.fileAdapter.list(engramRootPath);
+      const loaded = await Promise.all(
+        notePaths.map(async (notePath) => await VaultNote.read(this.plugin.fileAdapter, notePath).catch(() => null)),
+      );
+      this.notes = loaded
+        .filter((note): note is VaultNote => note !== null)
+        .map((note) => normalizeExplorerNote(note, engramRootPath))
+        .sort((left, right) => left.path.localeCompare(right.path));
       this.error = null;
     } catch (error) {
       this.notes = [];
@@ -196,6 +201,11 @@ export class MemoriesTab implements EngramTab {
       parent: this.bodyEl,
       filterState: this.filterState,
       filterType: this.filterType,
+      includeArchived: this.includeArchived,
+      onIncludeArchivedToggle: (value) => {
+        this.includeArchived = value;
+        this.renderFilteredCurrentMode();
+      },
       onQueryChange: (value) => {
         this.query = value;
         this.renderFilteredCurrentMode();
@@ -212,60 +222,44 @@ export class MemoriesTab implements EngramTab {
         this.renderFilteredCurrentMode();
       },
       query: this.query,
-      description: 'Move through the memory map by state. Cards surface thread and tag relationships so nearby memories are easier to follow.',
+      description: 'Explore all Engram notes as an interactive graph. Click a node to edit state/tags in the side drawer, drag between handles to connect, and click manual edges to disconnect.',
     });
     const visibleNotes = this.getVisibleNotes();
     if (visibleNotes.length === 0) {
       this.bodyEl.createDiv({
         cls: 'engram-empty',
-        text: 'No memories match the current filters.',
+        text: 'No Engram notes match the current filters.',
       });
       return;
     }
 
-    renderExploreBoard({
-      app: this.app,
-      notes: visibleNotes,
-      parent: this.bodyEl,
-      relationshipCounts: buildRelationshipCounts(visibleNotes),
-    });
-  }
-
-  private renderEditMode(): void {
-    if (this.bodyEl === null) {
-      return;
+    const stillVisible = visibleNotes.some((note) => note.path === this.selectedExplorePath);
+    if (!stillVisible) {
+      this.selectedExplorePath = null;
     }
-    renderLibraryControls({
-      parent: this.bodyEl,
-      filterState: this.filterState,
-      filterType: this.filterType,
-      onQueryChange: (value) => {
-        this.query = value;
-        this.renderFilteredCurrentMode();
-      },
-      onRefresh: () => {
-        void this.renderCurrentMode({ forceReload: true });
-      },
-      onStateChange: (value) => {
-        this.filterState = value;
-        this.renderFilteredCurrentMode();
-      },
-      onTypeChange: (value) => {
-        this.filterType = value;
-        this.renderFilteredCurrentMode();
-      },
-      query: this.query,
-      description: 'Filter the library, inspect note contents, and update memory state directly without accidental click-cycling.',
-    });
 
-    const list = this.bodyEl.createDiv({ cls: 'engram-memory-list' });
-    renderEditableNotes({
-      app: this.app,
-      notes: this.getVisibleNotes(),
-      onStateChange: (path, nextValue) => {
-        void this.updateMemoryState(path, nextValue);
+    this.disposeExploreGraph = renderExploreGraph({
+      initialSelectedPath: this.selectedExplorePath,
+      notes: visibleNotes,
+      onConnect: async (sourcePath, targetPath) => {
+        await this.updateManualConnection(sourcePath, targetPath, true);
       },
-      parent: list,
+      onDisconnect: async (sourcePath, targetPath) => {
+        await this.updateManualConnection(sourcePath, targetPath, false);
+      },
+      onOpenNote: (path) => {
+        void this.app.workspace.openLinkText(toVaultPath(path, this.plugin.getVaultBasePath()), '', false);
+      },
+      onSelectedPathChange: (path) => {
+        this.selectedExplorePath = path;
+      },
+      onStateChange: async (path, nextValue) => {
+        await this.updateMemoryState(path, nextValue);
+      },
+      onTagsChange: async (path, nextTags) => {
+        await this.updateMemoryTags(path, nextTags);
+      },
+      parent: this.bodyEl,
       updatingPaths: this.updatingPaths,
     });
   }
@@ -280,10 +274,14 @@ export class MemoriesTab implements EngramTab {
   private getVisibleNotes(): VaultNote[] {
     const query = this.query.trim().toLowerCase();
     return this.notes.filter((note) => {
+      const noteType = normalizeMemoryType(note.frontmatter.type);
+      if (!this.includeArchived && this.filterType !== 'archive' && noteType === 'archive') {
+        return false;
+      }
       if (this.filterState !== undefined && resolveMemoryState(note) !== this.filterState) {
         return false;
       }
-      if (this.filterType !== undefined && normalizeMemoryType(note.frontmatter.type) !== this.filterType) {
+      if (this.filterType !== undefined && noteType !== this.filterType) {
         return false;
       }
       if (query.length === 0) {
@@ -324,4 +322,154 @@ export class MemoriesTab implements EngramTab {
 
     this.renderFilteredCurrentMode();
   }
+
+  private async updateMemoryTags(path: string, nextTags: string[]): Promise<void> {
+    const normalizedTags = normalizeTagList(nextTags);
+    this.updatingPaths.add(path);
+    try {
+      await this.plugin.memoryManager.update(path, undefined, {
+        tags: normalizedTags,
+      });
+      const updated = this.notes.find((note) => note.path === path);
+      if (updated !== undefined) {
+        updated.frontmatter.tags = normalizedTags;
+      }
+    } finally {
+      this.updatingPaths.delete(path);
+    }
+
+    this.renderFilteredCurrentMode();
+  }
+
+  private async updateManualConnection(
+    sourcePath: string,
+    targetPath: string,
+    shouldConnect: boolean,
+  ): Promise<void> {
+    if (sourcePath === targetPath) {
+      return;
+    }
+
+    const source = this.notes.find((note) => note.path === sourcePath);
+    const target = this.notes.find((note) => note.path === targetPath);
+    if (source === undefined || target === undefined) {
+      return;
+    }
+
+    const sourceRef = pathToConnectionRef(sourcePath);
+    const targetRef = pathToConnectionRef(targetPath);
+
+    const sourceConnections = new Set(readConnectionRefs(source));
+    const targetConnections = new Set(readConnectionRefs(target));
+
+    if (shouldConnect) {
+      sourceConnections.add(targetRef);
+      targetConnections.add(sourceRef);
+    } else {
+      sourceConnections.delete(targetRef);
+      targetConnections.delete(sourceRef);
+    }
+
+    this.updatingPaths.add(sourcePath);
+    this.updatingPaths.add(targetPath);
+    try {
+      const nextSourceConnections = Array.from(sourceConnections).sort((left, right) => left.localeCompare(right));
+      const nextTargetConnections = Array.from(targetConnections).sort((left, right) => left.localeCompare(right));
+      await this.plugin.memoryManager.update(sourcePath, undefined, {
+        connections: nextSourceConnections,
+      });
+      await this.plugin.memoryManager.update(targetPath, undefined, {
+        connections: nextTargetConnections,
+      });
+      source.frontmatter.connections = nextSourceConnections;
+      target.frontmatter.connections = nextTargetConnections;
+    } finally {
+      this.updatingPaths.delete(sourcePath);
+      this.updatingPaths.delete(targetPath);
+    }
+
+    this.renderFilteredCurrentMode();
+  }
+
+  private clearExploreGraph(): void {
+    this.disposeExploreGraph?.();
+    this.disposeExploreGraph = null;
+  }
+}
+
+function normalizeTagList(tags: string[]): string[] {
+  const unique = new Set<string>();
+  for (const tag of tags) {
+    const normalized = normalizeTag(tag);
+    if (normalized.length > 0) {
+      unique.add(normalized);
+    }
+  }
+  return Array.from(unique).sort((left, right) => left.localeCompare(right));
+}
+
+function normalizeTag(value: string): string {
+  return value.trim().replace(/^#+/u, '').toLowerCase();
+}
+
+function normalizeExplorerNote(note: VaultNote, engramRootPath: string): VaultNote {
+  const inferredType = inferExplorerType(note.path, engramRootPath);
+  const frontmatter = { ...note.frontmatter };
+  const currentType = readFrontmatterString(frontmatter.type).toLowerCase();
+
+  if (inferredType !== 'memory' && (currentType.length === 0 || currentType === 'fact')) {
+    frontmatter.type = inferredType;
+  }
+
+  if (inferredType === 'thread') {
+    const threadId = readFrontmatterString(frontmatter.thread_id);
+    const existingThread = readFrontmatterString(frontmatter.thread);
+    if (threadId.length > 0 && existingThread.length === 0) {
+      frontmatter.thread = threadId;
+    }
+  }
+
+  return new VaultNote(note.path, frontmatter, note.content);
+}
+
+function inferExplorerType(notePath: string, engramRootPath: string): string {
+  const relativePath = toPosix(path.relative(engramRootPath, notePath));
+  if (relativePath.startsWith('memory/')) {
+    return 'memory';
+  }
+  if (relativePath.startsWith('threads/')) {
+    return 'thread';
+  }
+  if (relativePath.startsWith('skills/')) {
+    return 'skill';
+  }
+  if (relativePath.startsWith('notes/')) {
+    return 'note';
+  }
+  if (relativePath.startsWith('inbox/')) {
+    return 'inbox';
+  }
+  if (relativePath.startsWith('conversations/')) {
+    return 'conversation';
+  }
+  if (relativePath.startsWith('working/')) {
+    return 'working';
+  }
+  if (relativePath.startsWith('archive/')) {
+    return 'archive';
+  }
+  return 'unknown';
+}
+
+function toPosix(value: string): string {
+  return value.replace(/\\/gu, '/');
+}
+
+function toVaultPath(notePath: string, vaultBasePath: string): string {
+  const normalizedNotePath = toPosix(path.resolve(notePath));
+  const normalizedVaultPath = toPosix(path.resolve(vaultBasePath));
+  if (normalizedNotePath.startsWith(`${normalizedVaultPath}/`)) {
+    return normalizedNotePath.slice(normalizedVaultPath.length + 1);
+  }
+  return notePath;
 }

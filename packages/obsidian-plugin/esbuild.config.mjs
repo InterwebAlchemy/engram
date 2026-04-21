@@ -72,6 +72,9 @@ const ctx = await esbuild.context({
   outfile: resolve(__dirname, 'main.js'),
   sourcemap: prod ? false : 'inline',
   treeShaking: true,
+  loader: {
+    '.css': 'text',
+  },
   external: [
     'obsidian',
     'electron',
