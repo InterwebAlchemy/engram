@@ -23,6 +23,7 @@ export function buildPersistedConfig(answers: InitAnswers): PersistedConfig {
     harnesses: answers.harnesses,
     claudeCodeScope: answers.claudeCodeScope,
     voicePreset: answers.voicePreset,
+    ...(answers.cliBinDir === null ? {} : { cliBinDir: answers.cliBinDir }),
     ...(answers.shellProfilePath === null ? {} : { shellProfilePath: answers.shellProfilePath }),
   };
 }
@@ -65,7 +66,6 @@ export async function persistInitState(options: {
     await upsertEnvFile(envPath, envUpdates);
     const envRelative = path.relative(repoRoot, envPath);
     writeLine(`Synced repo dev env → ${envRelative.length > 0 ? envRelative : '.env'}`);
-    return;
   }
 
   let { shellProfilePath } = answers;
@@ -78,7 +78,12 @@ export async function persistInitState(options: {
   }
 
   if (shellProfilePath !== null) {
-    const result = await upsertShellExports(shellProfilePath, envUpdates);
+    const shellEnvUpdates = !repoContext || oldShellProfilePath !== null
+      ? envUpdates
+      : {};
+    const result = await upsertShellExports(shellProfilePath, shellEnvUpdates, {
+      pathPrependDir: answers.cliBinDir,
+    });
     const { path: persistedShellProfilePath, action } = result;
     shellProfilePath = persistedShellProfilePath;
     writeLine(`Shell exports → ${persistedShellProfilePath} (${action})`);

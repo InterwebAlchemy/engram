@@ -1,0 +1,51 @@
+name: Harness Request
+description: Request support for a new client harness to be verified with Engram.
+title: "[Harness]: "
+labels: ["harness", "triage", "feature request"]
+assignees:
+  - ericallen
+type: "custom"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form to request support for a new client harness.
+
+        Please provide as much information as you can to help us identify, integrate, and verify the harness.
+  - type: input
+    id: name
+    attributes:
+      label: Harness
+      description: What is the name of this harness? For example, "Aider", "Goose", "Cline", "Cursor", etc.
+      placeholder:
+    validations:
+      required: true
+  - type: dropdown
+    id: type
+    attributes:
+      label: Type
+      description: What type of harness is this?
+      options:
+        - CLI
+        - IDE Extension
+        - Standalone App
+        - Multiple Interfaces
+        - Browser Extension
+        - Other
+      default: 0
+    validations:
+      required: true
+  - type: input
+    id: url
+    attributes:
+      label: Harness URL
+      description: Where can we find the docs for this harness? Please provide a URL if possible.
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Please provide a description of the harness and its functionality.
+    validations:
+      required: true

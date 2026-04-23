@@ -8,7 +8,8 @@ export type HarnessKey =
   | 'vscode'
   | 'copilot'
   | 'windsurf'
-  | 'opencode';
+  | 'opencode'
+  | 'agentsSkills';
 
 export interface HarnessOption {
   key: HarnessKey;
@@ -31,6 +32,7 @@ export interface ExistingConfig {
   claudeCodeScope: 'local' | 'user';
   voicePreset: VoicePresetId;
   shellProfilePath: string | null;
+  cliBinDir: string | null;
 }
 
 export interface InitAnswers {
@@ -45,6 +47,7 @@ export interface InitAnswers {
   bootstrapPlacement: Placement;
   voicePreset: VoicePresetId;
   shellProfilePath: string | null;
+  cliBinDir: string | null;
   runSetup: boolean;
   installObsidianPlugin: boolean;
 }
@@ -60,4 +63,5 @@ export interface PersistedConfig {
   claudeCodeScope: 'local' | 'user';
   voicePreset: VoicePresetId;
   shellProfilePath?: string;
+  cliBinDir?: string;
 }

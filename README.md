@@ -20,30 +20,34 @@ Built on the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/), E
 
 Currently in **BETA** development.
 
-Engram has been verified to initialize and operate across the following harnesses:
+Engram has been verified to properly bootstrap, initialize, and operate across the following harnesses:
 
-- Claude Code
-  - CLI
-  - VS Code Extension
-- Claude Desktop App
-  - Chat
-  - Cowork
-  - Code
-- Codex
-  - Desktop App
-  - VS Code Extension
-- Cursor
-- GitHub Copilot
-  - CLI
-  - VS Code Chat
-- Windsurf
-- OpenCode
+- [Claude Code](https://claude.com/product/claude-code)
+  - [Claude Code CLI](https://code.claude.com/docs/en/quickstart)
+  - [Claude Code VS Code Extension](https://code.claude.com/docs/en/vs-code)
+- [Claude Desktop App](https://claude.com/download)
+  - [Chat](https://claude.com/product/overview)
+  - [Cowork](https://claude.com/product/cowork)
+  - [Code](https://code.claude.com/docs/en/desktop-quickstart)
+- [Codex](https://openai.com/codex/)
+  - [Codex Desktop App](https://developers.openai.com/codex/app)
+  - [Codex VS Code Extension](https://developers.openai.com/codex/ide)
+  - [Codex CLI](https://developers.openai.com/codex/cli)
+- [GitHub Copilot](https://github.com/features/copilot)
+  - [Copilot CLI](https://github.com/features/copilot/cli)
+  - [Copilot VS Code Extension](https://github.com/features/copilot/ai-code-editor)
+- [Cursor](https://cursor.com/home)
+- [Windsurf](https://windsurf.com/)
+- [OpenCode](https://opencode.ai/)
+- [Pi](https://pi.dev/)
 
-Other harnesses and clients may be configurable via MCP, but they should be considered unverified until they are tested end-to-end and added to the list above.
+Other harnesses and clients may be configurable via MCP or Agent Skills, but they should be considered unverified and unsupported until they have been tested end-to-end and added to the list above.
+
+[Request verified support for a specific harness](https://github.com/InterwebAlchemy/engram/issues/new?&template=harness.yaml).
 
 ### Upcoming Features
 
-- **More harness verifications** for additional MCP clients such as OpenCode, Pi, Aider and other MCP-capable tools.
+- **More harness verifications** for additional client harnesses such as [Aider](https://aider.chat/), [Goose](https://goose-docs.ai/), [Cline](https://cline.bot/), [Continue](https://docs.continue.dev/ide-extensions/install), and other relevant [MCP](https://modelcontextprotocol.io/)-capable or [Agent Skills](https://agentskills.io/)-capable tools. [Request verified support for a specific harness](https://github.com/InterwebAlchemy/engram/issues/new?&template=harness.yaml).
 - **Semantic search** for more precise context retrieval and lower token overhead.
 - **Context-specific memories** that allow the Engram to load some non-Threaded memories only when they are relevant, for example: only loading context about another person when you are working on a project with them or writing them an email.
 - **Streamlined setup** with guided onboarding and a single installation command via `brew` or `npx`.
@@ -83,13 +87,14 @@ Instead of wasting time in each tool re-establishing where you are and what you'
 
 1. Start your refactor session in the Claude Code Desktop App or Claude Code VS Code extension to scaffold out the changes and implement the initial architecture
 2. Switch to the Codex Desktop App or Codex VS Code extension to carry the same identity and project context into a different coding harness
-3. Use Claude Desktop to review the same thread and continue the work from a different interface
+3. Use Claude Desktop to review the same Thread and continue the work from a different interface
+4. Chat directly with the Engram via the Obsidian Plugin using a local model running in [LM Studio](https://lmstudio.ai/) to review your `README` and make sure it reflects the changes you made in code and reflects the context in your Thread
 
 **Solution**:
 
-Each new session loads the same identity, project context, and working memory — no re-explaining architecture decisions, no re-litigating naming conventions, no temporary markdown files to coordinate across tools.
+Each new session loads the same identity, project context, and working memory. There's no re-explaining architecture decisions, no re-litigating naming conventions, no temporary markdown files to coordinate across tools.
 
-You just start a session and the Engram picks up where you left off.
+You just start a session and the Engram picks up where you left off. It works seamlessly across providers and even with local models that are capable of [tool use](https://lmstudio.ai/docs/developer/openai-compat/tools).
 
 ### Porting work across projects
 
@@ -178,14 +183,15 @@ Cross-device continuity is established by any of the available [synchronization 
 ## Quickstart
 
 1. Clone this repository and run `npm install`
-2. Run `npm run cli` for the guided setup flow. It prompts for:
+2. Run `npm run cli:onboarding` for the guided setup flow. It prompts for:
    1. the name for the Engram's identity
    2. an optional git identity string to use in a `Co-Authored By` trailer
    3. the path to an Obsidian Vault
    4. the directory inside of that Obsidian Vault to use as the Engram's root directory
    5. the harnesses you want to configure
    6. a starter voiceprint preset to seed the Engram's personality and communication style
-   7. (optional) installing the Engram Obisidan Plugin for better Memory and Dream visualization and direct interaction with the Engram from the Obsidian UI using any model provider; you can revisit the plugin installation later via `npm run cli`
+   7. (optional) installing an `engram` launcher into a user bin directory (for example `~/.local/bin`) so Agent Skills can call `engram ...` directly
+   8. (optional) installing the Engram Obisidan Plugin for better Memory and Dream visualization and direct interaction with the Engram from the Obsidian UI using any model provider; you can revisit the plugin installation later via `npm run cli:onboarding`
 3. Review the generated Soul document at `<vault>/<engram-root>/memory/soul.md` and make it yours.
 
 **Note**: Each new Engram session bootstraps by calling `soul(action: "get")`, then `thread(action: "resolve")` (auto-detects or creates the active Thread from the working directory), then `context(action: "load")`, then `scratch(action: "read", bootstrap: true)` to gather the relevant starting context for the session.

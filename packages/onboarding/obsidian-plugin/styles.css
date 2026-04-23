@@ -1,0 +1,2588 @@
+/* ─── Layout ──────────────────────────────────────────────────────────────── */
+
+.engram-view-container {
+  --engram-state-core: var(--color-accent);
+  --engram-state-remembered: var(--background-modifier-success);
+  --engram-state-default: #85bbd8;
+  --engram-state-forgotten: var(--background-modifier-error);
+  --engram-type-fact: #4b84ff;
+  --engram-type-entity: #2fbe88;
+  --engram-type-reflection: #f0a63b;
+  --engram-type-other: var(--text-muted);
+  --engram-soul: #d6b86b;
+  --engram-global-inbox: #7ab7cf;
+  --engram-thread: #f09a6b;
+  --engram-thread-1: #f09a6b;
+  --engram-thread-2: #8ab6ff;
+  --engram-thread-3: #8dd0a6;
+  --engram-thread-4: #cf9cff;
+  --engram-thread-5: #f0c86a;
+  --engram-thread-6: #de7f9f;
+  --engram-scratch-base: #8a7fff;
+  --engram-scratch-cold: color-mix(in srgb, var(--text-faint) 70%, var(--engram-scratch-base) 30%);
+  --engram-scratch-1: #6c8aff;
+  --engram-scratch-2: #8ad1c2;
+  --engram-scratch-3: #d2a3ff;
+  --engram-scratch-4: #ffb38a;
+  --engram-scratch-5: #f78ca7;
+  --engram-scratch-6: #a8c97f;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 0;
+}
+
+.engram-chat-container,
+.engram-memory-container,
+.engram-dreams-container,
+.engram-snapshots-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 0;
+  min-height: 0;
+}
+
+/* ─── Tab strip ───────────────────────────────────────────────────────────── */
+
+.engram-tab-strip {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  padding: 6px 8px 0;
+  border-bottom: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+}
+
+.engram-tab-strip.is-menu {
+  justify-content: flex-end;
+}
+
+.engram-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-top-left-radius: var(--radius-s);
+  border-top-right-radius: var(--radius-s);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: var(--font-ui-small);
+}
+
+.engram-tab-strip.is-icons-only .engram-tab-btn {
+  justify-content: center;
+  padding: 6px 10px;
+}
+
+.engram-tab-strip.is-icons-only .engram-tab-label {
+  display: none;
+}
+
+.engram-tab-btn:hover {
+  color: var(--text-normal);
+  background: var(--background-modifier-hover);
+}
+
+.engram-tab-btn.is-active {
+  color: var(--text-normal);
+  background: var(--background-primary);
+  border-color: var(--background-modifier-border);
+  margin-bottom: -1px;
+}
+
+.engram-tab-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+.engram-tab-label {
+  line-height: 1;
+}
+
+.engram-tab-menu-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  margin-left: auto;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  background: var(--background-primary);
+  color: var(--text-normal);
+  cursor: pointer;
+}
+
+.engram-tab-menu-btn:hover {
+  background: var(--background-modifier-hover);
+}
+
+.engram-tab-menu-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+}
+
+.engram-tab-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ─── Toolbar ─────────────────────────────────────────────────────────────── */
+
+.engram-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.engram-toolbar-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.engram-toolbar-copy h3,
+.engram-toolbar-copy p {
+  margin: 0;
+}
+
+.engram-toolbar-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.engram-toolbar-meta {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.engram-provider-select {
+  flex: 1;
+  min-width: 0;
+}
+
+.engram-toolbar-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.engram-toolbar-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  cursor: pointer;
+  background: none;
+  border: none;
+  border-radius: var(--radius-s);
+  color: var(--text-muted);
+}
+
+.engram-toolbar-btn:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.engram-memory-archive-toggle {
+  gap: 6px;
+  padding: 4px 10px;
+  font-size: var(--font-ui-smaller);
+  border: 1px solid var(--background-modifier-border);
+}
+
+.engram-memory-archive-toggle.is-active {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+  border-color: var(--interactive-accent);
+}
+
+/* ─── Messages ────────────────────────────────────────────────────────────── */
+
+.engram-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.engram-chat-empty-state {
+  margin: auto 0;
+  padding: 16px;
+  border: 1px dashed var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  background: var(--background-secondary);
+}
+
+.engram-chat-empty-state h4 {
+  margin: 0 0 6px;
+}
+
+.engram-chat-empty-state p {
+  margin: 0;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.engram-message {
+  padding: 8px 12px;
+  border-radius: var(--radius-m);
+  max-width: 95%;
+}
+
+.engram-message-user {
+  align-self: flex-end;
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
+.engram-message-assistant {
+  align-self: flex-start;
+  background: var(--background-secondary);
+}
+
+.engram-message-system {
+  align-self: center;
+  font-size: var(--font-smaller);
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.engram-message-streaming {
+  opacity: 0.85;
+}
+
+/* ─── Reasoning section ───────────────────────────────────────────────────── */
+
+.engram-reasoning-details {
+  margin-bottom: 6px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  overflow: hidden;
+}
+
+.engram-reasoning-summary {
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: var(--font-smaller);
+  font-weight: 600;
+  color: var(--text-muted);
+  user-select: none;
+  list-style: none;
+  background: var(--background-primary-alt);
+}
+
+.engram-reasoning-summary::-webkit-details-marker {
+  display: none;
+}
+.engram-reasoning-summary::marker {
+  display: none;
+}
+
+.engram-reasoning-summary::before {
+  content: "▶";
+  font-size: 8px;
+  display: inline-block;
+  width: 12px;
+  margin-right: 4px;
+  transition: transform 0.15s ease;
+}
+
+details[open] > .engram-reasoning-summary::before {
+  transform: rotate(90deg);
+}
+
+.engram-reasoning-content {
+  padding: 8px;
+  font-size: var(--font-smaller);
+  color: var(--text-muted);
+  border-top: 1px solid var(--background-modifier-border);
+  background: var(--background-primary-alt);
+}
+
+/* Active streaming state — animated border, cipher-text label */
+
+.engram-reasoning-details.engram-reasoning-streaming {
+  border-color: var(--interactive-accent);
+  animation: engram-thinking-pulse 2s ease-in-out infinite;
+}
+
+.engram-reasoning-details.engram-reasoning-streaming > .engram-reasoning-summary {
+  color: var(--interactive-accent);
+  background: color-mix(in srgb, var(--interactive-accent) 8%, var(--background-primary-alt));
+}
+
+.engram-reasoning-details.engram-reasoning-streaming .engram-reasoning-content {
+  border-top-color: var(--interactive-accent);
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+@keyframes engram-thinking-pulse {
+  0%,
+  100% {
+    border-color: var(--interactive-accent);
+    opacity: 1;
+  }
+  50% {
+    border-color: var(--interactive-accent);
+    opacity: 0.7;
+  }
+}
+
+.engram-message-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.engram-message-role {
+  font-size: var(--font-smaller);
+  font-weight: 600;
+  opacity: 0.7;
+}
+
+.engram-message-content {
+  font-size: var(--font-ui-small);
+  line-height: 1.5;
+}
+
+.engram-message-content p:first-child {
+  margin-top: 0;
+}
+
+.engram-message-content p:last-child {
+  margin-bottom: 0;
+}
+
+/* ─── Memory state badges ─────────────────────────────────────────────────── */
+
+.engram-memory-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: var(--radius-s);
+  cursor: pointer;
+  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+.engram-memory-badge:empty {
+  display: none;
+}
+
+.engram-memory-core {
+  background: var(--engram-state-core);
+  color: var(--text-on-accent);
+}
+
+.engram-memory-remembered {
+  background: var(--engram-state-remembered);
+  color: var(--text-on-accent);
+}
+
+.engram-memory-forgotten {
+  background: var(--engram-state-forgotten);
+  color: var(--text-on-accent);
+}
+
+.engram-memory-default {
+  background: var(--engram-state-default);
+  color: var(--text-muted);
+}
+
+/* ─── Input area ──────────────────────────────────────────────────────────── */
+
+.engram-input-container {
+  padding: 8px 12px;
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.engram-input-hint {
+  margin-bottom: 6px;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.engram-input {
+  width: 100%;
+  resize: vertical;
+  min-height: 60px;
+  font-family: inherit;
+  font-size: var(--font-ui-small);
+}
+
+.engram-input-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.engram-send-btn {
+  padding: 4px 16px;
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border: none;
+  border-radius: var(--radius-s);
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.engram-send-btn:hover {
+  background: var(--interactive-accent-hover);
+}
+
+.engram-cancel-btn {
+  padding: 4px 16px;
+  background: var(--background-modifier-error);
+  color: var(--text-on-accent);
+  border: none;
+  border-radius: var(--radius-s);
+  cursor: pointer;
+}
+
+/* ─── Dreams dashboard ───────────────────────────────────────────────────── */
+
+.engram-dreams-toolbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.engram-dreams-toolbar-copy h3 {
+  margin: 0 0 4px;
+}
+
+.engram-dreams-toolbar-copy p {
+  margin: 0;
+}
+
+.engram-dreams-toolbar-actions {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.engram-dreams-controls {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px;
+  border-bottom: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+}
+
+.engram-dreams-controls-copy h4 {
+  margin: 0 0 4px;
+}
+
+.engram-dreams-controls-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.engram-dreams-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  padding: 16px;
+}
+
+.engram-dreams-stat-card,
+.engram-dreams-section {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  background: var(--background-secondary);
+}
+
+.engram-dreams-stat-card {
+  padding: 14px;
+}
+
+.engram-dreams-summary-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.engram-dreams-summary-card-wide {
+  grid-column: span 2;
+}
+
+.engram-dreams-stat-label {
+  color: var(--text-muted);
+  font-size: var(--font-smaller);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.engram-dreams-stat-value {
+  margin: 6px 0;
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.engram-dreams-stat-description,
+.engram-dreams-section-description,
+.engram-dreams-snapshot-meta {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  line-height: 1.4;
+}
+
+.engram-dreams-summary-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.engram-dreams-summary-metric {
+  padding: 10px 12px;
+  border-radius: var(--radius-s);
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+}
+
+.engram-dreams-summary-metric-label {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.engram-dreams-summary-metric-value {
+  margin: 4px 0 6px;
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.engram-dreams-donut-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.engram-dreams-donut-card {
+  padding: 12px;
+  border-radius: var(--radius-s);
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+}
+
+.engram-dreams-donut-title {
+  font-weight: 600;
+}
+
+.engram-dreams-donut {
+  --engram-donut-fill: conic-gradient(var(--background-modifier-border) 0deg 360deg);
+  position: relative;
+  width: 92px;
+  height: 92px;
+  margin: 12px auto 8px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--engram-donut-fill);
+}
+
+.engram-dreams-donut::after {
+  content: "";
+  position: absolute;
+  inset: 14px;
+  border-radius: 50%;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+}
+
+.engram-dreams-donut-value {
+  position: relative;
+  z-index: 1;
+  font-weight: 700;
+  font-size: 18px;
+}
+
+.engram-dreams-donut-subtitle {
+  margin-bottom: 8px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.engram-dreams-donut-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.engram-dreams-donut-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-ui-smaller);
+}
+
+.engram-dreams-donut-legend-swatch {
+  --engram-donut-swatch: var(--background-modifier-border);
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  flex: 0 0 auto;
+  background: var(--engram-donut-swatch);
+}
+
+.engram-dreams-donut-legend-label {
+  color: var(--text-muted);
+}
+
+.engram-dreams-signal-card.is-power-nap {
+  border-color: color-mix(in srgb, var(--interactive-accent) 30%, var(--background-modifier-border));
+}
+
+.engram-dreams-signal-card.is-dreamer {
+  border-color: color-mix(in srgb, var(--text-accent) 25%, var(--background-modifier-border));
+}
+
+.engram-dreams-signal-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.engram-dreams-signal-item {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border-radius: var(--radius-s);
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+}
+
+.engram-dreams-signal-value {
+  min-width: 36px;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.engram-dreams-signal-copy {
+  min-width: 0;
+}
+
+.engram-dreams-signal-label {
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.engram-dreams-sections {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+  padding: 0 16px 16px;
+}
+
+.engram-dreams-section {
+  padding: 14px;
+}
+
+.engram-dreams-section h4 {
+  margin: 0 0 6px;
+}
+
+.engram-dreams-plan-summary {
+  margin-top: 12px;
+}
+
+.engram-dreams-plan-details {
+  margin-top: 12px;
+}
+
+.engram-dreams-plan-details details + details {
+  margin-top: 8px;
+}
+
+.engram-dreams-action-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.engram-dreams-action-card {
+  padding: 10px 12px;
+  border-radius: var(--radius-s);
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border-hover);
+}
+
+.engram-dreams-action-title {
+  font-weight: 600;
+  margin-bottom: 4px;
+  word-break: break-word;
+}
+
+.engram-dreams-execution {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.engram-dreams-execution h5 {
+  margin: 0 0 6px;
+}
+
+.engram-dreams-list {
+  margin: 12px 0 0;
+  padding-left: 18px;
+}
+
+.engram-dreams-list li + li {
+  margin-top: 6px;
+}
+
+.engram-dreams-empty {
+  padding: 16px;
+  color: var(--text-muted);
+}
+
+.engram-dreams-snapshot-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.engram-dreams-snapshot-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: var(--radius-s);
+  background: var(--background-primary);
+}
+
+.engram-dreams-snapshot-copy {
+  min-width: 0;
+}
+
+.engram-dreams-snapshot-title {
+  font-weight: 600;
+  word-break: break-word;
+}
+
+.engram-dreams-raw-output {
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  border-radius: var(--radius-s);
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+}
+
+/* ─── Overview health bar ─────────────────────────────────────────────────── */
+
+.engram-overview-health {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin: 12px 16px 0;
+}
+
+.engram-overview-health-stat {
+  padding: 10px 12px;
+  border-radius: var(--radius-s);
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  text-align: center;
+}
+
+.engram-overview-health-value {
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.engram-overview-health-label {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  margin-top: 2px;
+}
+
+/* ─── Overview maintenance queue ──────────────────────────────────────────── */
+
+.engram-overview-maintenance {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+  margin: 0 16px 16px;
+}
+
+.engram-overview-queue-card {
+  padding: 14px;
+  border-radius: var(--radius-m);
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+}
+
+.engram-overview-queue-card.is-nap {
+  border-left: 3px solid var(--background-modifier-success);
+}
+
+.engram-overview-queue-card.is-dream {
+  border-left: 3px solid var(--color-accent);
+}
+
+.engram-overview-queue-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 4px;
+}
+
+.engram-overview-queue-title {
+  font-weight: 600;
+}
+
+.engram-overview-queue-total {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.engram-overview-queue-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.engram-overview-queue-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: var(--font-ui-small);
+}
+
+.engram-overview-queue-item.is-clear {
+  opacity: 0.45;
+}
+
+.engram-overview-queue-label {
+  color: var(--text-normal);
+}
+
+.engram-overview-queue-count {
+  font-weight: 600;
+  flex: 0 0 auto;
+}
+
+/* ─── Overview findings toggle ────────────────────────────────────────────── */
+
+.engram-overview-findings-toggle {
+  margin: 8px 16px 16px;
+}
+
+.engram-overview-findings-toggle > summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: var(--font-ui-small);
+  color: var(--text-muted);
+  padding: 8px 0;
+}
+
+.engram-overview-findings-toggle > summary:hover {
+  color: var(--text-normal);
+}
+
+.engram-dreams-storage-card {
+  margin: 16px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  background: var(--background-secondary);
+}
+
+.engram-dreams-storage-header,
+.engram-dreams-storage-body {
+  padding: 16px;
+}
+
+.engram-dreams-storage-header {
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.engram-dreams-storage-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+/* ─── Chart mode toggle ───────────────────────────────────────────────────── */
+
+.engram-chart-mode-strip {
+  display: flex;
+  gap: 4px;
+  justify-content: center;
+  padding: 4px;
+  border-radius: var(--radius-s);
+  background: var(--background-primary);
+}
+
+.engram-chart-mode-btn {
+  padding: 4px 14px;
+  border: none;
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    color 120ms ease;
+}
+
+.engram-chart-mode-btn:hover {
+  color: var(--text-normal);
+}
+
+.engram-chart-mode-btn.is-active {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
+.engram-chart-container {
+  width: 100%;
+}
+
+/* ─── SVG donut chart ─────────────────────────────────────────────────────── */
+
+.engram-donut-frame {
+  position: relative;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+.engram-donut-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  gap: 12px;
+}
+
+.engram-donut-ring {
+  position: relative;
+  width: 100%;
+  max-width: 320px;
+  aspect-ratio: 1;
+}
+
+.engram-donut-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.engram-donut-track {
+  fill: var(--background-modifier-border);
+  opacity: 0.35;
+}
+
+.engram-donut-segment {
+  cursor: pointer;
+  transform-box: fill-box;
+  transform-origin: center;
+  transition:
+    opacity 140ms ease,
+    transform 140ms ease,
+    filter 140ms ease;
+}
+
+.engram-donut-segment.is-emphasized {
+  transform: scale(1.035);
+  filter: saturate(1.08) brightness(1.04);
+}
+
+.engram-donut-segment.is-dimmed {
+  opacity: 0.24;
+  filter: saturate(0.72);
+}
+
+.engram-donut-bootstrap-overlay {
+  fill: color-mix(in srgb, var(--text-accent) 14%, transparent);
+  stroke: color-mix(in srgb, var(--text-accent) 28%, transparent);
+  stroke-width: 1;
+  opacity: 0.85;
+  pointer-events: none;
+  transition:
+    opacity 140ms ease,
+    filter 140ms ease;
+}
+
+.engram-donut-bootstrap-arc {
+  fill: none;
+  stroke: var(--text-accent);
+  stroke-width: 2;
+  stroke-dasharray: 6 3;
+  opacity: 0.7;
+  pointer-events: none;
+  transition:
+    opacity 140ms ease,
+    filter 140ms ease;
+}
+
+.engram-donut-bootstrap-label {
+  fill: var(--text-muted);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  cursor: pointer;
+  pointer-events: auto;
+  transition:
+    opacity 140ms ease,
+    filter 140ms ease,
+    transform 140ms ease;
+}
+
+.engram-donut-bootstrap-overlay.is-emphasized,
+.engram-donut-bootstrap-arc.is-emphasized,
+.engram-donut-bootstrap-label.is-emphasized {
+  opacity: 1;
+  filter: saturate(1.08) brightness(1.05);
+}
+
+.engram-donut-bootstrap-overlay.is-dimmed,
+.engram-donut-bootstrap-arc.is-dimmed,
+.engram-donut-bootstrap-label.is-dimmed {
+  opacity: 0.24;
+  filter: saturate(0.72);
+}
+
+.engram-donut-bootstrap-label.is-emphasized {
+  transform: translateY(-1px);
+}
+
+.engram-donut-thread-bootstrap-overlay {
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.engram-donut-thread-bootstrap-overlay.is-current-thread {
+  opacity: 0.96;
+}
+
+.engram-donut-thread-bootstrap-outline.is-current-thread {
+  stroke-width: 2.3;
+  opacity: 0.92;
+}
+
+.engram-donut-context-cap {
+  fill: color-mix(in srgb, var(--engram-context-cap-color, currentColor) 14%, transparent);
+  stroke: var(--engram-context-cap-color, currentColor);
+  stroke-width: 1.6;
+  stroke-dasharray: 3 2;
+  opacity: 0.9;
+  cursor: pointer;
+  transition:
+    opacity 140ms ease,
+    filter 140ms ease,
+    transform 140ms ease;
+}
+
+.engram-donut-context-cap.is-current-thread {
+  stroke-width: 2.1;
+  opacity: 1;
+}
+
+.engram-donut-context-cap.is-thread-cap {
+  fill: transparent;
+}
+
+.engram-donut-context-cap.is-thread-cap.is-current-thread {
+  stroke-width: 2.3;
+}
+
+.engram-donut-context-cap.is-emphasized {
+  filter: saturate(1.08) brightness(1.05);
+}
+
+.engram-donut-context-cap.is-dimmed {
+  opacity: 0.24;
+  filter: saturate(0.72);
+}
+
+.engram-donut-reclaim-arc {
+  fill: var(--background-modifier-error);
+  opacity: 0.18;
+  pointer-events: none;
+}
+
+.engram-donut-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  pointer-events: none;
+}
+
+.engram-donut-center-value {
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1;
+  max-width: 82%;
+  overflow-wrap: anywhere;
+}
+
+.engram-donut-center-label {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  min-height: 1.2em;
+  margin-top: 4px;
+}
+
+.engram-donut-caption {
+  max-width: 360px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  line-height: 1.45;
+}
+
+.engram-donut-annotation {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  max-width: 360px;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  line-height: 1.4;
+  text-align: center;
+}
+
+.engram-donut-annotation-swatch {
+  width: 18px;
+  height: 10px;
+  flex: 0 0 auto;
+  border: 1.5px dashed var(--text-accent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-accent) 14%, transparent);
+}
+
+.engram-donut-annotation-text {
+  max-width: 320px;
+}
+
+/* ─── Soul / scratch outer slices, tooltip, legend ────────────────────────── */
+
+.engram-donut-soul-slice {
+  filter: drop-shadow(0 0 3px color-mix(in srgb, var(--engram-soul, var(--text-accent)) 55%, transparent));
+}
+
+.engram-donut-global-inbox-slice {
+  filter: drop-shadow(0 0 3px color-mix(in srgb, var(--engram-global-inbox) 42%, transparent));
+}
+
+.engram-donut-thread-slice {
+  filter: drop-shadow(0 0 3px color-mix(in srgb, var(--engram-thread, var(--color-orange)) 45%, transparent));
+}
+
+.engram-donut-thread-slice.is-current-thread {
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--text-accent) 36%, transparent));
+}
+
+.engram-donut-scratch-bootstrap {
+  stroke: color-mix(in srgb, var(--engram-scratch-base) 60%, transparent);
+  stroke-width: 0.5;
+}
+
+.engram-donut-scratch-cold {
+  opacity: 0.75;
+}
+
+.engram-donut-tooltip {
+  position: absolute;
+  pointer-events: none;
+  z-index: 10;
+  padding: 6px 9px;
+  border-radius: var(--radius-s);
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  color: var(--text-normal);
+  font-size: var(--font-ui-smaller);
+  line-height: 1.3;
+  white-space: nowrap;
+  transition: opacity 80ms ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+}
+
+.engram-donut-legend-shell {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.engram-donut-legend-toggle {
+  position: relative;
+  z-index: 1;
+  padding: 8px 12px;
+  border: 1px solid color-mix(in srgb, var(--background-modifier-border) 82%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--background-primary) 86%, transparent);
+  color: var(--text-normal);
+  font-size: var(--font-ui-smaller);
+  font-weight: 600;
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+  transition:
+    background 120ms ease,
+    border-color 120ms ease,
+    transform 120ms ease;
+  pointer-events: auto;
+}
+
+.engram-donut-legend-toggle:hover {
+  background: color-mix(in srgb, var(--background-secondary) 92%, transparent);
+  border-color: color-mix(in srgb, var(--text-accent) 28%, var(--background-modifier-border));
+  transform: translateX(-2px);
+}
+
+.engram-donut-legend-drawer {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  width: min(540px, calc(100vw - 120px));
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--background-modifier-border) 78%, transparent);
+  border-radius: var(--radius-m);
+  background: color-mix(in srgb, var(--background-secondary) 94%, transparent);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(14px);
+  justify-items: stretch;
+  text-align: left;
+  transform: translateX(22px);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 160ms ease,
+    transform 160ms ease;
+}
+
+.engram-donut-legend-shell.is-open .engram-donut-legend-drawer {
+  transform: translateX(0);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.engram-donut-legend-column {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  min-width: 0;
+  text-align: left;
+}
+
+.engram-donut-legend-title {
+  font-size: var(--font-ui-smaller);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-faint);
+  text-align: left;
+}
+
+.engram-donut-legend-subtitle {
+  font-size: var(--font-ui-smaller);
+  font-weight: 700;
+  color: var(--text-muted);
+  text-align: left;
+}
+
+.engram-donut-legend-list {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.engram-donut-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: inherit;
+  justify-content: flex-start;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease,
+    opacity 120ms ease,
+    transform 120ms ease;
+}
+
+.engram-donut-legend-item:hover {
+  background: color-mix(in srgb, var(--background-primary) 68%, transparent);
+  border-color: color-mix(in srgb, var(--background-modifier-border) 78%, transparent);
+}
+
+.engram-donut-legend-item.is-emphasized {
+  transform: translateX(-3px);
+  background: color-mix(in srgb, var(--background-primary) 74%, transparent);
+  border-color: color-mix(in srgb, var(--text-accent) 24%, var(--background-modifier-border));
+}
+
+.engram-donut-legend-item.is-dimmed {
+  opacity: 0.38;
+}
+
+.engram-donut-legend-item[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--background-primary) 82%, transparent);
+  border-color: color-mix(in srgb, var(--text-accent) 30%, var(--background-modifier-border));
+}
+
+.engram-donut-legend-swatch {
+  width: 11px;
+  height: 11px;
+  border-radius: 999px;
+  flex: 0 0 auto;
+  background: var(--background-modifier-border);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--background-modifier-border) 72%, transparent);
+}
+
+.engram-donut-legend-swatch.is-context {
+  border: 1.5px dashed var(--text-accent);
+  background: color-mix(in srgb, var(--text-accent) 14%, transparent) !important;
+  box-shadow: none;
+}
+
+.engram-donut-legend-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: left;
+}
+
+.engram-donut-legend-label {
+  display: block;
+  font-size: var(--font-ui-small);
+  font-weight: 600;
+  color: var(--text-normal);
+  text-align: left;
+  width: 100%;
+}
+
+.engram-donut-legend-meta {
+  display: block;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-faint);
+  text-align: left;
+  width: 100%;
+}
+
+.engram-dreams-storage-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.engram-dreams-storage-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.engram-dreams-storage-row {
+  padding: 12px;
+  border-radius: var(--radius-s);
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+}
+
+.engram-dreams-storage-row-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.engram-dreams-storage-row-label {
+  font-weight: 600;
+}
+
+.engram-dreams-storage-row-count {
+  margin-left: auto;
+  color: var(--text-muted);
+}
+
+.engram-dreams-storage-swatch {
+  --engram-storage-swatch: var(--background-modifier-border);
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--engram-storage-swatch);
+  flex: 0 0 auto;
+}
+
+.engram-dreams-storage-swatch.is-small {
+  width: 8px;
+  height: 8px;
+}
+
+.engram-dreams-storage-types {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.engram-dreams-storage-type-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+}
+
+.engram-dreams-storage-type-label {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+@media (max-width: 960px) {
+  .engram-donut-frame {
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .engram-donut-legend-shell {
+    display: flex;
+    position: static;
+    width: 100%;
+    pointer-events: auto;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .engram-donut-legend-toggle {
+    position: static;
+    align-self: flex-end;
+  }
+
+  .engram-donut-legend-drawer {
+    position: static;
+    width: 100%;
+    max-width: none;
+    transform: translateY(-10px);
+  }
+
+  .engram-donut-legend-shell.is-open .engram-donut-legend-drawer {
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 700px) {
+  .engram-donut-legend-drawer {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ─── Dreams overlay (active dreaming state) ─────────────────────────────── */
+
+.engram-dreams-overlay {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #111;
+  position: relative;
+  overflow: hidden;
+}
+
+.engram-dreams-overlay-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.engram-dreams-overlay-center {
+  position: relative;
+  z-index: 1;
+}
+
+.engram-dreams-overlay-text {
+  font-size: 22px;
+  font-weight: 300;
+  letter-spacing: 0.15em;
+  color: var(--text-muted);
+  font-family: var(--font-monospace);
+}
+
+.engram-dreams-overlay-card {
+  display: flex;
+  height: 100%;
+  box-sizing: border-box;
+  min-height: 0;
+  flex-direction: column;
+  align-items: center;
+  max-width: min(640px, calc(100vw - 64px));
+  width: min(640px, calc(100% - 2rem));
+  padding: 2rem 1rem;
+  text-align: center;
+  animation: engram-dreams-fade-in 320ms ease-out both;
+}
+
+.engram-dreams-overlay-dream-text {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 0.25rem;
+  color: var(--text-muted);
+  line-height: 1.6;
+  font-size: var(--font-ui-medium);
+  font-style: italic;
+  font-weight: normal;
+  white-space: pre-wrap;
+  text-wrap: balance;
+  margin: 0;
+}
+
+.engram-dreams-overlay-dismiss {
+  margin-top: 1rem;
+  flex-shrink: 0;
+  min-width: 110px;
+  padding: 8px 14px;
+}
+
+@keyframes engram-dreams-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ─── Settings: accordion sections ───────────────────────────────────────── */
+
+.engram-section-details,
+.engram-provider-details {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+
+.engram-section-details {
+  margin-bottom: 12px;
+}
+
+.engram-section-summary,
+.engram-provider-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+  background: var(--background-secondary);
+  font-weight: 600;
+  font-size: var(--font-ui-small);
+  color: var(--text-normal);
+  transition: background 0.1s ease;
+}
+
+.engram-section-summary::-webkit-details-marker,
+.engram-provider-summary::-webkit-details-marker {
+  display: none;
+}
+
+.engram-section-summary::marker,
+.engram-provider-summary::marker {
+  display: none;
+}
+
+/* Chevron — rotates 90° when open */
+.engram-section-summary::before,
+.engram-provider-summary::before {
+  content: "▶";
+  font-size: 9px;
+  display: inline-block;
+  width: 14px;
+  text-align: center;
+  flex-shrink: 0;
+  color: var(--text-muted);
+  transition: transform 0.15s ease;
+}
+
+details[open] > .engram-section-summary::before,
+details[open] > .engram-provider-summary::before {
+  transform: rotate(90deg);
+}
+
+.engram-section-summary:hover,
+.engram-provider-summary:hover {
+  background: var(--background-modifier-hover);
+}
+
+.engram-section-summary-name,
+.engram-provider-summary-name {
+  flex: 1;
+}
+
+.engram-provider-active-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: var(--radius-s);
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.engram-section-count {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: var(--radius-s);
+  background: var(--background-modifier-border);
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.engram-section-inner,
+.engram-provider-inner {
+  padding: 8px 14px 14px;
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+/* Nested provider accordions inside a section get tighter spacing */
+.engram-section-inner .engram-provider-details {
+  margin-bottom: 6px;
+}
+
+.engram-section-inner .engram-provider-details:last-child {
+  margin-bottom: 0;
+}
+
+/* ─── Chat: per-conversation parameters panel ─────────────────────────────── */
+
+.engram-params-details {
+  margin: 6px 0;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  overflow: hidden;
+}
+
+.engram-params-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+  background: var(--background-secondary);
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  font-weight: 500;
+  transition: background 0.1s ease;
+}
+
+.engram-params-summary::-webkit-details-marker {
+  display: none;
+}
+
+.engram-params-summary::marker {
+  display: none;
+}
+
+.engram-params-summary::before {
+  content: "▶";
+  font-size: 8px;
+  display: inline-block;
+  width: 10px;
+  text-align: center;
+  flex-shrink: 0;
+  transition: transform 0.15s ease;
+}
+
+details[open] > .engram-params-summary::before {
+  transform: rotate(90deg);
+}
+
+.engram-params-summary:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.engram-params-grid {
+  padding: 10px 12px;
+  border-top: 1px solid var(--background-modifier-border);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.engram-params-label {
+  display: block;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  font-weight: 500;
+  margin-bottom: 3px;
+}
+
+.engram-params-textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 50px;
+  font-family: inherit;
+  font-size: var(--font-ui-smaller);
+}
+
+.engram-params-row {
+  display: flex;
+  gap: 12px;
+}
+
+.engram-params-field {
+  flex: 1;
+  min-width: 0;
+}
+
+.engram-params-input {
+  width: 100%;
+  font-size: var(--font-ui-smaller);
+}
+
+/* ─── Chat: input footer ──────────────────────────────────────────────────── */
+
+.engram-input-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.engram-input-selection {
+  flex: 1;
+  min-width: 0;
+}
+
+.engram-input-selection-label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+}
+
+.engram-model-select {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--font-ui-smaller);
+}
+
+/* ─── Memory manager view ─────────────────────────────────────────────────── */
+
+.engram-memory-mode-strip {
+  display: flex;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+}
+
+.engram-memory-mode-btn {
+  padding: 6px 10px;
+  border-radius: var(--radius-s);
+  border: 1px solid var(--background-modifier-border);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: var(--font-ui-small);
+}
+
+.engram-memory-mode-btn:hover {
+  color: var(--text-normal);
+  background: var(--background-modifier-hover);
+}
+
+.engram-memory-mode-btn.is-active {
+  color: var(--text-normal);
+  background: var(--background-primary);
+  border-color: var(--background-modifier-border-hover);
+}
+
+.engram-memory-pane {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.engram-memory-pane-library {
+  min-height: 0;
+}
+
+.engram-memory-helper-copy {
+  padding: 0 12px 12px;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.engram-memory-filters {
+  display: flex;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--background-modifier-border);
+  align-items: center;
+}
+
+.engram-filter-select {
+  flex: 1;
+  min-width: 0;
+}
+
+.engram-memory-search {
+  flex: 2;
+  min-width: 0;
+}
+
+.engram-memory-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+}
+
+.engram-empty {
+  color: var(--text-muted);
+  text-align: center;
+  padding: 24px;
+  font-style: italic;
+}
+
+.engram-memory-group {
+  margin-bottom: 16px;
+}
+
+.engram-group-header {
+  margin: 0 0 8px 0;
+  text-transform: capitalize;
+  font-size: var(--font-ui-small);
+  color: var(--text-muted);
+}
+
+.engram-memory-item {
+  padding: 8px;
+  border-radius: var(--radius-s);
+  background: var(--background-secondary);
+  margin-bottom: 6px;
+}
+
+.engram-memory-item-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
+.engram-memory-name {
+  font-weight: 600;
+  font-size: var(--font-ui-small);
+  cursor: pointer;
+  color: var(--text-accent);
+}
+
+.engram-memory-name:hover {
+  text-decoration: underline;
+}
+
+.engram-memory-state-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.engram-memory-state-label {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.engram-memory-state-select {
+  min-width: 120px;
+  font-size: var(--font-ui-smaller);
+  text-transform: capitalize;
+}
+
+.engram-memory-tags {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
+.engram-tag {
+  font-size: 10px;
+  padding: 1px 6px;
+  background: var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  color: var(--text-muted);
+}
+
+.engram-memory-preview {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.engram-memory-explorer-board {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  padding: 0 12px 12px;
+}
+
+.engram-memory-explorer-column {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  padding: 12px;
+  border-radius: var(--radius-m);
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+}
+
+.engram-memory-explorer-column-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.engram-memory-explorer-column-title {
+  font-weight: 700;
+}
+
+.engram-memory-explorer-column-count {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.engram-memory-explorer-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.engram-memory-node {
+  padding: 12px;
+  border-radius: var(--radius-s);
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+}
+
+.engram-memory-node-header,
+.engram-memory-node-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.engram-memory-node-title {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-accent);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.engram-memory-node-title:hover {
+  text-decoration: underline;
+}
+
+.engram-memory-node-type,
+.engram-memory-node-chip {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--background-secondary);
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.engram-memory-node-meta {
+  margin: 8px 0;
+}
+
+.engram-memory-graph-host {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.engram-memory-graph-shell {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  padding: 0 12px 12px;
+}
+
+.engram-memory-graph-viewport {
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  background: var(--background-primary);
+}
+
+.engram-memory-graph-flow {
+  height: 100%;
+  min-height: 560px;
+}
+
+.engram-memory-graph-flow .react-flow {
+  height: 100%;
+}
+
+.engram-memory-graph-flow .react-flow__edge {
+  cursor: pointer;
+}
+
+.engram-memory-graph-flow .react-flow__edge.engram-memory-graph-edge.is-manual .react-flow__edge-path {
+  stroke: var(--interactive-accent);
+  stroke-width: 2;
+}
+
+.engram-memory-graph-flow .react-flow__edge.engram-memory-graph-edge.is-thread .react-flow__edge-path {
+  stroke: var(--engram-thread);
+}
+
+.engram-memory-graph-flow .react-flow__edge.engram-memory-graph-edge.is-tag .react-flow__edge-path {
+  stroke-dasharray: 4 4;
+  opacity: 0.7;
+}
+
+.engram-memory-graph-flow .react-flow__node.engram-memory-graph-flow-node {
+  width: 180px;
+  padding: 10px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 3px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--background-secondary) 70%, transparent);
+  text-align: center;
+}
+
+.engram-memory-graph-flow .react-flow__node.engram-memory-graph-flow-node.is-core {
+  border-left: 3px solid var(--engram-state-core);
+}
+
+.engram-memory-graph-flow .react-flow__node.engram-memory-graph-flow-node.is-remembered {
+  border-left: 3px solid var(--engram-state-remembered);
+}
+
+.engram-memory-graph-flow .react-flow__node.engram-memory-graph-flow-node.is-default {
+  border-left: 3px solid var(--engram-state-default);
+}
+
+.engram-memory-graph-flow .react-flow__node.engram-memory-graph-flow-node.is-forgotten {
+  border-left: 3px solid var(--engram-state-forgotten);
+}
+
+.engram-memory-graph-flow .react-flow__node.engram-memory-graph-flow-node.is-archived {
+  opacity: 0.55;
+  border-style: dashed;
+}
+
+.engram-memory-graph-flow .react-flow__node.engram-memory-graph-flow-node.is-archived:hover {
+  opacity: 0.9;
+}
+
+.engram-memory-graph-flow .react-flow__node.selected.engram-memory-graph-flow-node {
+  box-shadow: 0 0 0 2px var(--interactive-accent);
+}
+
+.engram-memory-graph-node {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.engram-memory-graph-node-title {
+  font-weight: 600;
+  line-height: 1.25;
+  word-break: break-word;
+}
+
+.engram-memory-graph-node-type {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+}
+
+.engram-memory-graph-action-btn {
+  font-size: var(--font-ui-smaller);
+  padding: 2px 8px;
+}
+
+.engram-memory-graph-node-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.engram-memory-graph-state-select {
+  width: 100%;
+}
+
+.engram-memory-graph-pill-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.engram-memory-graph-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--background-secondary);
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: var(--font-ui-smaller);
+}
+
+.engram-memory-graph-pill > button {
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  line-height: 1;
+  padding: 0;
+}
+
+.engram-memory-graph-pill > button:hover {
+  color: var(--text-normal);
+}
+
+.engram-memory-graph-inline-editor {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.engram-memory-graph-inline-editor .engram-memory-search {
+  flex: 1;
+  min-width: 0;
+}
+
+.engram-memory-graph-empty,
+.engram-memory-graph-empty-inline {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+
+.engram-memory-graph-empty {
+  font-style: italic;
+}
+
+/* ── Drawer ────────────────────────────────────────────────────────────── */
+
+.engram-memory-graph-drawer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(340px, 90%);
+  background: var(--background-primary);
+  border-left: 1px solid var(--background-modifier-border);
+  box-shadow: -4px 0 12px color-mix(in srgb, var(--background-secondary) 60%, transparent);
+  padding: 16px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  z-index: 10;
+  animation: engram-drawer-slide-in 160ms ease-out;
+}
+
+@keyframes engram-drawer-slide-in {
+  from {
+    transform: translateX(16px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.engram-memory-graph-drawer-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.engram-memory-graph-drawer-title {
+  font-weight: 600;
+  line-height: 1.25;
+  word-break: break-word;
+  flex: 1;
+}
+
+.engram-memory-graph-drawer-close {
+  flex: 0 0 auto;
+  background: transparent;
+  border: 0;
+  font-size: 22px;
+  line-height: 1;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.engram-memory-graph-drawer-close:hover {
+  color: var(--text-normal);
+}
+
+.engram-memory-graph-drawer-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.engram-memory-graph-drawer-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.engram-memory-graph-drawer-label {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.engram-memory-graph-drawer-open {
+  margin-top: 4px;
+}
+
+/* ── Controls + MiniMap theming ────────────────────────────────────────── */
+
+.engram-memory-graph-flow .react-flow__controls {
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  box-shadow: none;
+}
+
+.engram-memory-graph-flow .react-flow__controls-button {
+  background: var(--background-secondary);
+  border-bottom: 1px solid var(--background-modifier-border);
+  color: var(--text-normal);
+  fill: var(--text-normal);
+}
+
+.engram-memory-graph-flow .react-flow__controls-button:hover {
+  background: var(--background-modifier-hover);
+}
+
+.engram-memory-graph-flow .react-flow__controls-button svg {
+  fill: currentColor;
+}
+
+.engram-memory-graph-flow .react-flow__minimap {
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+}
+
+.engram-memory-graph-flow .react-flow__minimap-mask {
+  fill: color-mix(in srgb, var(--background-primary) 55%, transparent);
+  stroke: var(--background-modifier-border);
+}
+
+.engram-memory-graph-flow .react-flow__minimap-node {
+  fill: var(--text-faint);
+  stroke: none;
+}
+
+/* ─── Tool call cards (inline in assistant bubble) ─────────────────────────── */
+
+.engram-tool-calls {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 6px 0;
+}
+
+.engram-tool-card {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  overflow: hidden;
+  background: var(--background-primary-alt);
+}
+
+.engram-tool-card-summary {
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: var(--font-smaller);
+  font-weight: 600;
+  color: var(--text-muted);
+  user-select: none;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.engram-tool-card-summary::-webkit-details-marker {
+  display: none;
+}
+.engram-tool-card-summary::marker {
+  display: none;
+}
+
+.engram-tool-card-summary::before {
+  content: "▶";
+  font-size: 8px;
+  display: inline-block;
+  width: 12px;
+  transition: transform 0.15s ease;
+}
+
+.engram-tool-card[open] > .engram-tool-card-summary::before {
+  transform: rotate(90deg);
+}
+
+.engram-tool-card-name {
+  color: var(--text-normal);
+}
+
+.engram-tool-card-action {
+  color: var(--text-accent);
+  font-weight: 500;
+}
+
+.engram-tool-card-action::before {
+  content: "·";
+  margin: 0 4px;
+  color: var(--text-muted);
+}
+
+.engram-tool-card-status {
+  margin-left: auto;
+  font-weight: 400;
+  font-style: italic;
+  font-size: var(--font-ui-smaller);
+}
+
+.engram-tool-card-pending .engram-tool-card-status {
+  color: var(--text-muted);
+}
+
+.engram-tool-card-ok {
+  border-color: color-mix(in srgb, var(--interactive-accent) 40%, var(--background-modifier-border));
+}
+
+.engram-tool-card-ok .engram-tool-card-status {
+  color: var(--interactive-accent);
+}
+
+.engram-tool-card-error {
+  border-color: var(--text-error);
+}
+
+.engram-tool-card-error .engram-tool-card-status {
+  color: var(--text-error);
+}
+
+.engram-tool-card-body {
+  padding: 6px 8px;
+  border-top: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.engram-tool-card-body pre {
+  margin: 0;
+  padding: 6px 8px;
+  font-size: var(--font-ui-smaller);
+  background: var(--background-secondary);
+  border-radius: var(--radius-s);
+  max-height: 240px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.engram-tool-card-input {
+  color: var(--text-muted);
+}
+
+.engram-tool-card-result {
+  color: var(--text-normal);
+}
+
+@media (max-width: 700px) {
+  .engram-toolbar,
+  .engram-dreams-toolbar,
+  .engram-dreams-controls,
+  .engram-dreams-storage-body {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .engram-toolbar-actions,
+  .engram-dreams-toolbar-actions {
+    justify-content: flex-end;
+  }
+
+  .engram-memory-filters,
+  .engram-input-footer,
+  .engram-params-row,
+  .engram-dreams-snapshot-row,
+  .engram-dreams-signal-item,
+  .engram-memory-explorer-column-header,
+  .engram-dreams-storage-queue-item {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .engram-input-buttons {
+    margin-top: 0;
+    justify-content: stretch;
+  }
+
+  .engram-input-buttons > button {
+    flex: 1;
+  }
+
+  .engram-dreams-summary-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .engram-dreams-summary-card-wide {
+    grid-column: span 1;
+  }
+
+  .engram-memory-state-controls {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .engram-memory-state-select {
+    flex: 1;
+  }
+
+  .engram-memory-mode-strip {
+    flex-wrap: wrap;
+  }
+
+  .engram-memory-graph-shell {
+    grid-template-columns: 1fr;
+    padding-inline: 10px;
+  }
+
+  .engram-memory-graph-viewport {
+    min-height: 420px;
+  }
+
+  .engram-memory-graph-inline-editor {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+@media (max-width: 520px) {
+  .engram-tab-strip {
+    padding-inline: 6px;
+  }
+
+  .engram-messages,
+  .engram-dreams-summary-grid,
+  .engram-dreams-sections,
+  .engram-memory-list {
+    padding-inline: 10px;
+  }
+
+  .engram-toolbar,
+  .engram-memory-filters,
+  .engram-input-container,
+  .engram-dreams-toolbar,
+  .engram-dreams-controls {
+    padding-inline: 10px;
+  }
+
+  .engram-memory-graph-shell {
+    gap: 10px;
+  }
+}

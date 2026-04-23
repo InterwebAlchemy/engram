@@ -19,6 +19,10 @@ export interface ShellProfileWriteResult {
   action: 'created' | 'injected' | 'updated';
 }
 
+export interface ShellExportOptions {
+  pathPrependDir?: string | null;
+}
+
 export interface ShellProfileRemovalResult {
   path: string;
   action: 'deleted' | 'stripped' | 'not_found' | 'error';
@@ -107,11 +111,23 @@ export async function detectShellProfile(
   };
 }
 
-function buildMarkedBlock(updates: Record<string, string>): string {
+function buildMarkedBlock(
+  updates: Record<string, string>,
+  options: ShellExportOptions = {},
+): string {
   const lines = [
     MARKER_START,
     '# Engram CLI exports',
     ...Object.entries(updates).map(([key, value]) => `export ${key}=${quoteForShell(value)}`),
+    ...(options.pathPrependDir === null || options.pathPrependDir === undefined
+      ? []
+      : [
+          `export ENGRAM_BIN_DIR=${quoteForShell(options.pathPrependDir)}`,
+          'case ":$PATH:" in',
+          '  *":$ENGRAM_BIN_DIR:"*) ;;',
+          '  *) export PATH="$ENGRAM_BIN_DIR:$PATH" ;;',
+          'esac',
+        ]),
     MARKER_END,
   ];
   return lines.join('\n');
@@ -133,10 +149,11 @@ function isOnlyMarkedBlock(content: string): boolean {
 export async function upsertShellExports(
   profilePath: string,
   updates: Record<string, string>,
+  options: ShellExportOptions = {},
 ): Promise<ShellProfileWriteResult> {
   const normalizedPath = expandHome(profilePath);
   const existing = (await readTextFile(normalizedPath)) ?? '';
-  const block = buildMarkedBlock(updates);
+  const block = buildMarkedBlock(updates, options);
 
   if (existing.trim().length === 0) {
     await fs.mkdir(path.dirname(normalizedPath), { recursive: true });

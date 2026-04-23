@@ -1,5 +1,5 @@
 /**
- * `engram-cli remove` — interactively tears down Engram integrations
+ * `onboarding remove` — interactively tears down Engram integrations
  * and optionally deletes vault data.
  */
 
@@ -20,9 +20,11 @@ import {
   removeOpencodeGlobalRules,
   type HarnessRemovalResult,
 } from './harness-config';
+import { removeAgentsSkills } from './harness-skills';
 import { removeClaudeCodeMcp } from './remove-claude-code';
 import { removeCliConfig } from './config';
 import { removeShellExports, type ShellProfileRemovalResult } from './shell-profile';
+import { removeCliLauncher, type CliLauncherRemoveResult } from './cli-launcher';
 import type { ExistingConfig, HarnessOption } from './types';
 
 export interface RemoveOptions {
@@ -101,28 +103,53 @@ async function removeBootstrapFiles(existing: ExistingConfig): Promise<void> {
       break;
   }
 
-  if (existing.harnesses.windsurf) {
-    const windsurfResult = await removeWindsurfGlobalRules();
-    switch (windsurfResult.action) {
-      case 'stripped':
-        writeLine(`Stripped Engram block from ${windsurfResult.path}`);
-        break;
-      case 'not_found':
-        writeLine('No Engram bootstrap found in Windsurf global rules');
-        break;
-    }
-  }
+  await removeWindsurfBootstrap(existing);
+  await removeOpencodeBootstrap(existing);
+  await removeSkillBundles(existing);
+}
 
-  if (existing.harnesses.opencode) {
-    const opencodeResult = await removeOpencodeGlobalRules();
-    switch (opencodeResult.action) {
-      case 'stripped':
-        writeLine(`Stripped Engram block from ${opencodeResult.path}`);
-        break;
-      case 'not_found':
-        writeLine('No Engram bootstrap found in OpenCode global rules');
-        break;
-    }
+async function removeWindsurfBootstrap(existing: ExistingConfig): Promise<void> {
+  if (!existing.harnesses.windsurf) return;
+
+  const windsurfResult = await removeWindsurfGlobalRules();
+  switch (windsurfResult.action) {
+    case 'stripped':
+      writeLine(`Stripped Engram block from ${windsurfResult.path}`);
+      break;
+    case 'not_found':
+      writeLine('No Engram bootstrap found in Windsurf global rules');
+      break;
+  }
+}
+
+async function removeOpencodeBootstrap(existing: ExistingConfig): Promise<void> {
+  if (!existing.harnesses.opencode) return;
+
+  const opencodeResult = await removeOpencodeGlobalRules();
+  switch (opencodeResult.action) {
+    case 'stripped':
+      writeLine(`Stripped Engram block from ${opencodeResult.path}`);
+      break;
+    case 'not_found':
+      writeLine('No Engram bootstrap found in OpenCode global rules');
+      break;
+  }
+}
+
+async function removeSkillBundles(existing: ExistingConfig): Promise<void> {
+  await removeAgentsSkillsIfEnabled(existing.harnesses.agentsSkills);
+}
+
+async function removeAgentsSkillsIfEnabled(enabled: boolean): Promise<void> {
+  if (!enabled) return;
+
+  const actions = await removeAgentsSkills();
+  if (actions.length === 0) {
+    writeLine('No ~/.agents skill files found for Engram.');
+    return;
+  }
+  for (const action of actions) {
+    writeLine(`Agent skills: ${action}`);
   }
 }
 
@@ -171,6 +198,7 @@ async function clearEngramEnvValues(envPath: string, harnessEnvKeys: string[]): 
     'ENGRAM_ROOT',
     'ENGRAM_VOICE_PRESET',
     'ENGRAM_GIT_IDENTITY',
+    'ENGRAM_CONFIGURE_PI_SKILLS',
     'GIT_IDENTITY',
     'MCP_CLAUDE_CODE_SCOPE',
     ...harnessEnvKeys,
@@ -205,6 +233,17 @@ function formatShellRemoval(result: ShellProfileRemovalResult): string {
       return `No Engram shell exports found in ${result.path}`;
     case 'error':
       return `Failed to update ${result.path}: ${result.detail ?? 'unknown error'}`;
+  }
+}
+
+function formatCliLauncherRemoval(result: CliLauncherRemoveResult): string {
+  switch (result.action) {
+    case 'removed':
+      return `Removed CLI launcher ${result.launcherPath}`;
+    case 'not_found':
+      return `No managed CLI launcher found at ${result.launcherPath}`;
+    case 'conflict':
+      return result.detail ?? `CLI launcher conflict at ${result.launcherPath}`;
   }
 }
 
@@ -270,12 +309,27 @@ async function maybeRemoveSavedConfig(
   writeLine(result.removed ? `Deleted ${result.path}` : `No config file found at ${result.path}`);
 }
 
+async function maybeRemoveCliLauncherFile(
+  rl: readline.Interface,
+  existing: ExistingConfig,
+): Promise<void> {
+  if (existing.cliBinDir === null) return;
+
+  writeLine();
+  if (!(await askYesNo(rl, `Remove managed CLI launcher from ${existing.cliBinDir}?`, true))) {
+    return;
+  }
+
+  const result = await removeCliLauncher(existing.cliBinDir);
+  writeLine(formatCliLauncherRemoval(result));
+}
+
 // ── Main remove flow ────────────────────────────────────────────────────────
 
 export async function runRemove(options: RemoveOptions): Promise<void> {
   const { rl, existing, harnesses, repoRoot, envPath, repoContext } = options;
 
-  writeLine('Engram CLI — remove');
+  writeLine('Engram Onboarding CLI — remove');
   writeLine();
   writeLine('This will remove Engram integrations from configured harnesses.');
   writeLine(`Configuration source: ${describeConfigSource(existing, repoRoot, envPath)}`);
@@ -311,6 +365,7 @@ export async function runRemove(options: RemoveOptions): Promise<void> {
   await removeVaultData(rl, existing);
 
   await maybeRemoveShellProfileExports(rl, existing);
+  await maybeRemoveCliLauncherFile(rl, existing);
   await maybeClearRepoEnv(rl, envPath, harnesses, repoContext);
   await maybeRemoveSavedConfig(rl, existing);
 

@@ -29,7 +29,7 @@ async function copyPluginAssets() {
     const targetPath = path.join(targetDir, fileName);
 
     if (!(await fileExists(sourcePath))) {
-      console.warn(`[engram-cli] Skipping ${fileName}; source file not found at ${sourcePath}`);
+      console.warn(`[onboarding] Skipping ${fileName}; source file not found at ${sourcePath}`);
       continue;
     }
 
@@ -38,9 +38,9 @@ async function copyPluginAssets() {
   }
 
   if (copiedCount === 0) {
-    console.warn(`[engram-cli] No Obsidian plugin assets copied from ${sourceDir}`);
+    console.warn(`[onboarding] No Obsidian plugin assets copied from ${sourceDir}`);
   } else {
-    console.log(`[engram-cli] Copied ${copiedCount} plugin assets to ${targetDir}`);
+    console.log(`[onboarding] Copied ${copiedCount} plugin assets to ${targetDir}`);
   }
 }
 

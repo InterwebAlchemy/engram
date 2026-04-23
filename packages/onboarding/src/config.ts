@@ -46,6 +46,7 @@ function defaultHarnesses(): Record<HarnessKey, boolean> {
     copilot: false,
     windsurf: false,
     opencode: false,
+    agentsSkills: false,
   };
 }
 
@@ -61,6 +62,7 @@ function coerceBooleanRecord(value: unknown): Record<HarnessKey, boolean> {
     copilot: value.copilot === true,
     windsurf: value.windsurf === true,
     opencode: value.opencode === true,
+    agentsSkills: value.agentsSkills === true,
   };
 }
 
@@ -71,6 +73,12 @@ function normalizeAgentName(value: unknown): string {
 }
 
 function normalizeShellProfilePath(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim().length > 0
+    ? expandHome(value.trim())
+    : undefined;
+}
+
+function normalizeCliBinDir(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim().length > 0
     ? expandHome(value.trim())
     : undefined;
@@ -99,6 +107,7 @@ function normalizePersistedConfig(value: unknown): PersistedConfig | null {
   const agentName = normalizeAgentName(value.agentName);
   const gitIdentity = typeof value.gitIdentity === 'string' ? value.gitIdentity.trim() : '';
   const shellProfilePath = normalizeShellProfilePath(value.shellProfilePath);
+  const cliBinDir = normalizeCliBinDir(value.cliBinDir);
   const claudeCodeScope = value.claudeCodeScope === 'user' ? 'user' : DEFAULT_CLAUDE_CODE_SCOPE;
   const voicePreset = normalizeVoicePreset(value.voicePreset);
 
@@ -113,6 +122,7 @@ function normalizePersistedConfig(value: unknown): PersistedConfig | null {
     claudeCodeScope,
     voicePreset,
     shellProfilePath,
+    cliBinDir,
   };
 }
 
@@ -182,6 +192,8 @@ function hasEnvConfig(envValues: Partial<Record<string, string>>): boolean {
     'MCP_CONFIGURE_VSCODE',
     'MCP_CONFIGURE_COPILOT',
     'MCP_CONFIGURE_WINDSURF',
+    'MCP_CONFIGURE_OPENCODE',
+    'ENGRAM_CONFIGURE_AGENTS_SKILLS',
   ];
   return relevantKeys.some((key) => typeof envValues[key] === 'string' && envValues[key] !== '');
 }
@@ -207,6 +219,7 @@ function buildExistingConfig(
     claudeCodeScope: value.claudeCodeScope,
     voicePreset: value.voicePreset,
     shellProfilePath: value.shellProfilePath ?? null,
+    cliBinDir: value.cliBinDir ?? null,
   };
 }
 
@@ -230,6 +243,7 @@ function buildEnvFallbackConfig(
       copilot: envValues.MCP_CONFIGURE_COPILOT === TRUE_VALUE,
       windsurf: envValues.MCP_CONFIGURE_WINDSURF === TRUE_VALUE,
       opencode: envValues.MCP_CONFIGURE_OPENCODE === TRUE_VALUE,
+      agentsSkills: envValues.ENGRAM_CONFIGURE_AGENTS_SKILLS === TRUE_VALUE,
     },
     claudeCodeScope: envValues.MCP_CLAUDE_CODE_SCOPE === 'user' ? 'user' : DEFAULT_CLAUDE_CODE_SCOPE,
     voicePreset: isVoicePreset(envValues.ENGRAM_VOICE_PRESET) ? envValues.ENGRAM_VOICE_PRESET : 'collaborator',

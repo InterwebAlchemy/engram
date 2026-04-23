@@ -1,25 +1,27 @@
 {
-  "name": "@interwebalchemy/engram-cli",
+  "name": "@interwebalchemy/engram-onboarding",
   "version": "0.1.0",
-  "description": "Agent-facing CLI for Engram tools and Agent Skills workflows",
+  "description": "Interactive CLI for configuring a new Engram vault and local harness setup",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
-    "engram": "dist/index.js"
+    "onboarding": "dist/index.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "obsidian-plugin"
   ],
   "scripts": {
-    "build": "tsc",
-    "clean": "rm -rf dist",
+    "build": "tsc && node scripts/copy-plugin-assets.mjs",
+    "clean": "rm -rf dist obsidian-plugin",
     "lint": "eslint src --max-warnings=0",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@interwebalchemy/engram-core": "*"
+    "@interwebalchemy/engram-cli": "*",
+    "@interwebalchemy/engram-snapshot": "*"
   },
   "devDependencies": {
     "@types/node": "^20.14.0",
@@ -27,9 +29,9 @@
   },
   "keywords": [
     "engram",
-    "agent",
-    "skills",
-    "cli"
+    "cli",
+    "mcp",
+    "obsidian"
   ],
   "license": "GPL-3.0-only"
 }
