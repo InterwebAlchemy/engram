@@ -1,14 +1,14 @@
 // TODO: revisit what can be extracted to reduce file size
 /* eslint-disable max-lines -- too long; see TODO above */
-import type { FileSystemAdapter } from './adapters/types';
-import { supportsProcess } from './memory-helpers';
+import type { FileSystemAdapter } from './adapters/types.js';
+import { supportsProcess } from './memory-helpers.js';
 import type {
   ScratchCompactOptions,
   ScratchDeleteOptions,
   ScratchEntry,
   ScratchReadOptions,
   ScratchPruneOptions,
-} from './types';
+} from './types.js';
 
 const SCRATCH_ENTRY_PATTERN =
   /^\[(?<sessionId>[^\]]+) \| (?<timestamp>[^\]]+)\] (?<content>.+)$/u;
@@ -37,6 +37,11 @@ interface ParsedScratchLine {
 interface EntrySelection {
   firstIndex: number;
   indexes: Set<number>;
+}
+
+export interface PendingDream {
+  entries: ScratchEntry[];
+  remaining: number;
 }
 
 function millisecondsFromHours(hours: number): number {
@@ -285,9 +290,55 @@ export function bootstrapScratchEntries(
   }
 
   transformed.sort((left, right) => new Date(right.timestamp).getTime() - new Date(left.timestamp).getTime());
-  const limited = transformed.slice(0, limit);
-  limited.sort((left, right) => new Date(left.timestamp).getTime() - new Date(right.timestamp).getTime());
-  return limited;
+  return transformed.slice(0, limit);
+}
+
+export function findCompleteDreamSequences(entries: ScratchEntry[]): ScratchEntry[][] {
+  const sequences: ScratchEntry[][] = [];
+  let i = 0;
+
+  while (i < entries.length) {
+    const entry = entries.at(i);
+    if (entry?.content.startsWith(DREAM_START_PREFIX) === true) {
+      const sequence: ScratchEntry[] = [entry];
+      let foundEnd = false;
+
+      for (let j = i + 1; j < entries.length; j += 1) {
+        const next = entries.at(j);
+        if (next === undefined) break;
+        sequence.push(next);
+        if (next.content.startsWith(DREAM_END_PREFIX)) {
+          foundEnd = true;
+          i = j;
+          break;
+        }
+      }
+
+      if (foundEnd) {
+        sequences.push(sequence);
+      }
+    }
+    i += 1;
+  }
+
+  return sequences;
+}
+
+export function countPendingDreams(entries: ScratchEntry[]): number {
+  return findCompleteDreamSequences(entries).length;
+}
+
+export function extractFirstPendingDream(entries: ScratchEntry[]): PendingDream | null {
+  const sequences = findCompleteDreamSequences(entries);
+  const first = sequences.at(0);
+  if (first === undefined) {
+    return null;
+  }
+
+  return {
+    entries: first,
+    remaining: sequences.length - 1,
+  };
 }
 
 export const BOOTSTRAP_ENTRY_MAX_CHARS = 200;
@@ -373,7 +424,7 @@ export function renderBootstrapScratch(
     while (included.length > 1) {
       const total = included.reduce((sum, r) => sum + estimate(r.rendered) + 1, 0);
       if (total <= options.tokenBudget) break;
-      included = included.slice(1);
+      included = included.slice(0, -1);
     }
   }
 
@@ -538,6 +589,18 @@ export async function appendScratchEntry(
   const existing = await adapter.read(logPath).catch(() => EMPTY_LOG);
   const next = existing.trim().length > 0 ? `${existing.trimEnd()}\n${line}` : line;
   await adapter.write(logPath, sweepScratchLog(next).content);
+}
+
+export async function readAllScratchEntries(
+  adapter: FileSystemAdapter,
+  logPath: string,
+): Promise<ScratchEntry[]> {
+  const raw = await adapter.read(logPath).catch(() => EMPTY_LOG);
+  if (raw.trim().length === 0) {
+    return [];
+  }
+
+  return parseScratchLog(raw);
 }
 
 export async function readScratchEntries(

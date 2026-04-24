@@ -1,6 +1,6 @@
 // Public API for @interwebalchemy/engram-core
 
-export { MemoryState, MemoryType, ThreadStatus, defaultMemoryConfig, SOUL_DOCUMENT_SLUG } from './types';
+export { MemoryState, MemoryType, ThreadStatus, defaultMemoryConfig, SOUL_DOCUMENT_SLUG } from './types.js';
 export type {
   NoteFrontmatter,
   ConversationFrontmatter,
@@ -20,33 +20,37 @@ export type {
   ScratchReadOptions,
   ScratchCompactOptions,
   ScratchDeleteOptions,
-} from './types';
+} from './types.js';
 
-export { VaultNote } from './vault';
-export { MemoryManager } from './memory';
-export { MemoryStateManager } from './memory-state';
-export { ContextBuilder } from './context';
-export { Conversation } from './conversation';
-export { estimateTokens } from './tokenizer';
+export { VaultNote } from './vault.js';
+export { MemoryManager } from './memory.js';
+export { MemoryStateManager } from './memory-state.js';
+export { ContextBuilder } from './context.js';
+export { Conversation } from './conversation.js';
+export { estimateTokens } from './tokenizer.js';
 export {
   BOOTSTRAP_ENTRY_MAX_CHARS,
   formatBootstrapScratchEntry,
   renderBootstrapScratch,
-} from './scratch-helpers';
+  findCompleteDreamSequences,
+  countPendingDreams,
+  extractFirstPendingDream,
+} from './scratch-helpers.js';
 export type {
   BootstrapScratchRendered,
   RenderBootstrapScratchOptions,
   RenderBootstrapScratchResult,
-} from './scratch-helpers';
+  PendingDream,
+} from './scratch-helpers.js';
 
-export type { FileSystemAdapter } from './adapters/types';
-export { NodeAdapter } from './adapters/node';
+export type { FileSystemAdapter } from './adapters/types.js';
+export { NodeAdapter } from './adapters/node.js';
 
-export { pruneMessages } from './prune';
-export { slugify, datePath, tokenizeQuery } from './utils';
+export { pruneMessages } from './prune.js';
+export { slugify, datePath, tokenizeQuery } from './utils.js';
 
-export { KeywordSearchProvider } from './scoring';
-export type { SearchProvider, ScoredNote } from './scoring';
+export { KeywordSearchProvider } from './scoring.js';
+export type { SearchProvider, ScoredNote } from './scoring.js';
 
 export {
   TOOLS,
@@ -63,10 +67,10 @@ export {
   executeToolCall,
   extractText,
   getToolHandler,
-} from './tools';
+} from './tools/index.js';
 export type {
   ToolArgs,
   ToolMessage,
   ToolResponse,
   ToolName,
-} from './tools';
+} from './tools/index.js';

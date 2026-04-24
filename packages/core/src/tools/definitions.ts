@@ -3,7 +3,7 @@ import {
   MemoryState,
   MemoryType,
   ThreadStatus,
-} from '../types';
+} from '../types.js';
 
 interface ArraySchemaProperty {
   description: string;
@@ -197,11 +197,11 @@ export const TOOLS = [
   },
   {
     name: 'scratch',
-    description: 'Shared scratch log. Actions: append, read, compact, prune, delete, clear.',
+    description: 'Shared scratch log. Actions: append, read, read_dream, compact, prune, delete, clear.',
     inputSchema: {
       type: 'object',
       properties: {
-        action: enumProp(['append', 'read', 'compact', 'prune', 'delete', 'clear'] as const, 'Action.'),
+        action: enumProp(['append', 'read', 'read_dream', 'compact', 'prune', 'delete', 'clear'] as const, 'Action.'),
         content: stringProp('Content (append).'),
         session_id: stringProp('Session UUID filter.'),
         match_text: stringProp('Content substring (delete).'),

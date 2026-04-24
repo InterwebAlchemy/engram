@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { MemoryManager } from './memory';
-import { NodeAdapter } from './adapters/node';
-import { VaultNote } from './vault';
-import { defaultMemoryConfig, MemoryState, MemoryType, type NoteFrontmatter } from './types';
+import { MemoryManager } from './memory.js';
+import { NodeAdapter } from './adapters/node.js';
+import { VaultNote } from './vault.js';
+import { defaultMemoryConfig, MemoryState, MemoryType, type NoteFrontmatter } from './types.js';
 
 async function createTempVault(): Promise<string> {
   return await fs.mkdtemp(path.join(os.tmpdir(), 'engram-memory-test-'));
@@ -593,10 +593,10 @@ test('readScratch bootstrap compacts dream sequences and drops stale entries', a
   const entries = await manager.readScratch({ bootstrap: true });
 
   assert.deepEqual(entries.map((entry) => entry.content), [
-    '[DREAMING] I walked through a city of mirrors.',
-    '[DREAM SUMMARY] 35 actions applied, 0 skipped.',
-    '[COMPACTED] Recent compacted entry',
     'Recent ordinary entry',
+    '[COMPACTED] Recent compacted entry',
+    '[DREAM SUMMARY] 35 actions applied, 0 skipped.',
+    '[DREAMING] I walked through a city of mirrors.',
   ]);
 });
 
@@ -622,7 +622,7 @@ test('readScratch bootstrap defaults to the 5 most recent entries', async (t) =>
   assert.equal(entries.length, 5);
   assert.deepEqual(
     entries.map((entry) => entry.content),
-    Array.from({ length: 5 }, (_, index) => `Entry ${index + 7}`),
+    Array.from({ length: 5 }, (_, index) => `Entry ${11 - index}`),
   );
 });
 
@@ -779,4 +779,3 @@ test('appendScratch auto-sweeps bootstrap-invisible entries from the file', asyn
   assert.equal(remaining.length, 2);
   assert.deepEqual(remaining.map((e) => e.content), ['recent entry', 'new entry']);
 });
-

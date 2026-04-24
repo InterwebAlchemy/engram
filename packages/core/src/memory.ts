@@ -1,6 +1,6 @@
 import * as path from 'node:path';
-import type { FileSystemAdapter } from './adapters/types';
-import { MemoryState, MemoryType } from './types';
+import type { FileSystemAdapter } from './adapters/types.js';
+import { MemoryState, MemoryType } from './types.js';
 import type {
   MemoryConfig,
   MemoryFilters,
@@ -15,26 +15,29 @@ import type {
   ScratchDeleteOptions,
   ScratchPruneOptions,
   Message,
-} from './types';
-import { VaultNote } from './vault';
-import { slugify } from './utils';
-import type { Conversation } from './conversation';
-import { KeywordSearchProvider } from './scoring';
-import type { SearchProvider } from './scoring';
-import { applyMemoryFilters } from './context-helpers';
-import { mutateVaultNote } from './note-helpers';
-import { NoteOperations } from './note-operations';
+} from './types.js';
+import { VaultNote } from './vault.js';
+import { slugify } from './utils.js';
+import type { Conversation } from './conversation.js';
+import { KeywordSearchProvider } from './scoring.js';
+import type { SearchProvider } from './scoring.js';
+import { applyMemoryFilters } from './context-helpers.js';
+import { mutateVaultNote } from './note-helpers.js';
+import { NoteOperations } from './note-operations.js';
 import {
   appendScratchEntry,
   compactScratchFile,
   deleteScratchFile,
+  extractFirstPendingDream,
   pruneScratchFile,
+  readAllScratchEntries,
   readScratchEntries,
   sweepScratchFile,
-} from './scratch-helpers';
-import { MemoryContextOperations } from './memory-context-operations';
-import { MemoryExtraOperations } from './memory-extra-operations';
-import { ThreadOperations } from './thread-operations';
+} from './scratch-helpers.js';
+import type { PendingDream } from './scratch-helpers.js';
+import { MemoryContextOperations } from './memory-context-operations.js';
+import { MemoryExtraOperations } from './memory-extra-operations.js';
+import { ThreadOperations } from './thread-operations.js';
 
 const MEMORY_SLUG_PREVIEW_LENGTH = 60;
 const DEFAULT_BOOTSTRAP_LIMIT = 5;
@@ -411,6 +414,11 @@ export class MemoryManager {
 
   async readScratch(options: ScratchReadOptions = {}): Promise<ScratchEntry[]> {
     return await readScratchEntries(this.adapter, this.scratchFilePath, options, { bootstrapLimit: DEFAULT_BOOTSTRAP_LIMIT, defaultLimit: DEFAULT_SCRATCH_READ_LIMIT });
+  }
+
+  async readFirstPendingDream(): Promise<PendingDream | null> {
+    const entries = await readAllScratchEntries(this.adapter, this.scratchFilePath);
+    return extractFirstPendingDream(entries);
   }
 
   async compactScratch(options: ScratchCompactOptions): Promise<void> { this.assertWriteAllowed(this.scratchFilePath); await compactScratchFile(this.adapter, this.scratchFilePath, options); }

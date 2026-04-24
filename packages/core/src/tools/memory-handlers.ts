@@ -1,4 +1,4 @@
-import type { MemoryManager } from '../memory';
+import type { MemoryManager } from '../memory.js';
 import {
   DEFAULT_CONTEXT_TOKEN_BUDGET,
   DEFAULT_LIST_LIMIT,
@@ -12,11 +12,10 @@ import {
   SESSION_ID,
   SHORT_PREVIEW_LENGTH,
   buildCheckpointReminder,
-} from './definitions';
+} from './definitions.js';
 import {
   type ToolArgs,
   type ToolResponse,
-  hasOwnArg,
   jsonText,
   optionalBooleanArg,
   optionalBootstrapStateArg,
@@ -30,16 +29,17 @@ import {
   requireStringArg,
   requiredMappedArg,
   textResult,
-} from './args';
-import { renderBootstrapScratch } from '../scratch-helpers';
-import { estimateTokens } from '../tokenizer';
+} from './args.js';
+import { renderBootstrapScratch } from '../scratch-helpers.js';
+import { buildMemoryFrontmatterUpdates, buildMemoryMetaUpdates } from './memory-update-helpers.js';
+import { estimateTokens } from '../tokenizer.js';
 
 const MEMORY_ACTIONS = ['store', 'read', 'update', 'search', 'list', 'archive'] as const;
 const SOUL_ACTIONS = ['get', 'set'] as const;
 const NOTE_ACTIONS = ['create', 'read', 'update', 'append', 'list', 'search', 'delete'] as const;
 const CONVERSATION_ACTIONS = ['save'] as const;
 const SKILL_ACTIONS = ['store', 'get', 'list'] as const;
-const SCRATCH_ACTIONS = ['append', 'read', 'compact', 'prune', 'delete', 'clear'] as const;
+const SCRATCH_ACTIONS = ['append', 'read', 'read_dream', 'compact', 'prune', 'delete', 'clear'] as const;
 
 export async function handleMemoryTool(
   manager: MemoryManager,
@@ -213,6 +213,8 @@ export async function handleScratchTool(
       return textResult('Appended to scratch log.');
     case 'read':
       return await handleScratchRead(manager, args);
+    case 'read_dream':
+      return await handleScratchReadDream(manager);
     case 'compact':
       return await handleScratchCompact(manager, args);
     case 'prune': {
@@ -242,12 +244,34 @@ async function handleScratchRead(manager: MemoryManager, args: ToolArgs): Promis
 
   if (isBootstrap) {
     const { included } = renderBootstrapScratch(entries, { tokenBudget, estimateTokens });
-    return textResult(included.map(({ rendered }) => rendered).join('\n'));
+    let text = included.map(({ rendered }) => rendered).join('\n');
+    const pending = await manager.readFirstPendingDream();
+    if (pending !== null) {
+      const count = pending.remaining + 1;
+      text += `\n⚠ ${count} pending Dream(s) in scratch. Retrieve with scratch(action: "read_dream").`;
+    }
+    return textResult(text);
   }
 
   return textResult(
     entries.map((entry) => `[${entry.sessionId} | ${entry.timestamp}] ${entry.content}`).join('\n'),
   );
+}
+
+async function handleScratchReadDream(manager: MemoryManager): Promise<ToolResponse> {
+  const pending = await manager.readFirstPendingDream();
+  if (pending === null) {
+    return textResult('No pending Dreams in scratch.');
+  }
+
+  const { entries, remaining } = pending;
+  const formatted = entries
+    .map((entry) => `[${entry.sessionId} | ${entry.timestamp}] ${entry.content}`)
+    .join('\n');
+  const footer = remaining === 0
+    ? 'No more Dreams pending.'
+    : `${remaining} more Dream(s) remaining. Call scratch(action: "read_dream") again after processing this one.`;
+  return textResult(`${formatted}\n---\n${footer}`);
 }
 
 async function handleScratchCompact(manager: MemoryManager, args: ToolArgs): Promise<ToolResponse> {
@@ -381,91 +405,4 @@ async function handleMemoryArchive(
     ? 'No forgotten notes matched the criteria.'
     : `Archived ${archived.length} forgotten note(s):\n${archived.join('\n')}`;
   return textResult(message);
-}
-
-function buildMemoryFrontmatterUpdates(
-  args: ToolArgs,
-): Record<string, unknown> | undefined {
-  const frontmatterUpdates: Record<string, unknown> = {};
-  assignIfPresent(frontmatterUpdates, 'type', optionalMappedArg(args, 'type', MEMORY_TYPE_MAP));
-  assignIfPresent(frontmatterUpdates, 'tags', optionalStringArrayArg(args, 'tags'));
-  assignIfPresent(frontmatterUpdates, 'memory_state', optionalMappedArg(args, 'state', MEMORY_STATE_MAP));
-  assignIfPresent(frontmatterUpdates, 'session_id', optionalStringArg(args, 'session_id'));
-  assignIfPresent(frontmatterUpdates, 'bootstrap_state', optionalBootstrapStateArg(args, 'bootstrap_state'));
-  assignIfPresent(frontmatterUpdates, 'agent', optionalStringArg(args, 'agent'));
-  assignIfPresent(frontmatterUpdates, 'platform', optionalStringArg(args, 'platform'));
-  assignIfPresent(frontmatterUpdates, 'summary', optionalStringArg(args, 'summary'));
-  assignIfPresent(frontmatterUpdates, 'thread', optionalStringArg(args, 'thread'));
-  return Object.keys(frontmatterUpdates).length === 0 ? undefined : frontmatterUpdates;
-}
-
-function buildMemoryMetaUpdates(args: ToolArgs): Record<string, unknown> | undefined {
-  const metaUpdates: Record<string, unknown> = {};
-  assignIfRequested(metaUpdates, args, {
-    targetKey: 'memory_state',
-    argKey: 'state',
-    value: optionalStringArg(args, 'state'),
-  });
-  assignIfRequested(metaUpdates, args, {
-    targetKey: 'session_id',
-    argKey: 'session_id',
-    value: optionalStringArg(args, 'session_id'),
-  });
-  assignIfRequested(metaUpdates, args, {
-    targetKey: 'bootstrap_state',
-    argKey: 'bootstrap_state',
-    value: optionalBootstrapStateArg(args, 'bootstrap_state'),
-  });
-  assignIfRequested(metaUpdates, args, {
-    targetKey: 'agent',
-    argKey: 'agent',
-    value: optionalStringArg(args, 'agent'),
-  });
-  assignIfRequested(metaUpdates, args, {
-    targetKey: 'platform',
-    argKey: 'platform',
-    value: optionalStringArg(args, 'platform'),
-  });
-  assignIfRequested(metaUpdates, args, {
-    targetKey: 'summary',
-    argKey: 'summary',
-    value: optionalStringArg(args, 'summary'),
-  });
-  assignIfRequested(metaUpdates, args, {
-    targetKey: 'thread',
-    argKey: 'thread',
-    value: optionalStringArg(args, 'thread'),
-  });
-  return Object.keys(metaUpdates).length === 0 ? undefined : metaUpdates;
-}
-
-function assignIfPresent(
-  target: Record<string, unknown>,
-  key: string,
-  value: unknown,
-): void {
-  if (value !== undefined) {
-    const next = target;
-    next[key] = value;
-  }
-}
-
-function assignIfRequested(
-  target: Record<string, unknown>,
-  args: ToolArgs,
-  entry: {
-    readonly argKey: string;
-    readonly targetKey: string;
-    readonly value: unknown;
-  },
-): void {
-  const {
-    argKey,
-    targetKey,
-    value,
-  } = entry;
-  if (hasOwnArg(args, argKey)) {
-    const next = target;
-    next[targetKey] = value;
-  }
 }
