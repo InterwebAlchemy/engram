@@ -25,8 +25,11 @@ import {
   mergeThreadDescription,
   mergeUniqueStrings,
   pickBestThreadMatch,
+  rankThreadMatches,
   resolveThreadIdOrThrow,
+  type ThreadMatch,
 } from './thread-helpers.js';
+import { detectGitRemote, normalizeRemoteUrl, type GitRemoteDetector } from './git-remote.js';
 import { VaultNote } from './vault.js';
 import { slugify } from './utils.js';
 
@@ -57,6 +60,21 @@ interface ThreadOperationDependencies {
     filePath: string,
     transform: (content: string) => string,
   ) => Promise<VaultNote>;
+  detectGitRemote?: GitRemoteDetector;
+}
+
+export interface ResolvedThreadCandidate {
+  threadId: string;
+  name: string;
+  reason: 'remote' | 'path';
+}
+
+export interface ResolvedThread {
+  threadId: string;
+  created: boolean;
+  thread: VaultNote;
+  /** Other plausible matches when the result is ambiguous (e.g. multiple remote matches or likely rename). */
+  candidates?: ResolvedThreadCandidate[];
 }
 
 export class ThreadOperations {
@@ -318,19 +336,28 @@ export class ThreadOperations {
     cwd?: string;
     gitRemote?: string;
     autoCreate?: boolean;
-  }): Promise<{ threadId: string; created: boolean; thread: VaultNote }> {
+  }): Promise<ResolvedThread> {
     const cwd = path.resolve(expandHome(hints.cwd ?? process.cwd()));
     const autoCreate = hints.autoCreate ?? true;
+    const detector = this.deps.detectGitRemote ?? detectGitRemote;
+    const gitRemote = hints.gitRemote ?? detector(cwd);
 
     const threads = await this.listThreads();
-    const bestThread = pickBestThreadMatch(threads, cwd, hints.gitRemote);
+    const matches = rankThreadMatches(threads, cwd, gitRemote);
+    const bestThread = pickBestThreadMatch(threads, cwd, gitRemote);
 
     if (bestThread !== null) {
-      return {
-        threadId: resolveThreadIdOrThrow(bestThread),
+      const bestId = resolveThreadIdOrThrow(bestThread);
+      const candidates = describeAlternateCandidates(matches, bestId);
+      const result: ResolvedThread = {
+        threadId: bestId,
         created: false,
         thread: bestThread,
       };
+      if (candidates.length > 0) {
+        result.candidates = candidates;
+      }
+      return result;
     }
 
     if (!autoCreate) {
@@ -338,9 +365,11 @@ export class ThreadOperations {
     }
 
     const threadId = slugify(path.basename(cwd));
+    const repositories = gitRemote === undefined ? undefined : [normalizeRemoteUrl(gitRemote)];
     const thread = await this.setThread(threadId, EMPTY_CONTENT, {
       name: path.basename(cwd),
       paths: [cwd],
+      ...(repositories === undefined ? {} : { repositories }),
     });
     return { threadId, created: true, thread };
   }
@@ -399,4 +428,26 @@ export class ThreadOperations {
 
     return { retaggedCount: sourceMemos.length };
   }
+}
+
+function describeAlternateCandidates(
+  matches: ThreadMatch[],
+  bestId: string,
+): ResolvedThreadCandidate[] {
+  const candidates: ResolvedThreadCandidate[] = [];
+  for (const match of matches) {
+    const threadId = readNonEmptyString(match.thread.frontmatter.thread_id);
+    if (threadId === null || threadId === bestId) {
+      continue;
+    }
+    const reason: 'remote' | 'path' = match.remoteMatched && match.pathScore === null
+      ? 'remote'
+      : 'path';
+    candidates.push({
+      threadId,
+      name: readNonEmptyString(match.thread.frontmatter.name) ?? threadId,
+      reason,
+    });
+  }
+  return candidates;
 }

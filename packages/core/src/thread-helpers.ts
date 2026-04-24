@@ -1,4 +1,5 @@
 import * as path from 'node:path';
+import { normalizeRemoteUrl } from './git-remote.js';
 import { ThreadStatus } from './types.js';
 import type { NoteFrontmatter, ThreadFields } from './types.js';
 import { expandHome, readNonEmptyString, readStringArray } from './memory-helpers.js';
@@ -6,6 +7,14 @@ import type { VaultNote } from './vault.js';
 
 const ACTIVE_THREAD_STATUS_RANK = 2;
 const PAUSED_THREAD_STATUS_RANK = 1;
+
+export interface ThreadMatch {
+  thread: VaultNote;
+  pathScore: number | null;
+  remoteMatched: boolean;
+  statusRank: number;
+}
+
 interface RankedThreadMatch {
   thread: VaultNote;
   score: number;
@@ -65,14 +74,37 @@ function isBetterMatch(
   return candidateStatusRank === current.statusRank && candidateScore > current.score;
 }
 
-function remoteMatch(thread: VaultNote, gitRemote?: string): boolean {
-  if (gitRemote === undefined) {
+function remoteMatch(thread: VaultNote, normalizedRemote?: string): boolean {
+  if (normalizedRemote === undefined || normalizedRemote.length === 0) {
     return false;
   }
 
   return readStringArray(thread.frontmatter.repositories).some(
-    (repository) => repository === gitRemote,
+    (repository) => normalizeRemoteUrl(repository) === normalizedRemote,
   );
+}
+
+export function rankThreadMatches(
+  threads: VaultNote[],
+  cwd: string,
+  gitRemote?: string,
+): ThreadMatch[] {
+  const normalizedRemote = gitRemote === undefined ? undefined : normalizeRemoteUrl(gitRemote);
+  const matches: ThreadMatch[] = [];
+  for (const thread of threads) {
+    const pathScore = bestPathScore(cwd, readStringArray(thread.frontmatter.paths));
+    const remoteMatched = remoteMatch(thread, normalizedRemote);
+    if (pathScore === null && !remoteMatched) {
+      continue;
+    }
+    matches.push({
+      thread,
+      pathScore,
+      remoteMatched,
+      statusRank: threadStatusRank(thread.frontmatter.status),
+    });
+  }
+  return matches;
 }
 
 export function pickBestThreadMatch(
@@ -82,16 +114,15 @@ export function pickBestThreadMatch(
 ): VaultNote | null {
   let currentBest: RankedThreadMatch | null = null;
 
-  for (const thread of threads) {
-    const statusRank = threadStatusRank(thread.frontmatter.status);
-    const score = bestPathScore(cwd, readStringArray(thread.frontmatter.paths));
-    if (score !== null && isBetterMatch(currentBest, statusRank, score)) {
-      currentBest = { thread, score, statusRank };
+  for (const match of rankThreadMatches(threads, cwd, gitRemote)) {
+    const score = match.pathScore ?? 0;
+    if (match.pathScore !== null && isBetterMatch(currentBest, match.statusRank, score)) {
+      currentBest = { thread: match.thread, score, statusRank: match.statusRank };
       continue;
     }
 
-    if (remoteMatch(thread, gitRemote) && isBetterMatch(currentBest, statusRank, 0)) {
-      currentBest = { thread, score: 0, statusRank };
+    if (match.remoteMatched && isBetterMatch(currentBest, match.statusRank, 0)) {
+      currentBest = { thread: match.thread, score: 0, statusRank: match.statusRank };
     }
   }
 
@@ -145,10 +176,11 @@ export function buildThreadFrontmatter(
     description,
     goals,
     paths,
+    repositories,
     related_threads: relatedThreads,
   } = fields;
 
-  const frontmatter: NoteFrontmatter = {
+  return {
     type: 'thread',
     created,
     updated: now,
@@ -156,19 +188,18 @@ export function buildThreadFrontmatter(
     thread_id: threadId,
     name: name ?? threadId,
     status: status ?? ThreadStatus.Active,
+    ...definedEntries({
+      description,
+      goals,
+      paths,
+      repositories,
+      related_threads: relatedThreads,
+    }),
   };
-  if (description !== undefined) {
-    frontmatter.description = description;
-  }
-  if (goals !== undefined) {
-    frontmatter.goals = goals;
-  }
-  if (paths !== undefined) {
-    frontmatter.paths = paths;
-  }
-  if (relatedThreads !== undefined) {
-    frontmatter.related_threads = relatedThreads;
-  }
+}
 
-  return frontmatter;
+function definedEntries(updates: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(updates).filter(([, value]) => value !== undefined),
+  );
 }

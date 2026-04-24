@@ -37,13 +37,19 @@ import {
 import type { PendingDream } from './scratch-helpers.js';
 import { MemoryContextOperations } from './memory-context-operations.js';
 import { MemoryExtraOperations } from './memory-extra-operations.js';
-import { ThreadOperations } from './thread-operations.js';
+import { ThreadOperations, type ResolvedThread } from './thread-operations.js';
+import type { GitRemoteDetector } from './git-remote.js';
 
 const MEMORY_SLUG_PREVIEW_LENGTH = 60;
 const DEFAULT_BOOTSTRAP_LIMIT = 5;
 const DEFAULT_SCRATCH_READ_LIMIT = 50;
 
 interface StoreOptions { tags?: string[]; provider?: string; confidence?: Confidence; }
+
+export interface MemoryManagerOptions {
+  searchProvider?: SearchProvider;
+  detectGitRemote?: GitRemoteDetector;
+}
 
 export class MemoryManager {
   private readonly writeRoot: string; private readonly readRoots: string[];
@@ -54,11 +60,11 @@ export class MemoryManager {
   constructor(
     private readonly adapter: FileSystemAdapter,
     private readonly config: MemoryConfig,
-    searchProvider?: SearchProvider,
+    options: MemoryManagerOptions = {},
   ) {
     this.writeRoot = path.resolve(config.basePath, config.engramRoot);
     this.readRoots = [this.writeRoot, ...config.readPaths.map((p) => path.resolve(config.basePath, p))];
-    this.searchProvider = searchProvider ?? new KeywordSearchProvider();
+    this.searchProvider = options.searchProvider ?? new KeywordSearchProvider();
     this.contextOperations = new MemoryContextOperations({
       adapter: this.adapter,
       memoryDir: () => path.join(this.writeRoot, this.config.memoryPath),
@@ -99,6 +105,7 @@ export class MemoryManager {
       threadDir: () => this.threadDir(),
       threadPath: (threadId) => this.threadPath(threadId),
       mutateThread: async (filePath, transform) => await this.mutateVaultNoteContent(filePath, transform),
+      ...(options.detectGitRemote === undefined ? {} : { detectGitRemote: options.detectGitRemote }),
     });
     this.noteOps = new NoteOperations({
       adapter: this.adapter,
@@ -384,7 +391,7 @@ export class MemoryManager {
   async addGlobalInboxItem(content: string, name?: string): Promise<string> { return await this.threadOperations.addGlobalInboxItem(content, name); }
   async removeInboxItem(itemPath: string): Promise<string> { return await this.threadOperations.removeInboxItem(itemPath); }
   async getGlobalInboxSummary(activeThreadId?: string): Promise<string | null> { return await this.threadOperations.getGlobalInboxSummary(activeThreadId); }
-  async resolveThread(hints: { cwd?: string; gitRemote?: string; autoCreate?: boolean }): Promise<{ threadId: string; created: boolean; thread: VaultNote }> { return await this.threadOperations.resolveThread(hints); }
+  async resolveThread(hints: { cwd?: string; gitRemote?: string; autoCreate?: boolean }): Promise<ResolvedThread> { return await this.threadOperations.resolveThread(hints); }
   async mergeThreads(sourceId: string, targetId: string): Promise<{ retaggedCount: number }> { return await this.threadOperations.mergeThreads(sourceId, targetId); }
 
   // ─── Skill operations (delegated to MemoryExtraOperations) ────────────────

@@ -15,6 +15,8 @@ export interface ThreadFrontmatter {
   goals?: string[];
   /** Filesystem paths associated with this thread (used for environment-based auto-detection). */
   paths?: string[];
+  /** Git remote URLs associated with this thread (normalized form recommended). */
+  repositories?: string[];
   related_threads?: string[];
   created: string;   // ISO 8601
   updated: string;   // ISO 8601
@@ -29,6 +31,7 @@ export interface ThreadFields {
   status?: ThreadStatus;
   goals?: string[];
   paths?: string[];
+  repositories?: string[];
   related_threads?: string[];
   tags?: string[];
 }

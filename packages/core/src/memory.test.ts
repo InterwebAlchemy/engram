@@ -779,3 +779,51 @@ test('appendScratch auto-sweeps bootstrap-invisible entries from the file', asyn
   assert.equal(remaining.length, 2);
   assert.deepEqual(remaining.map((e) => e.content), ['recent entry', 'new entry']);
 });
+
+test('resolveThread stamps detected git remote on auto-created threads', async (t) => {
+  const vaultRoot = await createTempVault();
+  t.after(async () => {
+    await fs.rm(vaultRoot, { recursive: true, force: true });
+  });
+
+  const cwd = path.join(vaultRoot, 'my-project');
+  await fs.mkdir(cwd, { recursive: true });
+
+  const manager = new MemoryManager(
+    new NodeAdapter(),
+    defaultMemoryConfig(vaultRoot, 'integrated'),
+    { detectGitRemote: () => 'git@github.com:example/project.git' },
+  );
+
+  const resolved = await manager.resolveThread({ cwd });
+  assert.equal(resolved.created, true);
+  assert.deepEqual(resolved.thread.frontmatter.repositories, ['github.com/example/project']);
+});
+
+test('resolveThread surfaces candidates when a moved repo still matches by remote', async (t) => {
+  const vaultRoot = await createTempVault();
+  t.after(async () => {
+    await fs.rm(vaultRoot, { recursive: true, force: true });
+  });
+
+  const oldPath = path.join(vaultRoot, 'old-location');
+  const newPath = path.join(vaultRoot, 'new-location');
+  await fs.mkdir(oldPath, { recursive: true });
+  await fs.mkdir(newPath, { recursive: true });
+
+  const manager = new MemoryManager(
+    new NodeAdapter(),
+    defaultMemoryConfig(vaultRoot, 'integrated'),
+    { detectGitRemote: () => 'git@github.com:example/project.git' },
+  );
+
+  await manager.setThread('historical', '', {
+    paths: [oldPath],
+    repositories: ['github.com/example/project'],
+  });
+
+  const resolved = await manager.resolveThread({ cwd: newPath, autoCreate: false });
+  assert.equal(resolved.threadId, 'historical');
+  assert.equal(resolved.created, false);
+});
+

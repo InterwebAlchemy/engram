@@ -1,4 +1,5 @@
 import type { MemoryManager } from '../memory.js';
+import type { ResolvedThread } from '../thread-operations.js';
 import type { ThreadStatus } from '../types.js';
 import type { VaultNote } from '../vault.js';
 import { THREAD_STATUS_MAP } from './definitions.js';
@@ -67,6 +68,7 @@ export async function handleThreadTool(
         description: thread.frontmatter.description,
         goals: thread.frontmatter.goals ?? [],
         paths: thread.frontmatter.paths ?? [],
+        repositories: thread.frontmatter.repositories ?? [],
         related_threads: thread.frontmatter.related_threads ?? [],
         updated: thread.frontmatter.updated,
       }));
@@ -154,6 +156,7 @@ function buildThreadFields(args: ToolArgs): {
   goals?: string[];
   name?: string;
   paths?: string[];
+  repositories?: string[];
   related_threads?: string[];
   status?: ThreadStatus;
   tags?: string[];
@@ -164,6 +167,7 @@ function buildThreadFields(args: ToolArgs): {
     status: optionalMappedArg(args, 'status', THREAD_STATUS_MAP),
     goals: optionalStringArrayArg(args, 'goals'),
     paths: optionalStringArrayArg(args, 'paths'),
+    repositories: optionalStringArrayArg(args, 'repositories'),
     related_threads: optionalStringArrayArg(args, 'related_threads'),
     tags: optionalStringArrayArg(args, 'tags'),
   };
@@ -228,10 +232,17 @@ function appendThreadMeta(lines: string[], frontmatter: VaultNote['frontmatter']
   }
 }
 
-function formatResolvedThread(result: { threadId: string; created: boolean; thread: VaultNote }): string {
-  const { threadId, created, thread } = result;
+function formatResolvedThread(result: ResolvedThread): string {
+  const { threadId, created, thread, candidates } = result;
   const lines: string[] = [`thread_id: ${threadId} (${created ? 'created' : 'found'})`];
   appendThreadMeta(lines, thread.frontmatter, threadId);
+  if (candidates !== undefined && candidates.length > 0) {
+    lines.push('other_candidates:');
+    for (const candidate of candidates) {
+      lines.push(`- ${candidate.threadId} (${candidate.name}) [${candidate.reason}]`);
+    }
+    lines.push('If one of the above is the intended thread, use thread(action: "merge") or re-resolve with an explicit thread_id.');
+  }
   const body = thread.content.trim();
   if (body.length > 0) {
     lines.push('', body);
