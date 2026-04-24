@@ -1,0 +1,27 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**"]
+    },
+    "@interwebalchemy/engram-obsidian-plugin#build": {
+      "dependsOn": ["^build"],
+      "outputs": ["main.js", "main.js.map"]
+    },
+    "@interwebalchemy/engram-onboarding#build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**", "obsidian-plugin/**"]
+    },
+    "typecheck": {
+      "dependsOn": ["^build"]
+    },
+    "test": {
+      "dependsOn": ["build"]
+    },
+    "lint": {},
+    "clean": {
+      "cache": false
+    }
+  }
+}
