@@ -24,7 +24,7 @@
  *   }
  */
 
-import { startServer } from './server';
+import { startServer } from './server.js';
 
 const FLAG_PREFIX = '--';
 const NEXT_ARG_OFFSET = 1;

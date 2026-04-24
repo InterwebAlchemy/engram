@@ -13,7 +13,7 @@ import {
   defaultMemoryConfig,
 } from '@interwebalchemy/engram-core';
 import type { MemoryConfig } from '@interwebalchemy/engram-core';
-import { registerTools } from './tools';
+import { registerTools } from './tools.js';
 
 const HTTP_METHOD_OPTIONS = 'OPTIONS';
 const HTTP_METHOD_GET = 'GET';

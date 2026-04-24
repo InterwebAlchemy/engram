@@ -10,17 +10,17 @@ export {
   MEMORY_TYPE_MAP,
   MEMORY_STATE_MAP,
   THREAD_STATUS_MAP,
-} from './definitions';
+} from './definitions.js';
 
 export type {
   ToolArgs,
   ToolMessage,
   ToolResponse,
-} from './args';
+} from './args.js';
 
 export {
   executeToolCall,
   extractText,
   getToolHandler,
   type ToolName,
-} from './registry';
+} from './registry.js';

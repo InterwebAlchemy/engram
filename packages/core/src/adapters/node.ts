@@ -1,9 +1,9 @@
 import * as fs from 'node:fs/promises';
 import type { Dirent } from 'node:fs';
 import * as path from 'node:path';
-import type { FileSystemAdapter } from './types';
-import type { SearchResult } from '../types';
-import { escapeRegex, tokenizeQuery } from '../utils';
+import type { FileSystemAdapter } from './types.js';
+import type { SearchResult } from '../types.js';
+import { escapeRegex, tokenizeQuery } from '../utils.js';
 
 function isErrnoException(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error && 'code' in error;

@@ -1,10 +1,10 @@
 import * as path from 'node:path';
-import type { FileSystemAdapter } from './adapters/types';
-import { MemoryState, MemoryType, SOUL_DOCUMENT_SLUG } from './types';
-import type { ConversationFrontmatter, Message, NoteFrontmatter } from './types';
-import { VaultNote } from './vault';
-import { Conversation } from './conversation';
-import { datePath, slugify } from './utils';
+import type { FileSystemAdapter } from './adapters/types.js';
+import { MemoryState, MemoryType, SOUL_DOCUMENT_SLUG } from './types.js';
+import type { ConversationFrontmatter, Message, NoteFrontmatter } from './types.js';
+import { VaultNote } from './vault.js';
+import { Conversation } from './conversation.js';
+import { datePath, slugify } from './utils.js';
 
 const HOURS_PER_DAY = 24;
 const MINUTES_PER_HOUR = 60;

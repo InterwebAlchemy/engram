@@ -1,9 +1,9 @@
-import { MemoryState } from './types';
-import type { MemoryFilters } from './types';
-import type { ContextBuilder } from './context';
-import type { SearchProvider } from './scoring';
-import { readNonEmptyString, readStringArray, summaryOnly } from './memory-helpers';
-import type { VaultNote } from './vault';
+import { MemoryState } from './types.js';
+import type { MemoryFilters } from './types.js';
+import type { ContextBuilder } from './context.js';
+import type { SearchProvider } from './scoring.js';
+import { readNonEmptyString, readStringArray, summaryOnly } from './memory-helpers.js';
+import type { VaultNote } from './vault.js';
 
 export function partitionContextNotes(
   notes: VaultNote[],

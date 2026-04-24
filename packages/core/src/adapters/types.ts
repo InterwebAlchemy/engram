@@ -1,4 +1,4 @@
-import type { SearchResult } from '../types';
+import type { SearchResult } from '../types.js';
 
 export interface FileSystemAdapter {
   read: (path: string) => Promise<string>;

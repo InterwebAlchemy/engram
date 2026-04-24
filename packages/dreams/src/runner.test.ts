@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseDreamsResponse, protectCoreMemoryActions } from './runner';
-import { resolveNarrativeProvider } from './runner-support';
-import type { DreamsAction, DreamsReport, DreamsRunnerOptions } from './types';
+import { parseDreamsResponse, protectCoreMemoryActions } from './runner.js';
+import { resolveNarrativeProvider } from './runner-support.js';
+import type { DreamsAction, DreamsReport, DreamsRunnerOptions } from './types.js';
 
 test('parseDreamsResponse normalizes type and camelCase thread fields', () => {
   const response = parseDreamsResponse(JSON.stringify({

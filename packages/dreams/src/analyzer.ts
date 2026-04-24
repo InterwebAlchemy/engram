@@ -13,7 +13,7 @@ import {
   emptyScratchHealth,
   emptyStateDistribution,
   emptyThreadHealth,
-} from './analyzer-helpers';
+} from './analyzer-helpers.js';
 import {
   DAY_MS,
   findOrphanedDreamStarts,
@@ -21,7 +21,7 @@ import {
   groupScratchEntries,
   isCompactedScratchGroup,
   summarizeScratchEntries,
-} from './analyzer-utils';
+} from './analyzer-utils.js';
 import type {
   DataQualityIssue,
   DreamsFocus,
@@ -29,7 +29,7 @@ import type {
   MergeCandidate,
   ScratchThreadCandidate,
   ThreadCoverageGap,
-} from './types';
+} from './types.js';
 
 const HOURS_PER_DAY = 24;
 const MAX_SCRATCH_READ_LIMIT = 10000;

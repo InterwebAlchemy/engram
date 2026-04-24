@@ -3,7 +3,7 @@ import {
   BOOTSTRAP_STATES,
   CONFIDENCE_VALUES,
   JSON_INDENT,
-} from './definitions';
+} from './definitions.js';
 
 const INSPECT_DEPTH = 2;
 const MESSAGE_ROLES = ['user', 'assistant', 'system'] as const;

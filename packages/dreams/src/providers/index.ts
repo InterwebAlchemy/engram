@@ -1,6 +1,6 @@
-import { AnthropicProvider } from './anthropic';
-import { OpenAICompatProvider } from './openai-compat';
-import type { DreamsProvider, DreamsProviderConfig } from './types';
+import { AnthropicProvider } from './anthropic.js';
+import { OpenAICompatProvider } from './openai-compat.js';
+import type { DreamsProvider, DreamsProviderConfig } from './types.js';
 
 export function createDreamsProvider(
   providerName: 'anthropic' | 'openai',
@@ -36,4 +36,4 @@ export type {
   DreamsProvider,
   DreamsProviderConfig,
   DreamsUsage,
-} from './types';
+} from './types.js';

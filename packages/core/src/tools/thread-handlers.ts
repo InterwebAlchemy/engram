@@ -1,7 +1,7 @@
-import type { MemoryManager } from '../memory';
-import type { ThreadStatus } from '../types';
-import type { VaultNote } from '../vault';
-import { THREAD_STATUS_MAP } from './definitions';
+import type { MemoryManager } from '../memory.js';
+import type { ThreadStatus } from '../types.js';
+import type { VaultNote } from '../vault.js';
+import { THREAD_STATUS_MAP } from './definitions.js';
 import {
   type ToolArgs,
   type ToolResponse,
@@ -13,7 +13,7 @@ import {
   requireEnumArg,
   requireStringArg,
   textResult,
-} from './args';
+} from './args.js';
 
 const INBOX_ACTIONS = ['list', 'add', 'read', 'remove'] as const;
 const THREAD_ACTIONS = [

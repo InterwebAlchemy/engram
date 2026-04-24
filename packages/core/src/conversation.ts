@@ -1,9 +1,9 @@
 import * as yaml from 'yaml';
-import { MemoryState } from './types';
-import type { Message, ChatMessage, TokenBudget, PruneOptions, ConversationFrontmatter } from './types';
-import type { VaultNote } from './vault';
-import { ContextBuilder } from './context';
-import { pruneMessages } from './prune';
+import { MemoryState } from './types.js';
+import type { Message, ChatMessage, TokenBudget, PruneOptions, ConversationFrontmatter } from './types.js';
+import type { VaultNote } from './vault.js';
+import { ContextBuilder } from './context.js';
+import { pruneMessages } from './prune.js';
 
 export class Conversation {
   constructor(

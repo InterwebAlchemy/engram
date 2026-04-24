@@ -22,7 +22,7 @@ import {
   readThreadStatus,
   readUpdatedTimestamp,
   summarizeScratchEntries,
-} from './analyzer-utils';
+} from './analyzer-utils.js';
 import type {
   DataQualityIssue,
   MergeCandidate,
@@ -32,7 +32,7 @@ import type {
   ThreadHealth,
   ThreadHealthEntry,
   ThreadCoverageGap,
-} from './types';
+} from './types.js';
 
 const THREAD_CONTENT_MAX_BYTES = 1800;
 const THREAD_CONTENT_MAX_LINES = 24;

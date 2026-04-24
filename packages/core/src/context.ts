@@ -1,5 +1,5 @@
-import { estimateTokens as baseEstimateTokens } from './tokenizer';
-import type { ContextSection } from './types';
+import { estimateTokens as baseEstimateTokens } from './tokenizer.js';
+import type { ContextSection } from './types.js';
 
 const INITIAL_CORRECTION_FACTOR = 1;
 const CALIBRATION_PREVIOUS_WEIGHT = 0.8;

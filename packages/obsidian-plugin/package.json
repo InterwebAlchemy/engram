@@ -3,6 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "description": "Obsidian plugin — chat with LLMs, backed by vault-based memory",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "main": "main.js",
   "scripts": {
     "build": "node esbuild.config.mjs",

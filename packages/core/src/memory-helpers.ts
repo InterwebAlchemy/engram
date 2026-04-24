@@ -1,7 +1,7 @@
 import * as os from 'node:os';
-import { ThreadStatus } from './types';
-import type { FileSystemAdapter } from './adapters/types';
-import type { VaultNote } from './vault';
+import { ThreadStatus } from './types.js';
+import type { FileSystemAdapter } from './adapters/types.js';
+import type { VaultNote } from './vault.js';
 
 const NORMALIZED_LINE_ENDINGS_PATTERN = /\r\n?/gu;
 const WHITESPACE_PATTERN = /\s+/gu;

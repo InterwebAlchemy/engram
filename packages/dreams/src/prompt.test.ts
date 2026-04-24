@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildDreamNarrativeMessages, buildDreamsMessages, type DreamsEngramContext } from './prompt';
-import type { DreamsReport } from './types';
+import { buildDreamNarrativeMessages, buildDreamsMessages, type DreamsEngramContext } from './prompt.js';
+import type { DreamsReport } from './types.js';
 
 const EMPTY_REPORT: DreamsReport = {
   timestamp: '2026-04-18T00:00:00.000Z',

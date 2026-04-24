@@ -1,7 +1,7 @@
 import * as path from 'node:path';
-import type { FileSystemAdapter } from './adapters/types';
-import { supportsProcess, normalizeNoteContent } from './memory-helpers';
-import { VaultNote } from './vault';
+import type { FileSystemAdapter } from './adapters/types.js';
+import { supportsProcess, normalizeNoteContent } from './memory-helpers.js';
+import { VaultNote } from './vault.js';
 
 const BACKSLASH_PATTERN = /\\/gu;
 const LEADING_OR_TRAILING_SLASHES_PATTERN = /^\/+|\/+$/gu;

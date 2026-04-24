@@ -1,6 +1,6 @@
-import { MemoryState } from './types';
-import type { TokenBudget, Message } from './types';
-import { VaultNote } from './vault';
+import { MemoryState } from './types.js';
+import type { TokenBudget, Message } from './types.js';
+import { VaultNote } from './vault.js';
 
 type MemoryItem = VaultNote | Message;
 

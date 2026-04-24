@@ -1,7 +1,7 @@
 import * as path from 'node:path';
-import type { FileSystemAdapter } from './adapters/types';
-import { ThreadStatus } from './types';
-import type { MemoryFilters, NoteFrontmatter, ThreadFields } from './types';
+import type { FileSystemAdapter } from './adapters/types.js';
+import { ThreadStatus } from './types.js';
+import type { MemoryFilters, NoteFrontmatter, ThreadFields } from './types.js';
 import {
   addChecklistItem,
   expandHome,
@@ -13,22 +13,22 @@ import {
   summarizeInboxNote,
   threadInboxPrefix,
   updateChecklistItemState,
-} from './memory-helpers';
+} from './memory-helpers.js';
 import {
   listInboxNotes,
   readLegacyThreadInbox,
   serializeInboxNote,
   stripMarkdownExtension,
-} from './note-helpers';
+} from './note-helpers.js';
 import {
   buildThreadFrontmatter,
   mergeThreadDescription,
   mergeUniqueStrings,
   pickBestThreadMatch,
   resolveThreadIdOrThrow,
-} from './thread-helpers';
-import { VaultNote } from './vault';
-import { slugify } from './utils';
+} from './thread-helpers.js';
+import { VaultNote } from './vault.js';
+import { slugify } from './utils.js';
 
 const EMPTY_CONTENT = '';
 const MAX_INBOX_NOTE_SLUG_LENGTH = 60;

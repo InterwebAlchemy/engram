@@ -1,5 +1,5 @@
-import type { DreamsMessage } from './providers';
-import type { DreamsReport, DreamsReviewNote } from './types';
+import type { DreamsMessage } from './providers/index.js';
+import type { DreamsReport, DreamsReviewNote } from './types.js';
 
 const JSON_INDENT = 2;
 const REVIEW_NOTE_SEPARATOR = '\n\n---\n\n';

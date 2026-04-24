@@ -2,6 +2,10 @@
   "name": "@interwebalchemy/engram-core",
   "version": "0.1.0",
   "description": "Portable AI knowledge store — core library for LLM conversation memory management",
+  "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": ["dist"],

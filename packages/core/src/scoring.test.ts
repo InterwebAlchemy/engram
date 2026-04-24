@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { KeywordSearchProvider } from './scoring';
-import type { VaultNote } from './vault';
-import type { NoteFrontmatter } from './types';
+import { KeywordSearchProvider } from './scoring.js';
+import type { VaultNote } from './vault.js';
+import type { NoteFrontmatter } from './types.js';
 
 function makeNote(overrides: {
   path?: string;

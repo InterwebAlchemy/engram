@@ -2,7 +2,7 @@ import type {
   DreamsAction,
   DreamsExecutionResult,
   DreamsReport,
-} from './types';
+} from './types.js';
 
 const CODE_FENCE_PATTERN = /^```(?:json)?\s*(?<body>[\s\S]*?)\s*```$/iu;
 const ACTIONS_ARRAY_START_PATTERN = /"actions"\s*:\s*\[/u;

@@ -1,8 +1,8 @@
 import * as path from 'node:path';
-import { ThreadStatus } from './types';
-import type { NoteFrontmatter, ThreadFields } from './types';
-import { expandHome, readNonEmptyString, readStringArray } from './memory-helpers';
-import type { VaultNote } from './vault';
+import { ThreadStatus } from './types.js';
+import type { NoteFrontmatter, ThreadFields } from './types.js';
+import { expandHome, readNonEmptyString, readStringArray } from './memory-helpers.js';
+import type { VaultNote } from './vault.js';
 
 const ACTIVE_THREAD_STATUS_RANK = 2;
 const PAUSED_THREAD_STATUS_RANK = 1;

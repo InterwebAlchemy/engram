@@ -1,11 +1,11 @@
-import type { MemoryManager } from '../memory';
+import type { MemoryManager } from '../memory.js';
 import {
   type ToolArgs,
   type ToolResponse,
   formatUnknown,
   textResult,
   toolArgs,
-} from './args';
+} from './args.js';
 import {
   handleContextTool,
   handleConversationTool,
@@ -14,11 +14,11 @@ import {
   handleScratchTool,
   handleSkillTool,
   handleSoulTool,
-} from './memory-handlers';
+} from './memory-handlers.js';
 import {
   handleInboxTool,
   handleThreadTool,
-} from './thread-handlers';
+} from './thread-handlers.js';
 
 type ToolHandler = (manager: MemoryManager, args: ToolArgs) => Promise<ToolResponse>;
 

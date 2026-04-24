@@ -1,5 +1,5 @@
-import type { DreamsUsage } from './providers/types';
-import type { DreamsEngramContext } from './prompt';
+import type { DreamsUsage } from './providers/types.js';
+import type { DreamsEngramContext } from './prompt.js';
 
 export type DreamsFocus =
   | 'state_distribution'

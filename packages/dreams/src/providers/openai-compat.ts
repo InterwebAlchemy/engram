@@ -5,7 +5,7 @@ import type {
   DreamsMessage,
   DreamsProvider,
   DreamsProviderConfig,
-} from './types';
+} from './types.js';
 
 const DEFAULT_MAX_TOKENS = 16000;
 

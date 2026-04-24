@@ -10,8 +10,8 @@ import type {
   SnapshotManifest,
   SnapshotManagerOptions,
   SnapshotRecord,
-} from './types';
-import { resolveSnapshotsDir } from './snapshots-dir';
+} from './types.js';
+import { resolveSnapshotsDir } from './snapshots-dir.js';
 
 const MANIFEST_FILE = 'manifest.json';
 const DEFAULT_ENGRAM_ROOT = 'engram';

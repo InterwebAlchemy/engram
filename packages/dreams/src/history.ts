@@ -4,7 +4,7 @@ import type {
   DreamsRunHistory,
   DreamsRunRecord,
   DreamsUsageTrend,
-} from './types';
+} from './types.js';
 
 const HISTORY_FILE = 'token-usage-history.json';
 const HISTORY_VERSION = 1;

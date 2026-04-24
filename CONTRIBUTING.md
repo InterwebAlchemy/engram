@@ -6,10 +6,12 @@ This guide covers how to get set up, what to expect from the codebase, and how t
 
 ### Prerequisites
 
-- Node.js 20+
+- Node.js 22+
 - npm 10+
 - [shellcheck](https://www.shellcheck.net/) (for linting shell scripts)
 - An Obsidian vault (optional but useful for manual testing)
+
+If you use `nvm`, run `nvm use` at repo root (uses [`.nvmrc`](.nvmrc)).
 
 ### Setup
 
@@ -24,7 +26,7 @@ npm run build
 For a full dev environment with a local vault:
 
 ```bash
-cp .env.example .env
+cp .example.env .env
 # edit .env: set ENGRAM_VAULT_PATH to a directory you want to use as a test vault
 npm run setup
 npm run dev
@@ -39,6 +41,13 @@ The `dev:clean` script will reset the temporary vault to the initial seed state 
 ### JavaScript target
 
 Engram uses a consistent `ES2022` target across the repo.
+
+### Module system
+
+Runtime workspaces use ESM (`"type": "module"`) with TypeScript `NodeNext` resolution.
+
+- Use explicit `.js` file extensions for relative imports in TypeScript source (for example `import { x } from './utils.js'`).
+- Keep `@interwebalchemy/engram-obsidian-plugin` as CommonJS for Obsidian compatibility.
 
 This is an intentional policy choice:
 

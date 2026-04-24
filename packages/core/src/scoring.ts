@@ -1,5 +1,5 @@
-import type { VaultNote } from './vault';
-import { tokenizeQuery } from './utils';
+import type { VaultNote } from './vault.js';
+import { tokenizeQuery } from './utils.js';
 
 export interface ScoredNote {
   note: VaultNote;

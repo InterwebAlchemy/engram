@@ -2,15 +2,15 @@ import {
   ContextBuilder,
   type MemoryManager,
 } from '@interwebalchemy/engram-core';
-import type { DreamsEngramContext } from './prompt';
-import type { DreamsMessage, DreamsProviderConfig } from './providers';
+import type { DreamsEngramContext } from './prompt.js';
+import type { DreamsMessage, DreamsProviderConfig } from './providers/index.js';
 import type {
   DreamsAction,
   DreamsExecutionResult,
   DreamsReport,
   DreamsRunRecord,
   DreamsRunnerOptions,
-} from './types';
+} from './types.js';
 
 const DREAMS_SESSION_ID = 'dreams';
 const MIN_DREAM_COMPLETION_TOKENS = 8_000;

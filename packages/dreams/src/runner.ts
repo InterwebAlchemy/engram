@@ -1,27 +1,27 @@
 import * as path from 'node:path';
 import { execFile } from 'node:child_process';
-import { stderr } from 'node:process';
+import { argv, stderr } from 'node:process';
 import { promisify } from 'node:util';
 import {
   defaultMemoryConfig,
   MemoryManager,
   NodeAdapter,
 } from '@interwebalchemy/engram-core';
-import { DreamsAnalyzer, type PreCleanupResult } from './analyzer';
-import { appendDreamsRunHistory } from './history';
+import { DreamsAnalyzer, type PreCleanupResult } from './analyzer.js';
+import { appendDreamsRunHistory } from './history.js';
 import {
   buildDreamNarrativeMessages,
   buildDreamsMessages,
   type DreamsEngramContext,
-} from './prompt';
-import { createDreamsProvider, type DreamsMessage } from './providers';
-import { loadReviewNotes } from './runner-review-notes';
+} from './prompt.js';
+import { createDreamsProvider, type DreamsMessage } from './providers/index.js';
+import { loadReviewNotes } from './runner-review-notes.js';
 import {
   buildDryRunExecution,
   parseDreamsResponse,
   protectCoreMemoryActions,
-} from './runner-response';
-import { executeDreamsActions } from './runner-actions';
+} from './runner-response.js';
+import { executeDreamsActions } from './runner-actions.js';
 import {
   buildDreamRunId,
   buildFallbackDreamNarrative,
@@ -30,13 +30,13 @@ import {
   resolveNarrativeProvider,
   writeDreamScratchEntry,
   writeDreamStartEntry,
-} from './runner-support';
+} from './runner-support.js';
 import type {
   DreamsPlanResult,
   DreamsReport,
   DreamsRunResult,
   DreamsRunnerOptions,
-} from './types';
+} from './types.js';
 
 const REPO_ROOT_SEGMENTS_UP = '../../..';
 const SNAPSHOT_LABEL = 'Dreams pre-run snapshot';
@@ -212,7 +212,7 @@ export {
 };
 
 async function createSnapshot(vaultPath: string, engramRoot?: string): Promise<void> {
-  const repoRoot = path.resolve(__dirname, REPO_ROOT_SEGMENTS_UP);
+  const repoRoot = resolveRepoRootFromEntrypoint();
   const args = [
     'packages/snapshot/dist/index.js',
     'create',
@@ -229,6 +229,14 @@ async function createSnapshot(vaultPath: string, engramRoot?: string): Promise<v
   }
 
   await execFileAsync('node', args, repoRoot);
+}
+
+function resolveRepoRootFromEntrypoint(): string {
+  const entryPath = argv.at(1);
+  if (typeof entryPath !== 'string' || entryPath.length === 0) {
+    return process.cwd();
+  }
+  return path.resolve(path.dirname(path.resolve(entryPath)), REPO_ROOT_SEGMENTS_UP);
 }
 
 async function hydrateDreamsContext(

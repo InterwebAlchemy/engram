@@ -6,11 +6,11 @@ import {
 import {
   readFrontmatterString,
   readStringArray,
-} from './analyzer-utils';
+} from './analyzer-utils.js';
 import type {
   DreamsReport,
   DreamsReviewNote,
-} from './types';
+} from './types.js';
 
 const THREAD_REVIEW_LIMIT = 5;
 

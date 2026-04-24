@@ -4,12 +4,12 @@ import {
   type FileSystemAdapter,
   type MemoryManager,
 } from '@interwebalchemy/engram-core';
-import { readMemoryState, readThreadStatus } from './analyzer-utils';
-import { describeAction } from './runner-response';
+import { readMemoryState, readThreadStatus } from './analyzer-utils.js';
+import { describeAction } from './runner-response.js';
 import type {
   DreamsAction,
   DreamsExecutionResult,
-} from './types';
+} from './types.js';
 
 const TYPE_DIRECTORIES: Record<string, string> = {
   fact: 'facts',

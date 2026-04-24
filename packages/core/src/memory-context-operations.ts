@@ -1,16 +1,16 @@
 import * as path from 'node:path';
-import type { FileSystemAdapter } from './adapters/types';
-import { SOUL_DOCUMENT_SLUG } from './types';
-import type { ContextSection, MemoryType, TokenBudget } from './types';
-import { VaultNote } from './vault';
-import { ContextBuilder } from './context';
-import { summarizeThread } from './memory-helpers';
+import type { FileSystemAdapter } from './adapters/types.js';
+import { SOUL_DOCUMENT_SLUG } from './types.js';
+import type { ContextSection, MemoryType, TokenBudget } from './types.js';
+import { VaultNote } from './vault.js';
+import { ContextBuilder } from './context.js';
+import { summarizeThread } from './memory-helpers.js';
 import {
   addCoreContextSections,
   addQueryContextSections,
   addRememberedContextSections,
   partitionContextNotes,
-} from './context-helpers';
+} from './context-helpers.js';
 
 const GLOBAL_INBOX_PRIORITY = 98;
 const THREAD_PRIORITY = 100;

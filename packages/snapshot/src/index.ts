@@ -11,7 +11,7 @@ import {
   stdin as input,
   stdout as output,
 } from 'node:process';
-import { SnapshotManager } from './manager';
+import { SnapshotManager } from './manager.js';
 
 const CLI_ARG_START_INDEX = 2;
 const REPO_ROOT_SEGMENTS_UP = '../../..';
@@ -279,7 +279,7 @@ async function resolveVaultPath(cliVault?: string): Promise<string> {
     return expandHome(env.ENGRAM_VAULT_PATH);
   }
 
-  const repoRoot = path.resolve(__dirname, REPO_ROOT_SEGMENTS_UP);
+  const repoRoot = resolveRepoRootFromEntrypoint();
   const envPath = path.join(repoRoot, '.env');
 
   try {
@@ -302,7 +302,7 @@ async function resolveEngramRoot(cliEngramRoot?: string): Promise<string | undef
     return normalizeEngramRoot(env.ENGRAM_ROOT);
   }
 
-  const repoRoot = path.resolve(__dirname, REPO_ROOT_SEGMENTS_UP);
+  const repoRoot = resolveRepoRootFromEntrypoint();
   const envPath = path.join(repoRoot, '.env');
 
   try {
@@ -330,6 +330,14 @@ function stripQuotes(value: string): string {
 function normalizeEngramRoot(value: string): string {
   const normalized = value.replace(BACKSLASH_PATTERN, '/').replace(/^\/+|\/+$/gu, '');
   return normalized.length > 0 ? normalized : DEFAULT_ENGRAM_ROOT;
+}
+
+function resolveRepoRootFromEntrypoint(): string {
+  const entryPath = argv.at(1);
+  if (typeof entryPath !== 'string' || entryPath.length === 0) {
+    return process.cwd();
+  }
+  return path.resolve(path.dirname(path.resolve(entryPath)), REPO_ROOT_SEGMENTS_UP);
 }
 
 function formatBytes(value?: number): string {

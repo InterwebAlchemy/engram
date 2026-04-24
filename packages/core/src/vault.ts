@@ -1,7 +1,7 @@
 import * as yaml from 'yaml';
-import type { FileSystemAdapter } from './adapters/types';
-import { MemoryState, MemoryType } from './types';
-import type { NoteFrontmatter } from './types';
+import type { FileSystemAdapter } from './adapters/types.js';
+import { MemoryState, MemoryType } from './types.js';
+import type { NoteFrontmatter } from './types.js';
 
 const DELIMITER = '---';
 const BODY_START_OFFSET = 2;

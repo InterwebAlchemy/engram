@@ -12,7 +12,7 @@ While you may be able to [export and import](https://support.claude.com/en/artic
 
 Engram stores your agent's identity and memory in an [Obsidian Vault](https://obsidian.md/) where it is human-readable, human-editable, and portable to whatever tool or device you're using next.
 
-Built on the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/), Engram is designed to move across any model, harness, or provider that supports MCP.
+Built on the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) and [Agent Skills](https://agentskills.io/), Engram is designed to move across any model, harness, or provider that supports MCP.
 
 **The Engram is the constant. The tools are interchangeable.**
 
@@ -40,6 +40,7 @@ Engram has been verified to properly bootstrap, initialize, and operate across t
 - [Windsurf](https://windsurf.com/)
 - [OpenCode](https://opencode.ai/)
 - [Pi](https://pi.dev/)
+- [Zed](https://zed.dev/)
 
 Other harnesses and clients may be configurable via MCP or Agent Skills, but they should be considered unverified and unsupported until they have been tested end-to-end and added to the list above.
 
@@ -182,8 +183,9 @@ Cross-device continuity is established by any of the available [synchronization 
 
 ## Quickstart
 
-1. Clone this repository and run `npm install`
-2. Run `npm run cli:onboarding` for the guided setup flow. It prompts for:
+1. Ensure you are running Node.js 22+ (`node -v`).
+2. Clone this repository and run `npm install`
+3. Run `npm run cli:onboarding` for the guided setup flow. It prompts for:
    1. the name for the Engram's identity
    2. an optional git identity string to use in a `Co-Authored By` trailer
    3. the path to an Obsidian Vault
@@ -192,7 +194,7 @@ Cross-device continuity is established by any of the available [synchronization 
    6. a starter voiceprint preset to seed the Engram's personality and communication style
    7. (optional) installing an `engram` launcher into a user bin directory (for example `~/.local/bin`) so Agent Skills can call `engram ...` directly
    8. (optional) installing the Engram Obisidan Plugin for better Memory and Dream visualization and direct interaction with the Engram from the Obsidian UI using any model provider; you can revisit the plugin installation later via `npm run cli:onboarding`
-3. Review the generated Soul document at `<vault>/<engram-root>/memory/soul.md` and make it yours.
+4. Review the generated Soul document at `<vault>/<engram-root>/memory/soul.md` and make it yours.
 
 **Note**: Each new Engram session bootstraps by calling `soul(action: "get")`, then `thread(action: "resolve")` (auto-detects or creates the active Thread from the working directory), then `context(action: "load")`, then `scratch(action: "read", bootstrap: true)` to gather the relevant starting context for the session.
 

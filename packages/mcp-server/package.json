@@ -2,6 +2,10 @@
   "name": "@interwebalchemy/engram-mcp",
   "version": "0.1.0",
   "description": "MCP server giving Claude structured access to an Engram vault",
+  "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "main": "dist/index.js",
   "bin": {
     "engram-mcp": "dist/index.js"

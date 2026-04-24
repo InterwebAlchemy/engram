@@ -1,13 +1,13 @@
 import * as path from 'node:path';
-import type { FileSystemAdapter } from './adapters/types';
-import { normalizeNoteContent } from './memory-helpers';
+import type { FileSystemAdapter } from './adapters/types.js';
+import { normalizeNoteContent } from './memory-helpers.js';
 import {
   appendRawNote,
   deleteRawNote,
   listRawNotes,
   searchRawNotes,
   updateRawNote,
-} from './note-helpers';
+} from './note-helpers.js';
 
 const NOTE_PREVIEW_LENGTH = 200;
 const DEFAULT_NOTE_SEARCH_LIMIT = 10;

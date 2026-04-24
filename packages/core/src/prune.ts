@@ -1,6 +1,6 @@
-import { MemoryState } from './types';
-import type { Message, ChatMessage, PruneOptions } from './types';
-import { ContextBuilder } from './context';
+import { MemoryState } from './types.js';
+import type { Message, ChatMessage, PruneOptions } from './types.js';
+import { ContextBuilder } from './context.js';
 
 const DEFAULT_CORRECTION_FACTOR = 1;
 const UNLIMITED_MESSAGE_CAP = 0;
