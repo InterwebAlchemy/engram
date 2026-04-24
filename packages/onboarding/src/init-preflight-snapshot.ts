@@ -1,43 +1,34 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import type * as readline from 'node:readline/promises';
 import { execPath } from 'node:process';
 import { once } from 'node:events';
 import { spawn } from 'node:child_process';
+import { createRequire } from 'node:module';
 
-import type { ExistingConfig, InitAnswers } from './types';
+import { askYesNo, type PromptSession } from './prompt-helpers.js';
+import { note, status, subheading, withSpinner } from './ui.js';
+import type { ExistingConfig, InitAnswers } from './types.js';
 
-function writeLine(message = ''): void {
-  process.stdout.write(`${message}\n`);
-}
-
-async function askYesNo(
-  rl: readline.Interface,
-  label: string,
-  defaultValue: boolean,
-): Promise<boolean> {
-  const suffix = defaultValue ? ' [Y/n]' : ' [y/N]';
-  const answer = (await rl.question(`${label}${suffix}: `)).trim().toLowerCase();
-  if (answer.length === 0) return defaultValue;
-  return answer === 'y' || answer === 'yes';
-}
+const require = createRequire(import.meta.url);
 
 export async function maybeCreatePreflightSnapshot(
   repoRoot: string,
   _existing: ExistingConfig,
   answers: InitAnswers,
-  rl: readline.Interface,
+  prompt: PromptSession,
 ): Promise<void> {
   if (!(await shouldOfferPreflightSnapshot(answers))) return;
 
-  writeLine();
-  writeLine(`Existing Engram state detected at ${path.join(answers.vaultPath, answers.engramRoot)}.`);
-  writeLine('A snapshot will preserve the current Soul document and the rest of the Engram state before any changes are made.');
-  const shouldSnapshot = await askYesNo(rl, `Create a pre-init snapshot in ${answers.snapshotDir}?`, true);
+  subheading(`Existing Engram state detected at ${path.join(answers.vaultPath, answers.engramRoot)}.`);
+  note('A snapshot will preserve the current Soul document and the rest of the Engram state before any changes are made.');
+  const shouldSnapshot = await askYesNo(prompt, `Create a pre-init snapshot in ${answers.snapshotDir}?`, true);
   if (!shouldSnapshot) return;
 
-  const snapshotId = await createSnapshot(repoRoot, answers);
-  writeLine(`Snapshot → ${snapshotId}`);
+  const snapshotId = await withSpinner(
+    `Creating pre-init snapshot in ${answers.snapshotDir}…`,
+    async () => await createSnapshot(repoRoot, answers),
+  );
+  status('Snapshot', snapshotId, 'created');
 }
 
 async function shouldOfferPreflightSnapshot(

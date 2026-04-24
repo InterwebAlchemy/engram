@@ -1,11 +1,12 @@
-import type { VoicePresetId } from './voice-presets';
-import type { Placement } from './markers';
+import type { VoicePresetId } from './voice-presets.js';
+import type { Placement } from './markers.js';
 
 export type HarnessKey =
   | 'claudeCode'
   | 'claudeDesktop'
   | 'cursor'
   | 'vscode'
+  | 'zed'
   | 'copilot'
   | 'windsurf'
   | 'opencode'

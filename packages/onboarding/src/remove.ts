@@ -17,15 +17,28 @@ import {
   removeWindsurfMcp,
   removeWindsurfGlobalRules,
   removeOpencodeMcp,
+  removeZedMcp,
   removeOpencodeGlobalRules,
   type HarnessRemovalResult,
-} from './harness-config';
-import { removeAgentsSkills } from './harness-skills';
-import { removeClaudeCodeMcp } from './remove-claude-code';
-import { removeCliConfig } from './config';
-import { removeShellExports, type ShellProfileRemovalResult } from './shell-profile';
-import { removeCliLauncher, type CliLauncherRemoveResult } from './cli-launcher';
-import type { ExistingConfig, HarnessOption } from './types';
+} from './harness-config.js';
+import { removeAgentsSkills } from './harness-skills.js';
+import { removeClaudeCodeMcp } from './remove-claude-code.js';
+import { removeCliConfig } from './config.js';
+import { removeShellExports, type ShellProfileRemovalResult } from './shell-profile.js';
+import { removeCliLauncher, type CliLauncherRemoveResult } from './cli-launcher.js';
+import {
+  bullet,
+  info,
+  note,
+  printBanner,
+  section,
+  status,
+  subheading,
+  success,
+  warn,
+  writeLine,
+} from './ui.js';
+import type { ExistingConfig, HarnessOption } from './types.js';
 
 export interface RemoveOptions {
   rl: readline.Interface;
@@ -34,12 +47,6 @@ export interface RemoveOptions {
   repoRoot: string;
   envPath: string;
   repoContext: boolean;
-}
-
-// ── Output helpers ──────────────────────────────────────────────────────────
-
-function writeLine(message = ''): void {
-  process.stdout.write(`${message}\n`);
 }
 
 // ── Prompt helpers (duplicated to keep module self-contained) ────────────────
@@ -74,18 +81,27 @@ async function directoryExists(dirPath: string): Promise<boolean> {
 
 async function removeHarnessConfigs(existing: ExistingConfig): Promise<void> {
   const results: HarnessRemovalResult[] = [];
+  const removers: ReadonlyArray<{ enabled: boolean; remove: () => Promise<HarnessRemovalResult> }> = [
+    { enabled: existing.harnesses.claudeDesktop, remove: removeClaudeDesktopMcp },
+    { enabled: existing.harnesses.cursor, remove: removeCursorMcp },
+    { enabled: existing.harnesses.vscode, remove: removeVsCodeMcp },
+    { enabled: existing.harnesses.zed, remove: removeZedMcp },
+    { enabled: existing.harnesses.copilot, remove: removeCopilotMcp },
+    { enabled: existing.harnesses.windsurf, remove: removeWindsurfMcp },
+    { enabled: existing.harnesses.opencode, remove: removeOpencodeMcp },
+    { enabled: existing.harnesses.claudeCode, remove: removeClaudeCodeMcp },
+  ];
 
-  if (existing.harnesses.claudeDesktop) results.push(await removeClaudeDesktopMcp());
-  if (existing.harnesses.cursor) results.push(await removeCursorMcp());
-  if (existing.harnesses.vscode) results.push(await removeVsCodeMcp());
-  if (existing.harnesses.copilot) results.push(await removeCopilotMcp());
-  if (existing.harnesses.windsurf) results.push(await removeWindsurfMcp());
-  if (existing.harnesses.opencode) results.push(await removeOpencodeMcp());
-  if (existing.harnesses.claudeCode) results.push(await removeClaudeCodeMcp());
+  const enabledRemovers = removers.filter((remover) => remover.enabled);
+  const removalResults = await Promise.all(enabledRemovers.map(async (remover) => await remover.remove()));
+  results.push(...removalResults);
 
   for (const result of results) {
-    const prefix = result.action === 'removed' ? '  removed' : `  ${result.action}`;
-    writeLine(`${prefix}: ${result.harness} — ${result.detail}`);
+    if (result.action === 'removed') {
+      status(result.harness, result.detail, 'removed');
+    } else {
+      note(`${result.action}: ${result.harness} — ${result.detail}`);
+    }
   }
 }
 
@@ -93,13 +109,13 @@ async function removeBootstrapFiles(existing: ExistingConfig): Promise<void> {
   const result = await removeBootstrap();
   switch (result.action) {
     case 'deleted':
-      writeLine(`Deleted ${result.path} (was only Engram content)`);
+      status(result.path, 'deleted (was only Engram content)');
       break;
     case 'stripped':
-      writeLine(`Stripped Engram block from ${result.path} (preserved other content)`);
+      status(result.path, 'Engram block stripped (preserved other content)');
       break;
     case 'not_found':
-      writeLine('No Engram bootstrap found in ~/.claude/CLAUDE.md');
+      note('No Engram bootstrap found in ~/.claude/CLAUDE.md');
       break;
   }
 
@@ -114,10 +130,10 @@ async function removeWindsurfBootstrap(existing: ExistingConfig): Promise<void> 
   const windsurfResult = await removeWindsurfGlobalRules();
   switch (windsurfResult.action) {
     case 'stripped':
-      writeLine(`Stripped Engram block from ${windsurfResult.path}`);
+      status(windsurfResult.path, 'Engram block stripped');
       break;
     case 'not_found':
-      writeLine('No Engram bootstrap found in Windsurf global rules');
+      note('No Engram bootstrap found in Windsurf global rules');
       break;
   }
 }
@@ -128,10 +144,10 @@ async function removeOpencodeBootstrap(existing: ExistingConfig): Promise<void> 
   const opencodeResult = await removeOpencodeGlobalRules();
   switch (opencodeResult.action) {
     case 'stripped':
-      writeLine(`Stripped Engram block from ${opencodeResult.path}`);
+      status(opencodeResult.path, 'Engram block stripped');
       break;
     case 'not_found':
-      writeLine('No Engram bootstrap found in OpenCode global rules');
+      note('No Engram bootstrap found in OpenCode global rules');
       break;
   }
 }
@@ -145,11 +161,11 @@ async function removeAgentsSkillsIfEnabled(enabled: boolean): Promise<void> {
 
   const actions = await removeAgentsSkills();
   if (actions.length === 0) {
-    writeLine('No ~/.agents skill files found for Engram.');
+    note('No ~/.agents skill files found for Engram.');
     return;
   }
   for (const action of actions) {
-    writeLine(`Agent skills: ${action}`);
+    status('Agent skills', action);
   }
 }
 
@@ -158,10 +174,10 @@ async function removePlugin(rl: readline.Interface, vaultPath: string): Promise<
 
   const actions = await removeObsidianPlugin(vaultPath);
   for (const action of actions) {
-    writeLine(`  ${action}`);
+    bullet(action);
   }
   if (actions.length === 0) {
-    writeLine('  no plugin files found');
+    note('no plugin files found');
   }
 }
 
@@ -172,22 +188,20 @@ async function removeVaultData(
   const engramDir = path.join(existing.vaultPath, existing.engramRoot);
   if (!(await directoryExists(engramDir))) return;
 
-  writeLine(`Your Engram data lives at: ${engramDir}`);
-  writeLine('This contains your memories, soul document, threads, and scratch log.');
-  writeLine();
+  subheading(`Your Engram data lives at: ${engramDir}`);
+  note('This contains your memories, soul document, threads, and scratch log.');
 
   if (!(await askYesNo(rl, 'Delete Engram vault data? (THIS CANNOT BE UNDONE)', false))) {
-    writeLine('Vault data preserved.');
+    info('Vault data preserved.');
     return;
   }
 
-  writeLine();
   const confirmName = await ask(rl, `Type "${existing.agentName}" to confirm deletion`);
   if (confirmName === existing.agentName) {
     await fs.rm(engramDir, { recursive: true });
-    writeLine(`Deleted ${engramDir}`);
+    status(engramDir, 'deleted');
   } else {
-    writeLine('Confirmation did not match. Skipping vault data deletion.');
+    warn('Confirmation did not match. Skipping vault data deletion.');
   }
 }
 
@@ -223,27 +237,34 @@ async function clearEngramEnvValues(envPath: string, harnessEnvKeys: string[]): 
   }
 }
 
-function formatShellRemoval(result: ShellProfileRemovalResult): string {
+function reportShellRemoval(result: ShellProfileRemovalResult): void {
   switch (result.action) {
     case 'deleted':
-      return `Deleted ${result.path} (Engram shell exports were the only content)`;
+      status(result.path, 'deleted (Engram shell exports were the only content)');
+      break;
     case 'stripped':
-      return `Stripped Engram shell exports from ${result.path}`;
+      status(result.path, 'Engram shell exports stripped');
+      break;
     case 'not_found':
-      return `No Engram shell exports found in ${result.path}`;
+      note(`No Engram shell exports found in ${result.path}`);
+      break;
     case 'error':
-      return `Failed to update ${result.path}: ${result.detail ?? 'unknown error'}`;
+      warn(`Failed to update ${result.path}: ${result.detail ?? 'unknown error'}`);
+      break;
   }
 }
 
-function formatCliLauncherRemoval(result: CliLauncherRemoveResult): string {
+function reportCliLauncherRemoval(result: CliLauncherRemoveResult): void {
   switch (result.action) {
     case 'removed':
-      return `Removed CLI launcher ${result.launcherPath}`;
+      status('CLI launcher', result.launcherPath, 'removed');
+      break;
     case 'not_found':
-      return `No managed CLI launcher found at ${result.launcherPath}`;
+      note(`No managed CLI launcher found at ${result.launcherPath}`);
+      break;
     case 'conflict':
-      return result.detail ?? `CLI launcher conflict at ${result.launcherPath}`;
+      warn(result.detail ?? `CLI launcher conflict at ${result.launcherPath}`);
+      break;
   }
 }
 
@@ -268,16 +289,15 @@ async function maybeRemoveShellProfileExports(
     return;
   }
 
-  writeLine();
   const results = await removeShellExports(existing.shellProfilePath);
   const meaningfulResults = results.filter((result) => result.action !== 'not_found');
   if (meaningfulResults.length === 0) {
-    writeLine('No Engram shell profile exports found.');
+    note('No Engram shell profile exports found.');
     return;
   }
 
   for (const result of meaningfulResults) {
-    writeLine(formatShellRemoval(result));
+    reportShellRemoval(result);
   }
 }
 
@@ -289,10 +309,9 @@ async function maybeClearRepoEnv(
 ): Promise<void> {
   if (!repoContext) return;
 
-  writeLine();
   if (await askYesNo(rl, 'Clear Engram values from repo .env?', true)) {
     await clearEngramEnvValues(envPath, harnesses.map((h) => h.envKey));
-    writeLine('Cleared Engram configuration from .env');
+    success('Cleared Engram configuration from .env');
   }
 }
 
@@ -300,13 +319,16 @@ async function maybeRemoveSavedConfig(
   rl: readline.Interface,
   existing: ExistingConfig,
 ): Promise<void> {
-  writeLine();
   if (!(await askYesNo(rl, `Remove saved config at ${existing.configPath}?`, existing.source !== 'default'))) {
     return;
   }
 
   const result = await removeCliConfig();
-  writeLine(result.removed ? `Deleted ${result.path}` : `No config file found at ${result.path}`);
+  if (result.removed) {
+    status(result.path, 'deleted');
+  } else {
+    note(`No config file found at ${result.path}`);
+  }
 }
 
 async function maybeRemoveCliLauncherFile(
@@ -315,13 +337,12 @@ async function maybeRemoveCliLauncherFile(
 ): Promise<void> {
   if (existing.cliBinDir === null) return;
 
-  writeLine();
   if (!(await askYesNo(rl, `Remove managed CLI launcher from ${existing.cliBinDir}?`, true))) {
     return;
   }
 
   const result = await removeCliLauncher(existing.cliBinDir);
-  writeLine(formatCliLauncherRemoval(result));
+  reportCliLauncherRemoval(result);
 }
 
 // ── Main remove flow ────────────────────────────────────────────────────────
@@ -329,53 +350,58 @@ async function maybeRemoveCliLauncherFile(
 export async function runRemove(options: RemoveOptions): Promise<void> {
   const { rl, existing, harnesses, repoRoot, envPath, repoContext } = options;
 
-  writeLine('Engram Onboarding CLI — remove');
-  writeLine();
-  writeLine('This will remove Engram integrations from configured harnesses.');
-  writeLine(`Configuration source: ${describeConfigSource(existing, repoRoot, envPath)}`);
-  writeLine();
+  printBanner('Uninstall');
+  section('Removal plan');
+  note('This will remove Engram integrations from configured harnesses.');
+  note(`Configuration source: ${describeConfigSource(existing, repoRoot, envPath)}`);
 
   const configuredHarnesses = harnesses.filter((h) => existing.harnesses[h.key]);
   if (configuredHarnesses.length > 0) {
-    writeLine('Configured harnesses:');
+    subheading('Configured harnesses:');
     for (const h of configuredHarnesses) {
-      writeLine(`  - ${h.label}`);
+      bullet(h.label);
     }
   } else {
-    writeLine('No harnesses configured in saved Engram settings.');
+    note('No harnesses configured in saved Engram settings.');
   }
-  writeLine(`Vault: ${existing.vaultPath}`);
-  writeLine(`Engram root: ${existing.engramRoot}`);
+  note(`Vault: ${existing.vaultPath}`);
+  note(`Engram root: ${existing.engramRoot}`);
   writeLine();
 
   if (!(await askYesNo(rl, 'Proceed with removal?', false))) {
-    writeLine('Cancelled.');
+    info('Cancelled.');
     return;
   }
 
-  writeLine();
+  section('Harness configs');
   await removeHarnessConfigs(existing);
 
-  writeLine();
+  section('Bootstrap files');
   await removeBootstrapFiles(existing);
 
+  section('Obsidian plugin');
   await removePlugin(rl, existing.vaultPath);
 
-  writeLine();
+  section('Vault data');
   await removeVaultData(rl, existing);
 
+  section('Shell profile + CLI launcher');
   await maybeRemoveShellProfileExports(rl, existing);
   await maybeRemoveCliLauncherFile(rl, existing);
   await maybeClearRepoEnv(rl, envPath, harnesses, repoContext);
   await maybeRemoveSavedConfig(rl, existing);
 
   if (existing.harnesses.cursor) {
-    writeLine();
-    writeLine('Note: Cursor rules must be removed manually.');
-    writeLine('  Open Cursor Settings > General > Rules, Skills, Subagents');
-    writeLine('  Find and remove the Engram bootstrap rule.');
+    subheading('Note: Cursor rules must be removed manually.');
+    note('Open Cursor Settings > General > Rules, Skills, Subagents');
+    note('Find and remove the Engram bootstrap rule.');
+  }
+
+  if (existing.harnesses.zed) {
+    subheading('Note: Zed settings must be removed manually.');
+    note('Open your Zed settings JSON and remove the "engram" entry from "context_servers".');
   }
 
   writeLine();
-  writeLine('Removal complete.');
+  success('Removal complete.');
 }

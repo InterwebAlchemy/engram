@@ -2,7 +2,7 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { env } from 'node:process';
 
-import { expandHome, quoteForShell } from './utils';
+import { expandHome, quoteForShell } from './utils.js';
 
 const LAUNCHER_NAME = 'engram';
 const MANAGED_MARKER = '# engram-onboarding-managed';

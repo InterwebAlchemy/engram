@@ -5,9 +5,10 @@
 
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { env, platform } from 'node:process';
 
-import { stripMarkedBlock, injectMarkedBlock, hasMarkedBlock, isOnlyMarkedBlock, type Placement } from './markers';
+import { stripMarkedBlock, injectMarkedBlock, hasMarkedBlock, isOnlyMarkedBlock, type Placement } from './markers.js';
 
 const JSON_INDENT = 2;
 
@@ -51,6 +52,10 @@ function opencodeMcpPath(): string {
 
 function opencodeGlobalRulesPath(): string {
   return path.join(homeDir(), '.config', 'opencode', 'AGENTS.md');
+}
+
+function zedSettingsPath(): string {
+  return path.join(homeDir(), '.config', 'zed', 'settings.json');
 }
 
 function claudeCodeBootstrapPath(): string {
@@ -165,6 +170,10 @@ export async function removeOpencodeMcp(): Promise<HarnessRemovalResult> {
   return await removeFromJsonConfig('OpenCode', opencodeMcpPath(), 'mcp');
 }
 
+export async function removeZedMcp(): Promise<HarnessRemovalResult> {
+  return await removeFromJsonConfig('Zed', zedSettingsPath(), 'context_servers');
+}
+
 async function removeFromJsonConfig(
   harness: string,
   configPath: string,
@@ -248,6 +257,55 @@ async function injectMcpEntry(
   await writeJsonFile(configPath, updated);
 }
 
+export interface ClaudeCodeMcpResult {
+  kind: 'configured' | 'missing_cli' | 'failed';
+  scope: 'local' | 'user';
+  detail?: string;
+}
+
+export function configureClaudeCodeMcp(command: string, scope: 'local' | 'user'): ClaudeCodeMcpResult {
+  const which = spawnSync('which', ['claude'], { stdio: ['ignore', 'pipe', 'pipe'] });
+  if (which.status !== 0) {
+    return { kind: 'missing_cli', scope };
+  }
+  spawnSync('claude', ['mcp', 'remove', 'engram'], { stdio: ['ignore', 'ignore', 'ignore'] });
+  const args = ['mcp', 'add'];
+  if (scope === 'user') args.push('--scope', 'user');
+  args.push('engram', command);
+  const result = spawnSync('claude', args, { stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8' });
+  if (result.status !== 0) {
+    const stderr = typeof result.stderr === 'string' ? result.stderr.trim() : '';
+    const stdout = typeof result.stdout === 'string' ? result.stdout.trim() : '';
+    const detail = stderr.length > 0 ? stderr : stdout;
+    return { kind: 'failed', scope, detail: detail.length > 0 ? detail : undefined };
+  }
+  return { kind: 'configured', scope };
+}
+
+export async function configureClaudeDesktopMcp(command: string): Promise<string> {
+  const configPath = claudeDesktopConfigPath();
+  await injectMcpEntry(configPath, 'mcpServers', command);
+  return configPath;
+}
+
+export async function configureCursorMcp(command: string): Promise<string> {
+  const configPath = cursorMcpPath();
+  await injectMcpEntry(configPath, 'mcpServers', command);
+  return configPath;
+}
+
+export async function configureVsCodeMcp(command: string): Promise<string> {
+  const configPath = vsCodeMcpPath();
+  await injectMcpEntry(configPath, 'servers', command);
+  return configPath;
+}
+
+export async function configureCopilotMcp(command: string): Promise<string> {
+  const configPath = copilotMcpPath();
+  await injectMcpEntry(configPath, 'mcpServers', command);
+  return configPath;
+}
+
 export async function configureWindsurfMcp(command: string): Promise<string> {
   const configPath = windsurfMcpPath();
   await injectMcpEntry(configPath, 'mcpServers', command);
@@ -266,6 +324,24 @@ export async function configureOpencodeMcp(command: string): Promise<string> {
         type: 'local',
         command: command.split(' '),
         enabled: true,
+      },
+    },
+  };
+  await writeJsonFile(configPath, updated);
+  return configPath;
+}
+
+export async function configureZedMcp(command: string): Promise<string> {
+  const configPath = zedSettingsPath();
+  const cfg = await readJsonFile(configPath);
+  const contextServers = getSection(cfg, 'context_servers') ?? {};
+  const updated = {
+    ...cfg,
+    context_servers: {
+      ...contextServers,
+      engram: {
+        command,
+        args: [],
       },
     },
   };
@@ -351,6 +427,7 @@ export async function writeCopilotInstructions(body: string): Promise<string> {
   await fs.writeFile(filePath, `${frontmatter}${body.trim()}\n`, 'utf8');
   return filePath;
 }
+
 
 // ── Obsidian plugin cleanup ─────────────────────────────────────────────────
 

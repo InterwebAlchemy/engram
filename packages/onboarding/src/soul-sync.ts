@@ -1,68 +1,77 @@
-import type * as readline from 'node:readline/promises';
+import { askChoice, type PromptSession } from './prompt-helpers.js';
+import { prepareSoulDocumentPlan, writeSoulDocument } from './soul-document.js';
+import { bullet, note, status, subheading } from './ui.js';
+import type { InitAnswers } from './types.js';
 
-import { prepareSoulDocumentPlan, writeSoulDocument } from './soul-document';
-import { isChoice } from './utils';
-import type { InitAnswers } from './types';
-
-function writeLine(message = ''): void {
-  process.stdout.write(`${message}\n`);
-}
-
-async function askChoice<T extends string>(
-  rl: readline.Interface,
-  label: string,
-  options: readonly T[],
-  defaultValue: T,
-): Promise<T> {
-  const defaultSuffix = defaultValue.length > 0 ? ` (${defaultValue})` : '';
-  const answer = (await rl.question(`${label} [${options.join('/')}]${defaultSuffix}: `)).trim().toLowerCase();
-  if (answer.length === 0) return defaultValue;
-  return isChoice(options, answer) ? answer : await askChoice(rl, label, options, defaultValue);
+function hasEditableContentDifferences(plan: {
+  coreDiffHeadings: string[];
+  gitIdentityChanged: boolean;
+}): boolean {
+  return plan.coreDiffHeadings.length > 0 || plan.gitIdentityChanged;
 }
 
 export async function syncSoulDocument(
   templatePath: string,
   answers: InitAnswers,
-  rl: readline.Interface,
+  prompt: PromptSession,
 ): Promise<void> {
   const plan = await prepareSoulDocumentPlan(templatePath, answers);
 
   if (plan.existingContent === null) {
     await writeSoulDocument(plan, 'replace');
-    writeLine(`Soul → ${plan.soulPath} (created)`);
+    status('Soul', plan.soulPath, 'created');
     return;
   }
 
-  writeLine();
-  writeLine(`Existing Soul detected at ${plan.soulPath}.`);
-  writeLine('The CLI will preserve editable sections by default instead of regenerating the whole file.');
+  subheading(`Existing Soul detected at ${plan.soulPath}.`);
+  note('The CLI will preserve editable sections by default instead of regenerating the whole file.');
   if (plan.gitIdentityChanged) {
-    writeLine('Config git identity differs from the current Soul frontmatter and can be synced automatically.');
+    note('Config git identity differs from the current Soul frontmatter and can be synced automatically.');
   }
   if (plan.coreDiffHeadings.length > 0) {
-    writeLine('Core Engram sections that differ from the current template:');
+    note('Core Engram sections that differ from the current template:');
     for (const heading of plan.coreDiffHeadings) {
-      writeLine(`- ${heading}`);
+      bullet(heading);
     }
   } else {
-    writeLine('Core Engram sections already match the current template.');
+    note('Core Engram sections already match the current template.');
   }
 
-  const mode = await askChoice(rl, 'Soul update mode', ['preserve', 'core', 'replace'] as const, 'preserve');
-  const action = await writeSoulDocument(plan, mode === 'core' || mode === 'replace' ? mode : 'preserve');
+  let selectedMode: 'preserve' | 'core' | 'replace' = 'preserve';
+
+  if (hasEditableContentDifferences(plan)) {
+    note('Choose how to apply template updates:');
+    bullet('safe (recommended): keep your current Soul text and only sync safe metadata (for example, git_identity).');
+    bullet('refresh core: update core Engram sections to the current template while preserving your editable/custom sections.');
+    bullet('replace all: overwrite the Soul file from template (destructive to custom edits).');
+    selectedMode = await askChoice(
+      prompt,
+      'Soul update mode',
+      ['safe', 'refresh core', 'replace all'] as const,
+      'safe',
+    ).then((mode) => {
+      if (mode === 'refresh core') return 'core';
+      if (mode === 'replace all') return 'replace';
+      return 'preserve';
+    });
+  } else {
+    note('No core template drift detected. Keeping your existing Soul content and syncing safe metadata.');
+  }
+
+  const action = await writeSoulDocument(plan, selectedMode);
 
   switch (action) {
     case 'created':
-      writeLine(`Soul → ${plan.soulPath} (created)`);
+      status('Soul', plan.soulPath, 'created');
       break;
     case 'preserved':
-      writeLine(`Soul → ${plan.soulPath} (preserved existing content; synced safe metadata only)`);
+      status('Soul', plan.soulPath, 'preserved existing content; synced safe metadata only');
       break;
     case 'updated_core':
-      writeLine(`Soul → ${plan.soulPath} (updated core Engram sections; preserved editable sections)`);
+      status('Soul', plan.soulPath, 'updated core sections; preserved editable sections');
       break;
     case 'replaced':
-      writeLine(`Soul → ${plan.soulPath} (replaced from template)`);
+      status('Soul', plan.soulPath, 'replaced from template');
       break;
   }
 }

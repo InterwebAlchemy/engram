@@ -5,7 +5,7 @@
 import { once } from 'node:events';
 import { spawn } from 'node:child_process';
 
-import type { HarnessRemovalResult } from './harness-config';
+import type { HarnessRemovalResult } from './harness-config.js';
 
 export async function removeClaudeCodeMcp(): Promise<HarnessRemovalResult> {
   try {

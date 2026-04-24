@@ -2,7 +2,7 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { env, platform } from 'node:process';
 
-import { expandHome, quoteForShell } from './utils';
+import { expandHome, quoteForShell } from './utils.js';
 
 const MARKER_START = '# >>> engram >>>';
 const MARKER_END = '# <<< engram <<<';

@@ -3,58 +3,50 @@
 import { once } from 'node:events';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import * as readline from 'node:readline/promises';
 import { spawn } from 'node:child_process';
+import { argv, exit, stderr, stdin as input, stdout as output } from 'node:process';
+import { VOICE_PRESET_IDS, voicePresetEntries } from './voice-presets.js';
+import { expandHome, normalizeEngramRoot } from './utils.js';
+import type { Placement } from './markers.js';
+import { getBootstrapFileInfo, installObsidianPlugin } from './harness-config.js';
+import { buildEnvUpdates } from './env-file.js';
+import { loadExistingConfig, getDefaultSnapshotDir, isRepoContext } from './config.js';
+import { runRemove } from './remove.js';
+import * as readline from 'node:readline/promises';
+import { askHarnesses } from './harness-prompts.js';
+import { detectShellProfile } from './shell-profile.js';
+import { askCliCommandConfig, ensureCliLauncher } from './cli-command.js';
+import { maybeCreatePreflightSnapshot } from './init-preflight-snapshot.js';
+import { persistInitState, printInitMode } from './init-state.js';
+import { syncSoulDocument } from './soul-sync.js';
 import {
-  argv,
-  exit,
-  stderr,
-  stdin as input,
-  stdout as output,
-} from 'node:process';
-import {
-  VOICE_PRESET_IDS,
-  voicePresetEntries,
-} from './voice-presets';
-import {
-  expandHome,
-  normalizeEngramRoot,
-} from './utils';
-import type { Placement } from './markers';
-import {
-  getBootstrapFileInfo,
-  installObsidianPlugin,
-  injectBootstrap,
-  writeCopilotInstructions,
-  configureWindsurfMcp,
-  injectWindsurfGlobalRules,
-  configureOpencodeMcp,
-  injectOpencodeGlobalRules,
-} from './harness-config';
-import {
-  configureAgentsSkills,
-} from './harness-skills';
-import { buildEnvUpdates } from './env-file';
-import {
-  loadExistingConfig,
-  getDefaultSnapshotDir,
-  isRepoContext,
-} from './config';
-import { runRemove } from './remove';
-import {
-  detectShellProfile,
-} from './shell-profile';
-import { askCliCommandConfig, ensureCliLauncher } from './cli-command';
-import { maybeCreatePreflightSnapshot } from './init-preflight-snapshot';
-import { persistInitState, printInitMode } from './init-state';
-import { syncSoulDocument } from './soul-sync';
+  bullet,
+  clearScreen,
+  muted,
+  note,
+  printBanner,
+  printInitSummary,
+  section,
+  setVerbose,
+  skipped,
+  status,
+  subheading,
+  writeLine,
+} from './ui.js';
+import { runHarnessSetupStage } from './harness-setup.js';
+import { resolveRepoRootFromEntrypoint, resolveRuntimeDirFromEntrypoint } from './runtime-paths.js';
 import {
   ask,
+  askPathRequired,
+  askSubdirOf,
   askChoice,
   askRequired,
   askYesNo,
-} from './prompt-helpers';
-import type { ExistingConfig, HarnessOption, InitAnswers } from './types';
+  closePromptSession,
+  createPromptSession,
+  type PromptSession,
+} from './prompt-helpers.js';
+import type { ExistingConfig, HarnessOption, InitAnswers } from './types.js';
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
@@ -84,6 +76,12 @@ const HARNESSES: HarnessOption[] = [
     description: 'Registers the MCP server in VS Code user settings.',
   },
   {
+    key: 'zed',
+    label: 'Zed',
+    envKey: 'MCP_CONFIGURE_ZED',
+    description: 'Registers MCP in Zed settings and guides UI paste of bootstrap instructions.',
+  },
+  {
     key: 'copilot',
     label: 'GitHub Copilot',
     envKey: 'MCP_CONFIGURE_COPILOT',
@@ -105,20 +103,15 @@ const HARNESSES: HarnessOption[] = [
     key: 'agentsSkills',
     label: 'Agent Skills',
     envKey: 'ENGRAM_CONFIGURE_AGENTS_SKILLS',
-    description: 'Installs Engram Agent Skills to ~/.agents/skills.',
+    description: 'Installs Engram Agent Skills to ~/.agents/skills for Agent Skills harnesses (for example, Pi).',
   },
 ];
 
 const CLI_ARG_START_INDEX = 2;
-const REPO_ROOT_SEGMENTS_UP = '../../..';
 const OBSIDIAN_PLUGIN_FILES = ['main.js', 'manifest.json', 'styles.css'] as const;
 const OBSIDIAN_PLUGIN_PACKAGE_RELATIVE = '../obsidian-plugin';
 
 // ── Output helpers ──────────────────────────────────────────────────────────
-
-function writeLine(message = ''): void {
-  output.write(`${message}\n`);
-}
 
 function writeError(message: string): void {
   stderr.write(`${message}\n`);
@@ -132,9 +125,16 @@ function parseArgs(args: string[]): 'init' | 'remove' | 'help' {
   return 'init';
 }
 
+function hasVerboseFlag(args: readonly string[]): boolean {
+  return args.includes('--verbose') || args.includes('-v');
+}
+
 async function main(): Promise<void> {
-  const command = parseArgs(argv.slice(CLI_ARG_START_INDEX));
-  const repoRoot = path.resolve(__dirname, REPO_ROOT_SEGMENTS_UP);
+  const args = argv.slice(CLI_ARG_START_INDEX);
+  const command = parseArgs(args);
+  const verbose = hasVerboseFlag(args);
+  setVerbose(verbose);
+  const repoRoot = resolveRepoRootFromEntrypoint();
   const envPath = path.join(repoRoot, '.env');
   const repoContext = await isRepoContext(repoRoot);
 
@@ -142,9 +142,21 @@ async function main(): Promise<void> {
     case 'help':
       printHelp();
       break;
-    case 'init':
-      await runInit(repoRoot, envPath, repoContext);
+    case 'init': {
+      const prompt = createPromptSession();
+      try {
+        await runInit({
+          repoRoot,
+          envPath,
+          repoContext,
+          prompt,
+          verbose,
+        });
+      } finally {
+        closePromptSession(prompt);
+      }
       break;
+    }
     case 'remove': {
       const existing = await loadExistingConfig(envPath, repoRoot);
       const rl = readline.createInterface({ input, output });
@@ -160,172 +172,111 @@ async function main(): Promise<void> {
 
 // ── Init command ────────────────────────────────────────────────────────────
 
-async function runInit(repoRoot: string, envPath: string, repoContext: boolean): Promise<void> {
+interface RunInitOptions {
+  repoRoot: string;
+  envPath: string;
+  repoContext: boolean;
+  prompt: PromptSession;
+  verbose: boolean;
+}
+
+async function runInit(options: RunInitOptions): Promise<void> {
+  const {
+    repoRoot,
+    envPath,
+    repoContext,
+    prompt,
+    verbose,
+  } = options;
   const templatePath = path.join(repoRoot, 'templates', 'soul-template.md');
-  const agentsTemplatePath = path.join(repoRoot, 'templates', 'engram-bootstrap.tmpl.md');
   const existing = await loadExistingConfig(envPath, repoRoot);
-  const rl = readline.createInterface({ input, output });
 
-  try {
-    writeLine('Engram Onboarding CLI — init');
-    writeLine();
-    printInitMode(existing, repoContext);
-    writeLine();
+  printBanner('Interactive setup');
+  section('Configure your Engram');
+  printInitMode(existing, repoContext);
 
-    const answers = await askInitQuestions(rl, existing, repoContext);
-    await maybeCreatePreflightSnapshot(repoRoot, existing, answers, rl);
-    const envUpdates = buildEnvUpdates(answers, HARNESSES);
-    await persistInitState({ answers, envPath, existing, repoContext, repoRoot, harnesses: HARNESSES });
-    await ensureCliLauncher({
+  const answers = await askInitQuestions(prompt, existing, repoContext);
+  clearScreen('Apply Configuration', { step: 1, total: 2 });
+  await maybeCreatePreflightSnapshot(repoRoot, existing, answers, prompt);
+  const envUpdates = buildEnvUpdates(answers, HARNESSES);
+  await persistInitState({ answers, envPath, existing, repoContext, repoRoot, harnesses: HARNESSES });
+  await ensureCliLauncher({
+    repoRoot,
+    cliBinDir: answers.cliBinDir,
+    shellProfilePath: answers.shellProfilePath,
+  });
+
+  if (answers.runSetup) {
+    subheading('Running repo setup…');
+    await runSetup({
       repoRoot,
-      cliBinDir: answers.cliBinDir,
-      shellProfilePath: answers.shellProfilePath,
-      writeLine,
+      vaultPath: answers.vaultPath,
+      engramRoot: answers.engramRoot,
+      installObsidianPluginNow: answers.installObsidianPlugin,
+      envUpdates,
     });
-
-    if (answers.runSetup) {
-      await runSetup({
-        repoRoot,
-        vaultPath: answers.vaultPath,
-        engramRoot: answers.engramRoot,
-        installObsidianPluginNow: answers.installObsidianPlugin,
-        envUpdates,
-      });
-    } else if (answers.installObsidianPlugin) {
-      await installPluginFromCli(repoRoot, answers.vaultPath);
-    }
-
-    await syncSoulDocument(templatePath, answers, rl);
-    const mcpScriptPath = path.join(repoRoot, 'scripts', 'mcp.sh');
-    await injectBootstrapFiles(repoRoot, agentsTemplatePath, mcpScriptPath, answers);
-
-    writeLine();
-    writeLine('Init complete.');
-    writeLine(`Vault: ${answers.vaultPath}`);
-    writeLine(`Engram root: ${answers.engramRoot}`);
-    writeLine(`Soul: ${path.join(answers.vaultPath, answers.engramRoot, 'memory', 'reflections', 'soul.md')}`);
-    if (answers.cliBinDir !== null) {
-      const launcherPath = path.join(answers.cliBinDir, 'engram');
-      writeLine(`CLI launcher: ${launcherPath}`);
-    }
-    writeLine();
-    writeLine('Next steps:');
-    writeLine('1. Review the generated Soul document and make it yours.');
-    if (answers.installObsidianPlugin) {
-      writeLine('2. Open the vault in Obsidian and enable the Engram plugin if you have not already.');
-    } else if (repoContext && answers.runSetup) {
-      writeLine('2. Plugin install was skipped. Rerun init later if you want to install it into this vault.');
-    } else if (repoContext) {
-      writeLine('2. Run the repo setup later when you are ready to scaffold the dev vault and plugin wiring.');
-    } else {
-      writeLine('2. If you want shell-level access to the saved env vars later, rerun init and enable shell profile exports.');
-    }
-    writeLine('3. Start a session in a configured harness and use "load your engram" if bootstrap does not happen on greeting.');
-  } finally {
-    rl.close();
-  }
-}
-
-async function injectBootstrapFiles(
-  repoRoot: string,
-  agentsTemplatePath: string,
-  mcpScriptPath: string,
-  answers: InitAnswers,
-): Promise<void> {
-  const skillsSourceDir = path.join(repoRoot, 'templates', 'skills');
-  const agentsTemplate = await fs.readFile(agentsTemplatePath, 'utf8').catch(() => null);
-
-  await injectMcpBootstrapFiles(agentsTemplate, mcpScriptPath, answers);
-  await installSkillBundles(answers, skillsSourceDir);
-}
-
-async function injectMcpBootstrapFiles(
-  agentsTemplate: string | null,
-  mcpScriptPath: string,
-  answers: InitAnswers,
-): Promise<void> {
-  if (agentsTemplate === null) {
-    return;
+    status('Repo setup', 'complete', 'setup-dev.sh');
+  } else if (answers.installObsidianPlugin) {
+    await installPluginFromCli(repoRoot, answers.vaultPath);
   }
 
-  if (answers.harnesses.claudeCode && answers.claudeCodeScope === 'user') {
-    const result = await injectBootstrap(agentsTemplate, answers.bootstrapPlacement);
-    writeLine(`Bootstrap → ${result.path} (${result.action})`);
-  }
+  const mcpScriptPath = path.join(repoRoot, 'scripts', 'mcp.sh');
+  await runHarnessSetupStage({
+    repoRoot,
+    mcpScriptPath,
+    answers,
+    prompt,
+    verbose,
+  });
 
-  if (answers.harnesses.copilot) {
-    const instrPath = await writeCopilotInstructions(agentsTemplate);
-    writeLine(`Bootstrap → ${instrPath}`);
-  }
-
-  if (answers.harnesses.windsurf) {
-    const mcpPath = await configureWindsurfMcp(mcpScriptPath);
-    writeLine(`MCP config → ${mcpPath}`);
-    const rulesResult = await injectWindsurfGlobalRules(agentsTemplate);
-    writeLine(`Bootstrap → ${rulesResult.path} (${rulesResult.action})`);
-  }
-
-  if (answers.harnesses.opencode) {
-    const mcpPath = await configureOpencodeMcp(mcpScriptPath);
-    writeLine(`MCP config → ${mcpPath}`);
-    const rulesResult = await injectOpencodeGlobalRules(agentsTemplate);
-    writeLine(`Bootstrap → ${rulesResult.path} (${rulesResult.action})`);
-  }
-}
-
-async function installSkillBundles(
-  answers: InitAnswers,
-  skillsSourceDir: string,
-): Promise<void> {
-  if (answers.harnesses.agentsSkills) {
-    const actions = await configureAgentsSkills(skillsSourceDir);
-    for (const action of actions) {
-      writeLine(`Agent skills → ${action}`);
-    }
-  }
+  clearScreen('Finalize Engram', { step: 2, total: 2 });
+  await syncSoulDocument(templatePath, answers, prompt);
+  printInitSummary(answers, repoContext);
 }
 
 // ── Init questions ──────────────────────────────────────────────────────────
 
 async function askInitQuestions(
-  rl: readline.Interface,
+  prompt: PromptSession,
   existing: ExistingConfig,
   repoContext: boolean,
 ): Promise<InitAnswers> {
-  const agentName = await askRequired(rl, 'Engram name', existing.agentName);
-  const gitName = await ask(rl, 'Git identity name (optional)', existing.gitName);
-  const gitEmail = await ask(rl, 'Git identity email (optional)', existing.gitEmail);
-  const vaultPath = await askRequired(rl, 'Obsidian vault path', existing.vaultPath);
+  const agentName = await askRequired(prompt, 'Engram name', existing.agentName);
+  const gitName = await ask(prompt, 'Git identity name (optional)', existing.gitName);
+  const gitEmail = await ask(prompt, 'Git identity email (optional)', existing.gitEmail);
+  const vaultPath = await askPathRequired(prompt, 'Obsidian vault path', existing.vaultPath, { kind: 'directory' });
   const engramRoot = normalizeEngramRoot(
-    await askRequired(rl, 'Engram folder inside the vault', existing.engramRoot),
+    await askSubdirOf(prompt, 'Engram folder inside the vault', expandHome(vaultPath), existing.engramRoot),
   );
   const snapshotDir = expandHome(
-    await askRequired(rl, 'Snapshot directory', existing.snapshotDir.length > 0 ? existing.snapshotDir : getDefaultSnapshotDir()),
+    await askPathRequired(
+      prompt,
+      'Snapshot directory',
+      existing.snapshotDir.length > 0 ? existing.snapshotDir : getDefaultSnapshotDir(),
+      { kind: 'directory' },
+    ),
   );
 
-  writeLine();
-  writeLine('Harness setup');
-  const harnesses = await askHarnesses(rl, existing);
+  section('Harness setup');
+  const harnesses = await askHarnesses(prompt, HARNESSES, existing);
 
   let claudeCodeScope: 'local' | 'user' = existing.claudeCodeScope;
   if (harnesses.claudeCode) {
-    claudeCodeScope = await askChoice(rl, 'Claude Code scope', ['local', 'user'], existing.claudeCodeScope);
+    claudeCodeScope = await askChoice(prompt, 'Claude Code scope', ['local', 'user'], existing.claudeCodeScope);
   }
 
-  const bootstrapPlacement = await askBootstrapPlacement(rl, harnesses, claudeCodeScope);
+  const bootstrapPlacement = await askBootstrapPlacement(prompt, harnesses, claudeCodeScope);
 
-  writeLine();
-  writeLine('Voice preset');
+  section('Voice preset');
   for (const [id, preset] of voicePresetEntries()) {
-    writeLine(`- ${id}: ${preset.label} — ${preset.description}`);
+    bullet(`${muted(id)} — ${preset.label}: ${preset.description}`);
   }
-  const voicePreset = await askChoice(rl, 'Starter voice preset', VOICE_PRESET_IDS, existing.voicePreset);
+  const voicePreset = await askChoice(prompt, 'Starter voice preset', VOICE_PRESET_IDS, existing.voicePreset);
 
   const cliConfig = await askCliCommandConfig({
-    rl,
+    prompt,
     existing,
     repoContext,
-    writeLine,
   });
   const { cliBinDir } = cliConfig;
   let { shellProfilePath } = cliConfig;
@@ -333,31 +284,27 @@ async function askInitQuestions(
   if (!repoContext) {
     const detection = await detectShellProfile(existing.shellProfilePath);
     const { path: detectedShellProfilePath } = detection;
-    writeLine();
-    writeLine('Shell profile exports');
-    writeLine('Instead of writing a project-local .env, Engram can manage exports in your shell profile.');
-    if (cliBinDir !== null) {
-      writeLine('This can also ensure your `engram` CLI directory is on PATH.');
-    }
+    section('Shell profile exports');
     const shouldWriteShellExports = await askYesNo(
-      rl,
-      `Write Engram exports to ${detectedShellProfilePath}?`,
+      prompt,
+      'Write shell profile exports for Engram CLI variables?',
       existing.shellProfilePath !== null,
     );
     if (shouldWriteShellExports) {
-      shellProfilePath = expandHome(await askRequired(rl, 'Shell profile path', detectedShellProfilePath));
+      shellProfilePath = expandHome(
+        await askPathRequired(prompt, 'Shell profile path', detectedShellProfilePath, { kind: 'file' }),
+      );
     } else {
       shellProfilePath = null;
     }
   }
 
   const runSetup = repoContext
-    ? await askYesNo(rl, 'Run repo setup now?', true)
+    ? await askYesNo(prompt, 'Run repo setup now?', true)
     : false;
 
-  writeLine();
-  writeLine('Obsidian plugin');
-  const installObsidianPluginNow = await askYesNo(rl, 'Install the Engram Obsidian plugin into this vault now?', true);
+  section('Obsidian plugin');
+  const installObsidianPluginNow = await askYesNo(prompt, 'Install the Engram Obsidian plugin into this vault now?', true);
 
   return {
     agentName,
@@ -378,47 +325,19 @@ async function askInitQuestions(
 }
 
 async function askBootstrapPlacement(
-  rl: readline.Interface,
+  prompt: PromptSession,
   harnesses: Record<string, boolean>,
   claudeCodeScope: string,
 ): Promise<Placement> {
   const needsFile = harnesses.claudeCode && claudeCodeScope === 'user';
   if (!needsFile) return 'bottom';
 
-  const info = await getBootstrapFileInfo();
-  if (!info.exists || info.hasMarkers) return 'bottom';
+  const fileInfo = await getBootstrapFileInfo();
+  if (!fileInfo.exists || fileInfo.hasMarkers) return 'bottom';
 
-  writeLine();
-  writeLine(`Your ${info.path} already has content.`);
-  writeLine('The Engram bootstrap will be wrapped in markers so it can be updated or removed later.');
-  return await askChoice(rl, 'Bootstrap placement', ['top', 'bottom'], 'bottom');
-}
-
-async function askHarnesses(
-  rl: readline.Interface,
-  existing: ExistingConfig,
-  index = 0,
-  selections = createEmptyHarnessSelections(),
-): Promise<Record<string, boolean>> {
-  const harness = HARNESSES.at(index);
-  if (harness === undefined) return selections;
-
-  writeLine(`- ${harness.label}: ${harness.description}`);
-  const enabled = await askYesNo(rl, `Configure ${harness.label}?`, existing.harnesses[harness.key]);
-  return await askHarnesses(rl, existing, index + 1, { ...selections, [harness.key]: enabled });
-}
-
-function createEmptyHarnessSelections(): Record<string, boolean> {
-  return {
-    claudeCode: false,
-    claudeDesktop: false,
-    cursor: false,
-    vscode: false,
-    copilot: false,
-    windsurf: false,
-    opencode: false,
-    agentsSkills: false,
-  };
+  subheading(`Your ${fileInfo.path} already has content.`);
+  note('The Engram bootstrap will be wrapped in markers so it can be updated or removed later.');
+  return await askChoice(prompt, 'Bootstrap placement', ['top', 'bottom'], 'bottom');
 }
 
 // ── Setup + Soul ────────────────────────────────────────────────────────────
@@ -439,14 +358,33 @@ async function runSetup(options: {
   } = options;
   const child = spawn('bash', ['scripts/setup-dev.sh', vaultPath], {
     cwd: repoRoot,
-    stdio: 'inherit',
+    stdio: ['ignore', 'pipe', 'pipe'],
     env: {
       ...process.env,
       ...envUpdates,
       ENGRAM_VAULT_PATH: vaultPath,
       ENGRAM_ROOT: engramRoot,
       ENGRAM_INSTALL_OBSIDIAN_PLUGIN: installObsidianPluginNow ? 'true' : 'false',
+      ENGRAM_SETUP_QUIET: 'true',
+      MCP_CONFIGURE_CLAUDE_CODE: 'false',
+      MCP_CONFIGURE_CLAUDE_DESKTOP: 'false',
+      MCP_CONFIGURE_CURSOR: 'false',
+      MCP_CONFIGURE_VSCODE: 'false',
+      MCP_CONFIGURE_ZED: 'false',
+      MCP_CONFIGURE_COPILOT: 'false',
+      MCP_CONFIGURE_WINDSURF: 'false',
+      MCP_CONFIGURE_OPENCODE: 'false',
+      ENGRAM_CONFIGURE_AGENTS_SKILLS: 'false',
     },
+  });
+
+  const stdoutChunks: string[] = [];
+  const stderrChunks: string[] = [];
+  child.stdout.on('data', (chunk: Buffer | string) => {
+    stdoutChunks.push(typeof chunk === 'string' ? chunk : chunk.toString('utf8'));
+  });
+  child.stderr.on('data', (chunk: Buffer | string) => {
+    stderrChunks.push(typeof chunk === 'string' ? chunk : chunk.toString('utf8'));
   });
   const exitPromise = once(child, 'exit');
   const errorPromise = once(child, 'error').then(([err]: unknown[]) => {
@@ -457,20 +395,27 @@ async function runSetup(options: {
   const code: unknown = result.at(0);
   if (code !== 0) {
     const codeStr = typeof code === 'number' ? String(code) : 'unknown';
-    throw new Error(`setup-dev.sh exited with code ${codeStr}`);
+    const stderrOutput = stderrChunks.join('').trim();
+    const stdoutOutput = stdoutChunks.join('').trim();
+    const detail = stderrOutput.length > 0
+      ? stderrOutput
+      : stdoutOutput.length > 0
+        ? stdoutOutput
+        : 'no output captured';
+    throw new Error(`setup-dev.sh exited with code ${codeStr}\n${detail}`);
   }
 }
 
 async function installPluginFromCli(repoRoot: string, vaultPath: string): Promise<void> {
   const sourcePluginDir = await resolveObsidianPluginSource(repoRoot);
   if (sourcePluginDir === null) {
-    writeLine('Obsidian plugin install skipped (plugin assets not found near this CLI build).');
+    skipped('Obsidian plugin install', 'plugin assets not found near this CLI build');
     return;
   }
 
   const actions = await installObsidianPlugin(vaultPath, sourcePluginDir);
   for (const action of actions) {
-    writeLine(`Plugin install → ${action}`);
+    status('Plugin install', action);
   }
 }
 
@@ -478,7 +423,7 @@ async function resolveObsidianPluginSource(repoRoot: string): Promise<string | n
   const repoPluginDir = path.join(repoRoot, 'packages', 'obsidian-plugin');
   if (await hasPluginAssets(repoPluginDir)) return repoPluginDir;
 
-  const packagedPluginDir = path.resolve(__dirname, OBSIDIAN_PLUGIN_PACKAGE_RELATIVE);
+  const packagedPluginDir = path.resolve(resolveRuntimeDirFromEntrypoint(), OBSIDIAN_PLUGIN_PACKAGE_RELATIVE);
   if (await hasPluginAssets(packagedPluginDir)) return packagedPluginDir;
 
   return null;
@@ -500,7 +445,16 @@ async function hasPluginAssets(dirPath: string): Promise<boolean> {
 }
 
 function printHelp(): void {
-  for (const line of ['Usage: onboarding [command]', '', 'Commands:', '  init      Set up a new Engram (default)', '  remove    Remove Engram integrations and optionally delete vault data', '  help      Show this help message']) writeLine(line);
+  printBanner('Interactive setup');
+  section('Usage');
+  writeLine('  onboarding [command] [--verbose]');
+  section('Commands');
+  bullet(`${muted('init')}    Set up a new Engram (default)`);
+  bullet(`${muted('remove')}  Remove Engram integrations and optionally delete vault data`);
+  bullet(`${muted('help')}    Show this help message`);
+  section('Options');
+  bullet(`${muted('--verbose, -v')}  Show detailed setup output`);
+  writeLine();
 }
 main().catch((error: unknown) => {
   const message = error instanceof Error ? error.message : String(error);

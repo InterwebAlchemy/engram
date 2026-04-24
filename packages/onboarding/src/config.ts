@@ -2,9 +2,9 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { env } from 'node:process';
 
-import { isVoicePreset } from './voice-presets';
-import { expandHome, normalizeEngramRoot, parseGitIdentity, stripQuotes } from './utils';
-import type { ExistingConfig, HarnessKey, PersistedConfig } from './types';
+import { isVoicePreset } from './voice-presets.js';
+import { expandHome, normalizeEngramRoot, parseGitIdentity, stripQuotes } from './utils.js';
+import type { ExistingConfig, HarnessKey, PersistedConfig } from './types.js';
 
 const CONFIG_DIR_NAME = '.engram';
 const CONFIG_FILE_NAME = 'config.json';
@@ -43,6 +43,7 @@ function defaultHarnesses(): Record<HarnessKey, boolean> {
     claudeDesktop: false,
     cursor: false,
     vscode: false,
+    zed: false,
     copilot: false,
     windsurf: false,
     opencode: false,
@@ -59,6 +60,7 @@ function coerceBooleanRecord(value: unknown): Record<HarnessKey, boolean> {
     claudeDesktop: value.claudeDesktop === true,
     cursor: value.cursor === true,
     vscode: value.vscode === true,
+    zed: value.zed === true,
     copilot: value.copilot === true,
     windsurf: value.windsurf === true,
     opencode: value.opencode === true,
@@ -190,6 +192,7 @@ function hasEnvConfig(envValues: Partial<Record<string, string>>): boolean {
     'MCP_CONFIGURE_CLAUDE_DESKTOP',
     'MCP_CONFIGURE_CURSOR',
     'MCP_CONFIGURE_VSCODE',
+    'MCP_CONFIGURE_ZED',
     'MCP_CONFIGURE_COPILOT',
     'MCP_CONFIGURE_WINDSURF',
     'MCP_CONFIGURE_OPENCODE',
@@ -240,6 +243,7 @@ function buildEnvFallbackConfig(
       claudeDesktop: envValues.MCP_CONFIGURE_CLAUDE_DESKTOP === TRUE_VALUE,
       cursor: envValues.MCP_CONFIGURE_CURSOR === TRUE_VALUE,
       vscode: envValues.MCP_CONFIGURE_VSCODE === TRUE_VALUE,
+      zed: envValues.MCP_CONFIGURE_ZED === TRUE_VALUE,
       copilot: envValues.MCP_CONFIGURE_COPILOT === TRUE_VALUE,
       windsurf: envValues.MCP_CONFIGURE_WINDSURF === TRUE_VALUE,
       opencode: envValues.MCP_CONFIGURE_OPENCODE === TRUE_VALUE,

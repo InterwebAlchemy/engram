@@ -1,9 +1,9 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 
-import { VOICE_PRESETS } from './voice-presets';
-import { buildGitIdentity, escapeRegExp, replaceSection } from './utils';
-import type { InitAnswers } from './types';
+import { VOICE_PRESETS } from './voice-presets.js';
+import { buildGitIdentity, escapeRegExp, replaceSection } from './utils.js';
+import type { InitAnswers } from './types.js';
 
 const FRONTMATTER_PATTERN = /^---\n[\s\S]*?\n---\n?/u;
 const FRONTMATTER_OPEN = '---\n';

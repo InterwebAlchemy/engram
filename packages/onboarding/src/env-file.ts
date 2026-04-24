@@ -1,7 +1,7 @@
 import * as fs from 'node:fs/promises';
 
-import { isEnvKey, quoteForShell } from './utils';
-import type { HarnessOption, InitAnswers } from './types';
+import { isEnvKey, quoteForShell } from './utils.js';
+import type { HarnessOption, InitAnswers } from './types.js';
 
 const TRUE_VALUE = 'true';
 const FALSE_VALUE = 'false';
