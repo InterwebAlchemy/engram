@@ -827,3 +827,94 @@ test('resolveThread surfaces candidates when a moved repo still matches by remot
   assert.equal(resolved.created, false);
 });
 
+test('resolveThread follows superseded_by forwarding', async (t) => {
+  const vaultRoot = await createTempVault();
+  t.after(async () => {
+    await fs.rm(vaultRoot, { recursive: true, force: true });
+  });
+
+  const cwd = path.join(vaultRoot, 'project');
+  await fs.mkdir(cwd, { recursive: true });
+
+  const manager = new MemoryManager(
+    new NodeAdapter(),
+    defaultMemoryConfig(vaultRoot, 'integrated'),
+    { detectGitRemote: () => undefined, detectPackageNames: () => [] },
+  );
+
+  await manager.setThread('new-home', '', { paths: [cwd] });
+  await manager.setThread('old-home', '', {
+    paths: [cwd],
+    superseded_by: 'new-home',
+  });
+
+  const resolved = await manager.resolveThread({ cwd, autoCreate: false });
+  assert.equal(resolved.threadId, 'new-home');
+  const suppressed = (resolved.candidates ?? []).map((c) => c.threadId);
+  assert.equal(suppressed.includes('old-home'), false);
+});
+
+test('getThread resolves by alias', async (t) => {
+  const vaultRoot = await createTempVault();
+  t.after(async () => {
+    await fs.rm(vaultRoot, { recursive: true, force: true });
+  });
+
+  const manager = new MemoryManager(
+    new NodeAdapter(),
+    defaultMemoryConfig(vaultRoot, 'integrated'),
+  );
+
+  await manager.setThread('canonical', '', { aliases: ['legacy-slug', 'another-slug'] });
+
+  const byAlias = await manager.getThread('legacy-slug');
+  assert.notEqual(byAlias, null);
+  assert.equal(byAlias?.frontmatter.thread_id, 'canonical');
+});
+
+test('mergeThreads stamps superseded_by on the source', async (t) => {
+  const vaultRoot = await createTempVault();
+  t.after(async () => {
+    await fs.rm(vaultRoot, { recursive: true, force: true });
+  });
+
+  const manager = new MemoryManager(
+    new NodeAdapter(),
+    defaultMemoryConfig(vaultRoot, 'integrated'),
+  );
+
+  await manager.setThread('source-thread', '', {});
+  await manager.setThread('target-thread', '', {});
+
+  await manager.mergeThreads('source-thread', 'target-thread');
+
+  const source = await manager.getThread('source-thread');
+  assert.equal(source?.frontmatter.superseded_by, 'target-thread');
+  const target = await manager.getThread('target-thread');
+  const aliases = target?.frontmatter.aliases as string[] | undefined;
+  assert.ok(aliases !== undefined && aliases.includes('source-thread'));
+});
+
+test('resolveThread auto-create stamps detected package names', async (t) => {
+  const vaultRoot = await createTempVault();
+  t.after(async () => {
+    await fs.rm(vaultRoot, { recursive: true, force: true });
+  });
+
+  const cwd = path.join(vaultRoot, 'workspace', 'pkg-foo');
+  await fs.mkdir(cwd, { recursive: true });
+
+  const manager = new MemoryManager(
+    new NodeAdapter(),
+    defaultMemoryConfig(vaultRoot, 'integrated'),
+    {
+      detectGitRemote: () => undefined,
+      detectPackageNames: () => ['@org/foo', '@org/workspace'],
+    },
+  );
+
+  const resolved = await manager.resolveThread({ cwd });
+  assert.equal(resolved.created, true);
+  assert.deepEqual(resolved.thread.frontmatter.packages, ['@org/foo', '@org/workspace']);
+});
+

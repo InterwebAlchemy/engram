@@ -12,12 +12,15 @@ export interface ThreadMatch {
   thread: VaultNote;
   pathScore: number | null;
   remoteMatched: boolean;
+  packageMatched: boolean;
+  lastActive: number;
   statusRank: number;
 }
 
 interface RankedThreadMatch {
   thread: VaultNote;
   score: number;
+  lastActive: number;
   statusRank: number;
 }
 
@@ -63,15 +66,38 @@ function isBetterMatch(
   current: RankedThreadMatch | null,
   candidateStatusRank: number,
   candidateScore: number,
+  candidateLastActive: number,
 ): boolean {
   if (current === null) {
     return true;
   }
-  if (candidateStatusRank > current.statusRank) {
-    return true;
+  if (candidateStatusRank !== current.statusRank) {
+    return candidateStatusRank > current.statusRank;
   }
+  if (candidateScore !== current.score) {
+    return candidateScore > current.score;
+  }
+  return candidateLastActive > current.lastActive;
+}
 
-  return candidateStatusRank === current.statusRank && candidateScore > current.score;
+function parseLastActive(value: unknown): number {
+  if (typeof value !== 'string') {
+    return 0;
+  }
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+function packageMatch(thread: VaultNote, packageNames: string[] | undefined): boolean {
+  if (packageNames === undefined || packageNames.length === 0) {
+    return false;
+  }
+  const stored = readStringArray(thread.frontmatter.packages);
+  if (stored.length === 0) {
+    return false;
+  }
+  const storedSet = new Set(stored);
+  return packageNames.some((name) => storedSet.has(name));
 }
 
 function remoteMatch(thread: VaultNote, normalizedRemote?: string): boolean {
@@ -84,23 +110,32 @@ function remoteMatch(thread: VaultNote, normalizedRemote?: string): boolean {
   );
 }
 
+export interface ThreadResolveHints {
+  gitRemote?: string;
+  packageNames?: string[];
+}
+
 export function rankThreadMatches(
   threads: VaultNote[],
   cwd: string,
-  gitRemote?: string,
+  hints: ThreadResolveHints = {},
 ): ThreadMatch[] {
+  const { gitRemote, packageNames } = hints;
   const normalizedRemote = gitRemote === undefined ? undefined : normalizeRemoteUrl(gitRemote);
   const matches: ThreadMatch[] = [];
   for (const thread of threads) {
     const pathScore = bestPathScore(cwd, readStringArray(thread.frontmatter.paths));
     const remoteMatched = remoteMatch(thread, normalizedRemote);
-    if (pathScore === null && !remoteMatched) {
+    const packageMatched = packageMatch(thread, packageNames);
+    if (pathScore === null && !remoteMatched && !packageMatched) {
       continue;
     }
     matches.push({
       thread,
       pathScore,
       remoteMatched,
+      packageMatched,
+      lastActive: parseLastActive(thread.frontmatter.last_active),
       statusRank: threadStatusRank(thread.frontmatter.status),
     });
   }
@@ -110,23 +145,26 @@ export function rankThreadMatches(
 export function pickBestThreadMatch(
   threads: VaultNote[],
   cwd: string,
-  gitRemote?: string,
+  hints: ThreadResolveHints = {},
 ): VaultNote | null {
   let currentBest: RankedThreadMatch | null = null;
-
-  for (const match of rankThreadMatches(threads, cwd, gitRemote)) {
-    const score = match.pathScore ?? 0;
-    if (match.pathScore !== null && isBetterMatch(currentBest, match.statusRank, score)) {
-      currentBest = { thread: match.thread, score, statusRank: match.statusRank };
-      continue;
-    }
-
-    if (match.remoteMatched && isBetterMatch(currentBest, match.statusRank, 0)) {
-      currentBest = { thread: match.thread, score: 0, statusRank: match.statusRank };
+  for (const match of rankThreadMatches(threads, cwd, hints)) {
+    const score = scoreForMatch(match);
+    if (score > 0 && isBetterMatch(currentBest, match.statusRank, score, match.lastActive)) {
+      currentBest = { thread: match.thread, score, lastActive: match.lastActive, statusRank: match.statusRank };
     }
   }
-
   return currentBest?.thread ?? null;
+}
+
+const REMOTE_MATCH_SCORE = 2;
+const PACKAGE_MATCH_SCORE = 1;
+
+function scoreForMatch(match: ThreadMatch): number {
+  if (match.pathScore !== null) {
+    return match.pathScore;
+  }
+  return (match.remoteMatched ? REMOTE_MATCH_SCORE : 0) + (match.packageMatched ? PACKAGE_MATCH_SCORE : 0);
 }
 
 export function resolveThreadIdOrThrow(thread: VaultNote): string {
@@ -177,6 +215,9 @@ export function buildThreadFrontmatter(
     goals,
     paths,
     repositories,
+    packages,
+    aliases,
+    superseded_by: supersededBy,
     related_threads: relatedThreads,
   } = fields;
 
@@ -193,6 +234,9 @@ export function buildThreadFrontmatter(
       goals,
       paths,
       repositories,
+      packages,
+      aliases,
+      superseded_by: supersededBy,
       related_threads: relatedThreads,
     }),
   };

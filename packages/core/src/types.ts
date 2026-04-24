@@ -17,9 +17,17 @@ export interface ThreadFrontmatter {
   paths?: string[];
   /** Git remote URLs associated with this thread (normalized form recommended). */
   repositories?: string[];
+  /** Package names (e.g. package.json "name") associated with this thread. */
+  packages?: string[];
+  /** Alternate thread IDs that should resolve to this thread (handles renames). */
+  aliases?: string[];
+  /** When set, resolve should forward to this thread ID instead (handles merges/splits). */
+  superseded_by?: string;
   related_threads?: string[];
   created: string;   // ISO 8601
   updated: string;   // ISO 8601
+  /** Last time this thread was an active resolve target. System-managed. */
+  last_active?: string; // ISO 8601
   tags?: string[];
   [key: string]: unknown;
 }
@@ -32,6 +40,9 @@ export interface ThreadFields {
   goals?: string[];
   paths?: string[];
   repositories?: string[];
+  packages?: string[];
+  aliases?: string[];
+  superseded_by?: string;
   related_threads?: string[];
   tags?: string[];
 }

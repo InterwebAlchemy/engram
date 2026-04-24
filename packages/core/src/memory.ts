@@ -39,6 +39,7 @@ import { MemoryContextOperations } from './memory-context-operations.js';
 import { MemoryExtraOperations } from './memory-extra-operations.js';
 import { ThreadOperations, type ResolvedThread } from './thread-operations.js';
 import type { GitRemoteDetector } from './git-remote.js';
+import type { PackageNameDetector } from './package-name.js';
 
 const MEMORY_SLUG_PREVIEW_LENGTH = 60;
 const DEFAULT_BOOTSTRAP_LIMIT = 5;
@@ -49,6 +50,7 @@ interface StoreOptions { tags?: string[]; provider?: string; confidence?: Confid
 export interface MemoryManagerOptions {
   searchProvider?: SearchProvider;
   detectGitRemote?: GitRemoteDetector;
+  detectPackageNames?: PackageNameDetector;
 }
 
 export class MemoryManager {
@@ -106,6 +108,7 @@ export class MemoryManager {
       threadPath: (threadId) => this.threadPath(threadId),
       mutateThread: async (filePath, transform) => await this.mutateVaultNoteContent(filePath, transform),
       ...(options.detectGitRemote === undefined ? {} : { detectGitRemote: options.detectGitRemote }),
+      ...(options.detectPackageNames === undefined ? {} : { detectPackageNames: options.detectPackageNames }),
     });
     this.noteOps = new NoteOperations({
       adapter: this.adapter,

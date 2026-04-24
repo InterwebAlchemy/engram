@@ -30,6 +30,8 @@ export type {
 } from './thread-operations.js';
 export { detectGitRemote, normalizeRemoteUrl } from './git-remote.js';
 export type { GitRemoteDetector } from './git-remote.js';
+export { detectPackageNames } from './package-name.js';
+export type { PackageNameDetector } from './package-name.js';
 export { MemoryStateManager } from './memory-state.js';
 export { ContextBuilder } from './context.js';
 export { Conversation } from './conversation.js';

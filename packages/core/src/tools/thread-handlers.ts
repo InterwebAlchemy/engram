@@ -69,8 +69,12 @@ export async function handleThreadTool(
         goals: thread.frontmatter.goals ?? [],
         paths: thread.frontmatter.paths ?? [],
         repositories: thread.frontmatter.repositories ?? [],
+        packages: thread.frontmatter.packages ?? [],
+        aliases: thread.frontmatter.aliases ?? [],
+        superseded_by: thread.frontmatter.superseded_by,
         related_threads: thread.frontmatter.related_threads ?? [],
         updated: thread.frontmatter.updated,
+        last_active: thread.frontmatter.last_active,
       }));
       return textResult(jsonText(results));
     }
@@ -157,6 +161,9 @@ function buildThreadFields(args: ToolArgs): {
   name?: string;
   paths?: string[];
   repositories?: string[];
+  packages?: string[];
+  aliases?: string[];
+  superseded_by?: string;
   related_threads?: string[];
   status?: ThreadStatus;
   tags?: string[];
@@ -168,6 +175,9 @@ function buildThreadFields(args: ToolArgs): {
     goals: optionalStringArrayArg(args, 'goals'),
     paths: optionalStringArrayArg(args, 'paths'),
     repositories: optionalStringArrayArg(args, 'repositories'),
+    packages: optionalStringArrayArg(args, 'packages'),
+    aliases: optionalStringArrayArg(args, 'aliases'),
+    superseded_by: optionalStringArg(args, 'superseded_by'),
     related_threads: optionalStringArrayArg(args, 'related_threads'),
     tags: optionalStringArrayArg(args, 'tags'),
   };

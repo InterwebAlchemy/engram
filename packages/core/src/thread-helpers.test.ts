@@ -9,7 +9,9 @@ function makeThread(overrides: {
   threadId?: string;
   paths?: string[];
   repositories?: string[];
+  packages?: string[];
   status?: ThreadStatus;
+  lastActive?: string;
 }): VaultNote {
   const now = new Date().toISOString();
   return {
@@ -22,8 +24,10 @@ function makeThread(overrides: {
       status: overrides.status ?? ThreadStatus.Active,
       created: now,
       updated: now,
-      ...(overrides.paths !== undefined ? { paths: overrides.paths } : {}),
-      ...(overrides.repositories !== undefined ? { repositories: overrides.repositories } : {}),
+      ...(overrides.paths === undefined ? {} : { paths: overrides.paths }),
+      ...(overrides.repositories === undefined ? {} : { repositories: overrides.repositories }),
+      ...(overrides.packages === undefined ? {} : { packages: overrides.packages }),
+      ...(overrides.lastActive === undefined ? {} : { last_active: overrides.lastActive }),
     } as NoteFrontmatter,
     updateFrontmatter() {},
     serialize() { return ''; },
@@ -57,7 +61,7 @@ test('pickBestThreadMatch falls back to remote match when no path overlaps', () 
   const best = pickBestThreadMatch(
     threads,
     '/home/user/project',
-    'https://github.com/user/repo',
+    { gitRemote: 'https://github.com/user/repo' },
   );
   assert.equal(best?.frontmatter.thread_id, 'remote-match');
 });
@@ -74,7 +78,7 @@ test('pickBestThreadMatch prefers path match over remote-only match', () => {
   const best = pickBestThreadMatch(
     threads,
     '/home/user/project',
-    'git@github.com:user/repo.git',
+    { gitRemote: 'git@github.com:user/repo.git' },
   );
   assert.equal(best?.frontmatter.thread_id, 'path-match');
 });
@@ -107,7 +111,7 @@ test('pickBestThreadMatch matches ssh and https remote forms equivalently', () =
   const best = pickBestThreadMatch(
     threads,
     '/unrelated/cwd',
-    'https://github.com/user/repo',
+    { gitRemote: 'https://github.com/user/repo' },
   );
   assert.equal(best?.frontmatter.thread_id, 'repo');
 });
@@ -125,7 +129,7 @@ test('rankThreadMatches excludes threads with neither path nor remote match', ()
   const matches = rankThreadMatches(
     threads,
     '/home/user/project/src',
-    'https://github.com/user/repo',
+    { gitRemote: 'https://github.com/user/repo' },
   );
   const ids = matches.map((m) => m.thread.frontmatter.thread_id).sort();
   assert.deepEqual(ids, ['path', 'remote']);
@@ -143,10 +147,56 @@ test('rankThreadMatches marks remote-only vs path-based matches', () => {
   const matches = rankThreadMatches(
     threads,
     '/home/user/project',
-    'https://github.com/user/repo',
+    { gitRemote: 'https://github.com/user/repo' },
   );
   const byId = new Map(matches.map((m) => [m.thread.frontmatter.thread_id, m]));
   assert.equal(byId.get('path')?.pathScore !== null, true);
   assert.equal(byId.get('remote')?.pathScore, null);
   assert.equal(byId.get('remote')?.remoteMatched, true);
+});
+
+test('pickBestThreadMatch resolves by package name when cwd does not overlap', () => {
+  const threads = [
+    makeThread({ threadId: 'unrelated', paths: ['/opt/other'] }),
+    makeThread({
+      threadId: 'by-package',
+      paths: [],
+      packages: ['@org/foo'],
+    }),
+  ];
+  const best = pickBestThreadMatch(threads, '/some/other/cwd', {
+    packageNames: ['@org/foo'],
+  });
+  assert.equal(best?.frontmatter.thread_id, 'by-package');
+});
+
+test('pickBestThreadMatch prefers remote over package-only when both matched', () => {
+  const threads = [
+    makeThread({
+      threadId: 'package-only',
+      paths: [],
+      packages: ['@org/foo'],
+    }),
+    makeThread({
+      threadId: 'remote-and-package',
+      paths: [],
+      repositories: ['git@github.com:org/foo.git'],
+    }),
+  ];
+  const best = pickBestThreadMatch(threads, '/unrelated', {
+    gitRemote: 'https://github.com/org/foo',
+    packageNames: ['@org/foo'],
+  });
+  assert.equal(best?.frontmatter.thread_id, 'remote-and-package');
+});
+
+test('pickBestThreadMatch breaks ties by last_active recency', () => {
+  const older = new Date('2026-01-01T00:00:00Z').toISOString();
+  const newer = new Date('2026-04-01T00:00:00Z').toISOString();
+  const threads = [
+    makeThread({ threadId: 'older', paths: ['/home/user/project'], lastActive: older }),
+    makeThread({ threadId: 'newer', paths: ['/home/user/project'], lastActive: newer }),
+  ];
+  const best = pickBestThreadMatch(threads, '/home/user/project');
+  assert.equal(best?.frontmatter.thread_id, 'newer');
 });
