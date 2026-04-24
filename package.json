@@ -4,19 +4,20 @@
   "engines": {
     "node": ">=22.0.0"
   },
+  "packageManager": "npm@11.6.2",
   "workspaces": [
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run build --workspaces --if-present",
-    "test": "npm run test --workspaces --if-present",
+    "build": "turbo run build",
+    "test": "turbo run test",
     "lint": "eslint . && npm run lint:sh",
     "lint:sh": "shellcheck scripts/*.sh",
-    "lint:workspaces": "npm run lint --workspaces --if-present",
-    "typecheck": "npm run typecheck --workspaces --if-present",
-    "clean": "npm run clean --workspaces --if-present",
-    "cli": "npm run build --workspace @interwebalchemy/engram-cli --if-present && node packages/cli/dist/index.js",
-    "cli:onboarding": "npm run build --workspace @interwebalchemy/engram-cli --if-present && npm run build --workspace @interwebalchemy/engram-onboarding --if-present && node packages/onboarding/dist/index.js",
+    "lint:workspaces": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "clean": "turbo run clean && rm -rf .turbo",
+    "cli": "turbo run build --filter=@interwebalchemy/engram-cli && node packages/cli/dist/index.js",
+    "cli:onboarding": "turbo run build --filter=@interwebalchemy/engram-onboarding && node packages/onboarding/dist/index.js",
     "prepare": "husky",
     "setup:hooks": "husky",
     "agents": "node scripts/sync-agent-instructions.mjs --target=agents",
@@ -27,12 +28,12 @@
     "dev": "bash scripts/dev.sh",
     "dev:build": "bash scripts/dev.sh --build",
     "dev:clean": "bash scripts/dev.sh --clean",
-    "dream": "npm run build --workspace @interwebalchemy/engram-snapshot --if-present && npm run build --workspace @interwebalchemy/engram-dreams --if-present && node packages/dreams/dist/index.js",
-    "dream:cleanup": "npm run build --workspace @interwebalchemy/engram-snapshot --if-present && npm run build --workspace @interwebalchemy/engram-core --if-present && npm run build --workspace @interwebalchemy/engram-dreams --if-present && node packages/dreams/dist/index.js --power-nap",
-    "dream:nap": "npm run build --workspace @interwebalchemy/engram-snapshot --if-present && npm run build --workspace @interwebalchemy/engram-core --if-present && npm run build --workspace @interwebalchemy/engram-dreams --if-present && node packages/dreams/dist/index.js nap",
-    "snapshot": "npm run build --workspace @interwebalchemy/engram-snapshot --if-present && node packages/snapshot/dist/index.js create",
-    "snapshot:list": "npm run build --workspace @interwebalchemy/engram-snapshot --if-present && node packages/snapshot/dist/index.js list",
-    "snapshot:restore": "npm run build --workspace @interwebalchemy/engram-snapshot --if-present && node packages/snapshot/dist/index.js restore",
+    "dream": "turbo run build --filter=@interwebalchemy/engram-dreams && node packages/dreams/dist/index.js",
+    "dream:cleanup": "turbo run build --filter=@interwebalchemy/engram-dreams && node packages/dreams/dist/index.js --power-nap",
+    "dream:nap": "turbo run build --filter=@interwebalchemy/engram-dreams && node packages/dreams/dist/index.js nap",
+    "snapshot": "turbo run build --filter=@interwebalchemy/engram-snapshot && node packages/snapshot/dist/index.js create",
+    "snapshot:list": "turbo run build --filter=@interwebalchemy/engram-snapshot && node packages/snapshot/dist/index.js list",
+    "snapshot:restore": "turbo run build --filter=@interwebalchemy/engram-snapshot && node packages/snapshot/dist/index.js restore",
     "serve": "bash scripts/serve.sh"
   },
   "lint-staged": {
@@ -47,6 +48,7 @@
     "eslint-config-love": "^152.0.0",
     "husky": "^9.1.7",
     "lint-staged": "^16.4.0",
+    "turbo": "^2.9.6",
     "typescript": "^5.4.5"
   }
 }
