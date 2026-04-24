@@ -10,7 +10,7 @@ tmp/
 .snapshots/
 release/
 packages/obsidian-plugin/main.js
-packages/cli/obsidian-plugin/
+packages/onboarding/obsidian-plugin/
 
 # local bootstrap overlays used during Engram development
 CLAUDE.local.*
