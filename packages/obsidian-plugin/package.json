@@ -11,7 +11,7 @@
   "scripts": {
     "build": "node esbuild.config.mjs",
     "build:watch": "node esbuild.config.mjs --watch",
-    "clean": "rm -rf main.js main.js.map styles.css",
+    "clean": "rm -rf main.js main.js.map",
     "lint": "eslint src --max-warnings=0",
     "typecheck": "tsc --project tsconfig.json --noEmit"
   },
