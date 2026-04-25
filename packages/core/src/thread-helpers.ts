@@ -1,4 +1,5 @@
 import * as path from 'node:path';
+import { normalizeRemoteUrl } from './git-remote.js';
 import { ThreadStatus } from './types.js';
 import type { NoteFrontmatter, ThreadFields } from './types.js';
 import { expandHome, readNonEmptyString, readStringArray } from './memory-helpers.js';
@@ -6,9 +7,20 @@ import type { VaultNote } from './vault.js';
 
 const ACTIVE_THREAD_STATUS_RANK = 2;
 const PAUSED_THREAD_STATUS_RANK = 1;
+
+export interface ThreadMatch {
+  thread: VaultNote;
+  pathScore: number | null;
+  remoteMatched: boolean;
+  packageMatched: boolean;
+  lastActive: number;
+  statusRank: number;
+}
+
 interface RankedThreadMatch {
   thread: VaultNote;
   score: number;
+  lastActive: number;
   statusRank: number;
 }
 
@@ -54,48 +66,105 @@ function isBetterMatch(
   current: RankedThreadMatch | null,
   candidateStatusRank: number,
   candidateScore: number,
+  candidateLastActive: number,
 ): boolean {
   if (current === null) {
     return true;
   }
-  if (candidateStatusRank > current.statusRank) {
-    return true;
+  if (candidateStatusRank !== current.statusRank) {
+    return candidateStatusRank > current.statusRank;
   }
-
-  return candidateStatusRank === current.statusRank && candidateScore > current.score;
+  if (candidateScore !== current.score) {
+    return candidateScore > current.score;
+  }
+  return candidateLastActive > current.lastActive;
 }
 
-function remoteMatch(thread: VaultNote, gitRemote?: string): boolean {
-  if (gitRemote === undefined) {
+function parseLastActive(value: unknown): number {
+  if (typeof value !== 'string') {
+    return 0;
+  }
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+function packageMatch(thread: VaultNote, packageNames: string[] | undefined): boolean {
+  if (packageNames === undefined || packageNames.length === 0) {
+    return false;
+  }
+  const stored = readStringArray(thread.frontmatter.packages);
+  if (stored.length === 0) {
+    return false;
+  }
+  const storedSet = new Set(stored);
+  return packageNames.some((name) => storedSet.has(name));
+}
+
+function remoteMatch(thread: VaultNote, normalizedRemote?: string): boolean {
+  if (normalizedRemote === undefined || normalizedRemote.length === 0) {
     return false;
   }
 
   return readStringArray(thread.frontmatter.repositories).some(
-    (repository) => repository === gitRemote,
+    (repository) => normalizeRemoteUrl(repository) === normalizedRemote,
   );
+}
+
+export interface ThreadResolveHints {
+  gitRemote?: string;
+  packageNames?: string[];
+}
+
+export function rankThreadMatches(
+  threads: VaultNote[],
+  cwd: string,
+  hints: ThreadResolveHints = {},
+): ThreadMatch[] {
+  const { gitRemote, packageNames } = hints;
+  const normalizedRemote = gitRemote === undefined ? undefined : normalizeRemoteUrl(gitRemote);
+  const matches: ThreadMatch[] = [];
+  for (const thread of threads) {
+    const pathScore = bestPathScore(cwd, readStringArray(thread.frontmatter.paths));
+    const remoteMatched = remoteMatch(thread, normalizedRemote);
+    const packageMatched = packageMatch(thread, packageNames);
+    if (pathScore === null && !remoteMatched && !packageMatched) {
+      continue;
+    }
+    matches.push({
+      thread,
+      pathScore,
+      remoteMatched,
+      packageMatched,
+      lastActive: parseLastActive(thread.frontmatter.last_active),
+      statusRank: threadStatusRank(thread.frontmatter.status),
+    });
+  }
+  return matches;
 }
 
 export function pickBestThreadMatch(
   threads: VaultNote[],
   cwd: string,
-  gitRemote?: string,
+  hints: ThreadResolveHints = {},
 ): VaultNote | null {
   let currentBest: RankedThreadMatch | null = null;
-
-  for (const thread of threads) {
-    const statusRank = threadStatusRank(thread.frontmatter.status);
-    const score = bestPathScore(cwd, readStringArray(thread.frontmatter.paths));
-    if (score !== null && isBetterMatch(currentBest, statusRank, score)) {
-      currentBest = { thread, score, statusRank };
-      continue;
-    }
-
-    if (remoteMatch(thread, gitRemote) && isBetterMatch(currentBest, statusRank, 0)) {
-      currentBest = { thread, score: 0, statusRank };
+  for (const match of rankThreadMatches(threads, cwd, hints)) {
+    const score = scoreForMatch(match);
+    if (score > 0 && isBetterMatch(currentBest, match.statusRank, score, match.lastActive)) {
+      currentBest = { thread: match.thread, score, lastActive: match.lastActive, statusRank: match.statusRank };
     }
   }
-
   return currentBest?.thread ?? null;
+}
+
+const REMOTE_MATCH_SCORE = 2;
+const PACKAGE_MATCH_SCORE = 1;
+
+function scoreForMatch(match: ThreadMatch): number {
+  if (match.pathScore !== null) {
+    return match.pathScore;
+  }
+  return (match.remoteMatched ? REMOTE_MATCH_SCORE : 0) + (match.packageMatched ? PACKAGE_MATCH_SCORE : 0);
 }
 
 export function resolveThreadIdOrThrow(thread: VaultNote): string {
@@ -145,10 +214,14 @@ export function buildThreadFrontmatter(
     description,
     goals,
     paths,
+    repositories,
+    packages,
+    aliases,
+    superseded_by: supersededBy,
     related_threads: relatedThreads,
   } = fields;
 
-  const frontmatter: NoteFrontmatter = {
+  return {
     type: 'thread',
     created,
     updated: now,
@@ -156,19 +229,21 @@ export function buildThreadFrontmatter(
     thread_id: threadId,
     name: name ?? threadId,
     status: status ?? ThreadStatus.Active,
+    ...definedEntries({
+      description,
+      goals,
+      paths,
+      repositories,
+      packages,
+      aliases,
+      superseded_by: supersededBy,
+      related_threads: relatedThreads,
+    }),
   };
-  if (description !== undefined) {
-    frontmatter.description = description;
-  }
-  if (goals !== undefined) {
-    frontmatter.goals = goals;
-  }
-  if (paths !== undefined) {
-    frontmatter.paths = paths;
-  }
-  if (relatedThreads !== undefined) {
-    frontmatter.related_threads = relatedThreads;
-  }
+}
 
-  return frontmatter;
+function definedEntries(updates: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(updates).filter(([, value]) => value !== undefined),
+  );
 }

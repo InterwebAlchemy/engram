@@ -24,6 +24,14 @@ export type {
 
 export { VaultNote } from './vault.js';
 export { MemoryManager } from './memory.js';
+export type {
+  ResolvedThread,
+  ResolvedThreadCandidate,
+} from './thread-operations.js';
+export { detectGitRemote, normalizeRemoteUrl } from './git-remote.js';
+export type { GitRemoteDetector } from './git-remote.js';
+export { detectPackageNames } from './package-name.js';
+export type { PackageNameDetector } from './package-name.js';
 export { MemoryStateManager } from './memory-state.js';
 export { ContextBuilder } from './context.js';
 export { Conversation } from './conversation.js';

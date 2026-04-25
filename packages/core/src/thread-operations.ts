@@ -25,8 +25,20 @@ import {
   mergeThreadDescription,
   mergeUniqueStrings,
   pickBestThreadMatch,
+  rankThreadMatches,
   resolveThreadIdOrThrow,
+  type ThreadMatch,
 } from './thread-helpers.js';
+import {
+  collectFieldUpdates,
+  computeSuppressedIds,
+  describeAlternateCandidates,
+  followSupersededBy,
+  parseLastActiveMs,
+  type ResolvedThreadCandidate,
+} from './thread-resolve-helpers.js';
+import { detectGitRemote, normalizeRemoteUrl, type GitRemoteDetector } from './git-remote.js';
+import { detectPackageNames, type PackageNameDetector } from './package-name.js';
 import { VaultNote } from './vault.js';
 import { slugify } from './utils.js';
 
@@ -57,6 +69,23 @@ interface ThreadOperationDependencies {
     filePath: string,
     transform: (content: string) => string,
   ) => Promise<VaultNote>;
+  detectGitRemote?: GitRemoteDetector;
+  detectPackageNames?: PackageNameDetector;
+}
+
+const MINUTES_PER_HOUR = 60;
+const SECONDS_PER_MINUTE = 60;
+const MILLISECONDS_PER_SECOND = 1_000;
+const LAST_ACTIVE_THROTTLE_MS = MINUTES_PER_HOUR * SECONDS_PER_MINUTE * MILLISECONDS_PER_SECOND;
+
+export type { ResolvedThreadCandidate } from './thread-resolve-helpers.js';
+
+export interface ResolvedThread {
+  threadId: string;
+  created: boolean;
+  thread: VaultNote;
+  /** Other plausible matches when the result is ambiguous (e.g. multiple remote matches or likely rename). */
+  candidates?: ResolvedThreadCandidate[];
 }
 
 export class ThreadOperations {
@@ -72,7 +101,14 @@ export class ThreadOperations {
   }
 
   async getThread(threadId: string): Promise<VaultNote | null> {
-    return await VaultNote.read(this.deps.adapter, this.deps.threadPath(threadId)).catch(() => null);
+    const direct = await VaultNote.read(this.deps.adapter, this.deps.threadPath(threadId)).catch(() => null);
+    if (direct !== null) {
+      return direct;
+    }
+    const threads = await this.listThreads();
+    return threads.find((thread) =>
+      readStringArray(thread.frontmatter.aliases).includes(threadId),
+    ) ?? null;
   }
 
   async setThread(
@@ -103,36 +139,12 @@ export class ThreadOperations {
       note.content = content;
     }
     if (fields !== undefined) {
-      const updates: Partial<NoteFrontmatter> = { updated: new Date().toISOString() };
-      const {
-        name,
-        description,
-        status,
-        goals,
-        paths,
-        related_threads: relatedThreads,
-        tags,
-      } = fields;
-      if (name !== undefined) {
-        updates.name = name;
-      }
-      if (description !== undefined) {
-        updates.description = description;
-      }
-      if (goals !== undefined) {
-        updates.goals = goals;
-      }
-      if (paths !== undefined) {
-        updates.paths = paths;
-      }
-      if (relatedThreads !== undefined) {
-        updates.related_threads = relatedThreads;
-      }
-      if (tags !== undefined) {
-        updates.tags = tags;
-      }
-
-      note.updateFrontmatter(status === undefined ? updates : { ...updates, status });
+      const updates: Partial<NoteFrontmatter> = collectFieldUpdates(fields);
+      note.updateFrontmatter({
+        ...updates,
+        updated: new Date().toISOString(),
+        ...(fields.status === undefined ? {} : { status: fields.status }),
+      });
     }
 
     await note.save(this.deps.adapter);
@@ -318,31 +330,68 @@ export class ThreadOperations {
     cwd?: string;
     gitRemote?: string;
     autoCreate?: boolean;
-  }): Promise<{ threadId: string; created: boolean; thread: VaultNote }> {
+  }): Promise<ResolvedThread> {
     const cwd = path.resolve(expandHome(hints.cwd ?? process.cwd()));
-    const autoCreate = hints.autoCreate ?? true;
+    const gitRemote = hints.gitRemote ?? (this.deps.detectGitRemote ?? detectGitRemote)(cwd);
+    const packageNames = (this.deps.detectPackageNames ?? detectPackageNames)(cwd);
 
     const threads = await this.listThreads();
-    const bestThread = pickBestThreadMatch(threads, cwd, hints.gitRemote);
+    const matchHints = { gitRemote, packageNames };
+    const matches = rankThreadMatches(threads, cwd, matchHints);
+    const initialBest = pickBestThreadMatch(threads, cwd, matchHints);
 
-    if (bestThread !== null) {
-      return {
-        threadId: resolveThreadIdOrThrow(bestThread),
-        created: false,
-        thread: bestThread,
-      };
+    if (initialBest !== null) {
+      return await this.finalizeResolvedMatch(initialBest, threads, matches);
     }
 
-    if (!autoCreate) {
+    if (hints.autoCreate === false) {
       throw new Error(`No matching thread found for cwd: ${cwd}`);
     }
 
+    return await this.createThreadForCwd(cwd, gitRemote, packageNames);
+  }
+
+  private async finalizeResolvedMatch(
+    initialBest: VaultNote,
+    threads: VaultNote[],
+    matches: ThreadMatch[],
+  ): Promise<ResolvedThread> {
+    const { resolved, chain } = followSupersededBy(initialBest, threads);
+    const finalId = resolveThreadIdOrThrow(resolved);
+    const suppressIds = computeSuppressedIds(threads, finalId, chain);
+    const candidates = describeAlternateCandidates(matches, suppressIds);
+    await this.bumpLastActive(resolved);
+    const result: ResolvedThread = { threadId: finalId, created: false, thread: resolved };
+    if (candidates.length > 0) {
+      result.candidates = candidates;
+    }
+    return result;
+  }
+
+  private async createThreadForCwd(
+    cwd: string,
+    gitRemote: string | undefined,
+    packageNames: string[],
+  ): Promise<ResolvedThread> {
     const threadId = slugify(path.basename(cwd));
+    const repositories = gitRemote === undefined ? undefined : [normalizeRemoteUrl(gitRemote)];
     const thread = await this.setThread(threadId, EMPTY_CONTENT, {
       name: path.basename(cwd),
       paths: [cwd],
+      ...(repositories === undefined ? {} : { repositories }),
+      ...(packageNames.length === 0 ? {} : { packages: packageNames }),
     });
+    await this.bumpLastActive(thread);
     return { threadId, created: true, thread };
+  }
+
+  private async bumpLastActive(thread: VaultNote): Promise<void> {
+    const now = Date.now();
+    if (now - parseLastActiveMs(thread.frontmatter.last_active) < LAST_ACTIVE_THROTTLE_MS) {
+      return;
+    }
+    thread.updateFrontmatter({ last_active: new Date(now).toISOString() });
+    await thread.save(this.deps.adapter);
   }
 
   async mergeThreads(
@@ -377,6 +426,11 @@ export class ThreadOperations {
       readStringArray(target.frontmatter.related_threads),
       readStringArray(source.frontmatter.related_threads),
     ).filter((id) => id !== sourceId && id !== targetId);
+    const mergedAliases = mergeUniqueStrings(
+      readStringArray(target.frontmatter.aliases),
+      readStringArray(source.frontmatter.aliases),
+      [sourceId],
+    ).filter((id) => id !== targetId);
     const mergedDescription = mergeThreadDescription(
       readNonEmptyString(target.frontmatter.description) ?? EMPTY_CONTENT,
       sourceId,
@@ -387,6 +441,7 @@ export class ThreadOperations {
       paths: mergedPaths.length > 0 ? mergedPaths : undefined,
       goals: mergedGoals.length > 0 ? mergedGoals : undefined,
       related_threads: mergedRelated.length > 0 ? mergedRelated : undefined,
+      aliases: mergedAliases.length > 0 ? mergedAliases : undefined,
       description: mergedDescription,
     });
 
@@ -394,9 +449,10 @@ export class ThreadOperations {
     await this.updateThread(
       sourceId,
       `Merged into [[${targetId}]] on ${date}. All memories re-tagged to target thread.`,
-      { status: ThreadStatus.Closed },
+      { status: ThreadStatus.Closed, superseded_by: targetId },
     );
 
     return { retaggedCount: sourceMemos.length };
   }
 }
+
