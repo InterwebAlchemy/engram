@@ -2,7 +2,7 @@
 
 Engram is a **Continuity Layer** that helps your [agents](https://www.promptingguide.ai/research/llm-agents) persist who they are, what they've done, and what they've learned across sessions, [harnesses](https://openai.com/index/harness-engineering/), models, and providers without any vendor lock-in.
 
-Without an Engram, each agent is just a tool, but the Engram is a collaborator.
+Without an Engram, an agent is just a tool. An Engram is a collaborator.
 
 ![engram banner](./assets/engram.png)
 
@@ -185,7 +185,7 @@ Cross-device continuity is established by any of the available [synchronization 
 
 1. Ensure you are running Node.js 22+ (`node -v`).
 2. Clone this repository and run `npm install`
-3. Run `npm run cli:onboarding` for the guided setup flow. It prompts for:
+3. Run `npm run cli:onboarding` to start the guided Engram Onboarding Command Line Interface (CLI) setup flow. It prompts for:
    1. the name for the Engram's identity
    2. an optional git identity string to use in a `Co-Authored By` trailer
    3. the path to an Obsidian Vault
@@ -227,6 +227,47 @@ Some harnesses may require additional configuration or have limitations around l
 > Unfortunately, every network and security configuration is different, so you may need to consider your own solutions if you want to expose the Engram MCP server to the Internet.
 
 Here's what we've observed so far:
+
+### Curosor
+
+Engram cannot automatically inject the bootstrap instructions into Cursor because Cursor's Rules system can only apply a global Rule via the Settings UI.
+
+The Engram Onboarding CLI will allow you to copy the bootstrap instructions to your clipboard and will prompt you to open Cursor's Settings and add a new Rule.
+
+Here are the steps for reference:
+
+1. Open Cursor and go to `Settings > Cursor Settings > Rules, Skills, Subagents`
+2. Click `+ New` next to the **Rules** section's heading
+3. Choose `User Rule` from the dropdown
+4. Paste the bootstrap instructions from [`templates/engram-bootstrap.tmpl.md`](templates/engram-bootstrap.tmpl.md) into the Rule content
+5. Click `Done` to save the rule
+6. Restart Cursor
+
+**Note**: the Engram Onboarding CLI should automatically configure the Engram MCP Server in the `Tools & MCPs` section of Cursor's Settings. While you're in the Settings UI, you can check to see that the `engram` MCP Server is enabled. If you didn't install it via the Engram Onboarding CLI, you can click the `+ New MCP Server` button and add the following configuration to the Object:
+
+```json
+{
+  "engram": {
+    "command": "<path_to_engram_directory>/scripts/mcp.sh",
+    "args": []
+  }
+}
+```
+
+### Zed
+
+Engram cannot automatically inject the bootstrap instructions into Zed because Zed's Rules system can only apply a Default Rule via the Settings UI.
+
+The Engram Onboarding CLI will allow you to copy the bootstrap instructions to your clipboard and will prompt you to open Zed's Settings and add a new Default Rule.
+
+Here are the steps for reference:
+
+1. Open Zed and make sure the Agent Panel is visible
+2. Click the menu button in the top right corner of the Agent Panel and select `Rules`
+3. Click the `+` button to add a new Rule
+4. Paste the bootstrap instructions from [`templates/engram-bootstrap.tmpl.md`](templates/engram-bootstrap.tmpl.md) into the Rule content
+5. Name the Rule `Engram` and click the `Add to Default Rules` button to the right of the Rule name
+6. Restart Zed
 
 ### Claude.ai Web App
 

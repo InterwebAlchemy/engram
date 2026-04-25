@@ -24,6 +24,9 @@ AGENTS.md
 # Development notes and todos
 .claude/notes/
 
+# Experiment outputs
+experiments/*
+
 # configuring the Engram MCP server for working with the Engram MCP client
 .mcp.json
 
