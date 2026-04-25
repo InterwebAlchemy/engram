@@ -1,4 +1,4 @@
-import { readNonEmptyString } from './memory-helpers.js';
+import { readNonEmptyString, readStringArray } from './memory-helpers.js';
 import { resolveThreadIdOrThrow, type ThreadMatch } from './thread-helpers.js';
 import type { NoteFrontmatter, ThreadFields } from './types.js';
 import type { VaultNote } from './vault.js';
@@ -6,10 +6,74 @@ import type { VaultNote } from './vault.js';
 export interface ResolvedThreadCandidate {
   threadId: string;
   name: string;
-  reason: 'path' | 'remote' | 'package';
+  reason: 'path' | 'remote' | 'package' | 'related';
 }
 
 const MAX_FORWARD_HOPS = 5;
+
+export function describeRelatedThreadCandidates(
+  resolved: VaultNote,
+  threads: VaultNote[],
+  suppress: Set<string>,
+): ResolvedThreadCandidate[] {
+  const relatedIds = readStringArray(resolved.frontmatter.related_threads);
+  if (relatedIds.length === 0) {
+    return [];
+  }
+
+  const lookup = buildThreadLookup(threads);
+  const candidates: ResolvedThreadCandidate[] = [];
+  const seen = new Set<string>();
+  for (const ref of relatedIds) {
+    const candidate = resolveRelatedCandidate(ref, lookup, suppress, seen);
+    if (candidate !== null) {
+      seen.add(candidate.threadId);
+      candidates.push(candidate);
+    }
+  }
+  return candidates;
+}
+
+interface ThreadLookup {
+  byId: Map<string, VaultNote>;
+  byAlias: Map<string, VaultNote>;
+}
+
+function buildThreadLookup(threads: VaultNote[]): ThreadLookup {
+  const byId = new Map<string, VaultNote>();
+  const byAlias = new Map<string, VaultNote>();
+  for (const thread of threads) {
+    const id = readNonEmptyString(thread.frontmatter.thread_id);
+    if (id !== null) {
+      byId.set(id, thread);
+    }
+    for (const alias of readStringArray(thread.frontmatter.aliases)) {
+      byAlias.set(alias, thread);
+    }
+  }
+  return { byId, byAlias };
+}
+
+function resolveRelatedCandidate(
+  ref: string,
+  lookup: ThreadLookup,
+  suppress: Set<string>,
+  seen: Set<string>,
+): ResolvedThreadCandidate | null {
+  const target = lookup.byId.get(ref) ?? lookup.byAlias.get(ref) ?? null;
+  if (target === null) {
+    return null;
+  }
+  const targetId = readNonEmptyString(target.frontmatter.thread_id);
+  if (targetId === null || suppress.has(targetId) || seen.has(targetId)) {
+    return null;
+  }
+  return {
+    threadId: targetId,
+    name: readNonEmptyString(target.frontmatter.name) ?? targetId,
+    reason: 'related',
+  };
+}
 
 export function describeAlternateCandidates(
   matches: ThreadMatch[],

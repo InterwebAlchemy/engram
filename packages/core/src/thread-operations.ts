@@ -33,6 +33,7 @@ import {
   collectFieldUpdates,
   computeSuppressedIds,
   describeAlternateCandidates,
+  describeRelatedThreadCandidates,
   followSupersededBy,
   parseLastActiveMs,
   type ResolvedThreadCandidate,
@@ -359,7 +360,11 @@ export class ThreadOperations {
     const { resolved, chain } = followSupersededBy(initialBest, threads);
     const finalId = resolveThreadIdOrThrow(resolved);
     const suppressIds = computeSuppressedIds(threads, finalId, chain);
-    const candidates = describeAlternateCandidates(matches, suppressIds);
+    const matchCandidates = describeAlternateCandidates(matches, suppressIds);
+    const matchedIds = new Set(matchCandidates.map((c) => c.threadId));
+    const relatedSuppress = new Set([...suppressIds, ...matchedIds]);
+    const relatedCandidates = describeRelatedThreadCandidates(resolved, threads, relatedSuppress);
+    const candidates = [...matchCandidates, ...relatedCandidates];
     await this.bumpLastActive(resolved);
     const result: ResolvedThread = { threadId: finalId, created: false, thread: resolved };
     if (candidates.length > 0) {
