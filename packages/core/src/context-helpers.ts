@@ -1,9 +1,37 @@
 import { MemoryState } from './types.js';
-import type { MemoryFilters } from './types.js';
+import type { MemoryFilters, NoteFrontmatter } from './types.js';
 import type { ContextBuilder } from './context.js';
-import type { SearchProvider } from './scoring.js';
+import type { ScoredNote, SearchProvider } from './scoring.js';
 import { readNonEmptyString, readStringArray, summaryOnly } from './memory-helpers.js';
-import type { VaultNote } from './vault.js';
+import { VaultNote } from './vault.js';
+
+type ContextPartition = 'core' | 'remembered' | 'default' | 'cross-thread' | 'skip';
+
+function classifyContextNote(note: VaultNote, threadId: string | undefined): ContextPartition {
+  const {
+    frontmatter: {
+      memory_state: state,
+      thread: noteThread,
+    },
+  } = note;
+  if (state === MemoryState.Core) {
+    return 'core';
+  }
+  const isCrossThread =
+    threadId !== undefined && typeof noteThread === 'string' && noteThread !== threadId;
+  if (isCrossThread) {
+    return state === MemoryState.Remembered || state === MemoryState.Default
+      ? 'cross-thread'
+      : 'skip';
+  }
+  if (state === MemoryState.Remembered) {
+    return 'remembered';
+  }
+  if (state === MemoryState.Default) {
+    return 'default';
+  }
+  return 'skip';
+}
 
 export function partitionContextNotes(
   notes: VaultNote[],
@@ -13,35 +41,33 @@ export function partitionContextNotes(
   coreNotes: VaultNote[];
   rememberedNotes: VaultNote[];
   defaultNotes: VaultNote[];
+  crossThreadNotes: VaultNote[];
 } {
   const coreNotes: VaultNote[] = [];
   const rememberedNotes: VaultNote[] = [];
   const defaultNotes: VaultNote[] = [];
+  const crossThreadNotes: VaultNote[] = [];
 
   for (const note of notes) {
     if (note.path === soulPath) {
       continue;
     }
 
-    const {
-      frontmatter: {
-        memory_state: state,
-        thread: noteThread,
-      },
-    } = note;
-    if (state === MemoryState.Core) {
-      coreNotes.push(note);
-      continue;
-    }
-    if (threadId !== undefined && typeof noteThread === 'string' && noteThread !== threadId) {
-      continue;
-    }
-    if (state === MemoryState.Remembered) {
-      rememberedNotes.push(note);
-      continue;
-    }
-    if (state === MemoryState.Default) {
-      defaultNotes.push(note);
+    switch (classifyContextNote(note, threadId)) {
+      case 'core':
+        coreNotes.push(note);
+        break;
+      case 'remembered':
+        rememberedNotes.push(note);
+        break;
+      case 'default':
+        defaultNotes.push(note);
+        break;
+      case 'cross-thread':
+        crossThreadNotes.push(note);
+        break;
+      case 'skip':
+        break;
     }
   }
 
@@ -49,6 +75,7 @@ export function partitionContextNotes(
     coreNotes,
     rememberedNotes,
     defaultNotes,
+    crossThreadNotes,
   };
 }
 
@@ -112,6 +139,187 @@ export function addQueryContextSections(
 
     builder.addSection(options.contextLabelFor(note), body, options.fallbackRememberedPriority);
   }
+}
+
+export interface RelatedThreadCandidate {
+  threadId: string;
+  /** Number of cross-thread memory notes that ranked against the query. Zero when only thread-text matched. */
+  memoryHitCount: number;
+  /** Summary text of the top-scoring memory hit, when one exists. */
+  topMemorySummary: string | null;
+  /** True when the thread doc itself (name/description/goals/todos) matched the query. */
+  threadTextMatched: boolean;
+  /** Best score across all signals; used for ordering. */
+  topScore: number;
+}
+
+export interface AggregateCrossThreadCandidatesOptions {
+  query: string;
+  crossThreadNotes: VaultNote[];
+  /** All threads excluding the active one. */
+  otherThreads: VaultNote[];
+  searchProvider: SearchProvider;
+  maxThreads: number;
+}
+
+/**
+ * Rank cross-thread candidate notes plus thread documents against the query and
+ * aggregate hits by thread. Returns up to `maxThreads` candidates ordered by
+ * descending top score. Threads with no hits are omitted.
+ */
+export function aggregateCrossThreadCandidates(
+  options: AggregateCrossThreadCandidatesOptions,
+): RelatedThreadCandidate[] {
+  const memoryByThread = groupMemoryHitsByThread(
+    options.query,
+    options.crossThreadNotes,
+    options.searchProvider,
+  );
+  const threadTextScores = scoreThreadDocs(
+    options.query,
+    options.otherThreads,
+    options.searchProvider,
+  );
+
+  const threadIds = new Set<string>([
+    ...memoryByThread.keys(),
+    ...threadTextScores.keys(),
+  ]);
+
+  const candidates: RelatedThreadCandidate[] = [];
+  for (const threadId of threadIds) {
+    const memoryHits = memoryByThread.get(threadId) ?? [];
+    const threadTextScore = threadTextScores.get(threadId);
+    const memoryDigest = digestTopMemoryHit(memoryHits);
+    const topScore = Math.max(memoryDigest.score, threadTextScore ?? 0);
+
+    candidates.push({
+      threadId,
+      memoryHitCount: memoryHits.length,
+      topMemorySummary: memoryDigest.summary,
+      threadTextMatched: threadTextScore !== undefined,
+      topScore,
+    });
+  }
+
+  candidates.sort((a, b) => b.topScore - a.topScore);
+  return candidates.slice(0, options.maxThreads);
+}
+
+function digestTopMemoryHit(memoryHits: ScoredNote[]): { score: number; summary: string | null } {
+  if (memoryHits.length === 0) {
+    return { score: 0, summary: null };
+  }
+  const [topHit] = memoryHits;
+  return { score: topHit.score, summary: summaryOnly(topHit.note) };
+}
+
+function groupMemoryHitsByThread(
+  query: string,
+  crossThreadNotes: VaultNote[],
+  searchProvider: SearchProvider,
+): Map<string, ScoredNote[]> {
+  const grouped = new Map<string, ScoredNote[]>();
+  if (crossThreadNotes.length === 0) {
+    return grouped;
+  }
+  for (const hit of searchProvider.rank(query, crossThreadNotes)) {
+    const noteThread = readNonEmptyString(hit.note.frontmatter.thread);
+    if (noteThread === null) {
+      continue;
+    }
+    const bucket = grouped.get(noteThread) ?? [];
+    bucket.push(hit);
+    grouped.set(noteThread, bucket);
+  }
+  return grouped;
+}
+
+function scoreThreadDocs(
+  query: string,
+  otherThreads: VaultNote[],
+  searchProvider: SearchProvider,
+): Map<string, number> {
+  const scores = new Map<string, number>();
+  if (otherThreads.length === 0) {
+    return scores;
+  }
+  const searchable = otherThreads
+    .map((thread): { id: string; note: VaultNote } | null => {
+      const id = readNonEmptyString(thread.frontmatter.thread_id);
+      return id === null ? null : { id, note: buildSearchableThreadNote(thread) };
+    })
+    .filter((entry): entry is { id: string; note: VaultNote } => entry !== null);
+
+  const idByPath = new Map(searchable.map(({ id, note }) => [note.path, id]));
+  for (const hit of searchProvider.rank(query, searchable.map(({ note }) => note))) {
+    const id = idByPath.get(hit.note.path);
+    if (id !== undefined) {
+      scores.set(id, hit.score);
+    }
+  }
+  return scores;
+}
+
+function buildSearchableThreadNote(thread: VaultNote): VaultNote {
+  const name = readNonEmptyString(thread.frontmatter.name) ?? '';
+  const description = readNonEmptyString(thread.frontmatter.description) ?? '';
+  const goals = readStringArray(thread.frontmatter.goals);
+  const summaryParts = [name, description];
+  if (goals.length > 0) {
+    summaryParts.push(`Goals: ${goals.join('. ')}`);
+  }
+  const summary = summaryParts.filter((part) => part.length > 0).join('. ');
+  const frontmatter: NoteFrontmatter = {
+    ...thread.frontmatter,
+    summary: summary.length > 0 ? summary : undefined,
+  };
+  return new VaultNote(thread.path, frontmatter, thread.content);
+}
+
+/**
+ * Format a list of related-thread candidates into a single context section body.
+ * `threadNames` provides display names keyed by thread ID; missing entries fall
+ * back to the bare ID.
+ */
+export function formatRelatedThreadsSection(
+  candidates: RelatedThreadCandidate[],
+  threadNames: Map<string, string>,
+): string {
+  const lines = ['Possibly related threads (cross-thread matches for your query):'];
+  for (const candidate of candidates) {
+    const name = threadNames.get(candidate.threadId);
+    const label = name === undefined || name === candidate.threadId
+      ? candidate.threadId
+      : `${candidate.threadId} (${name})`;
+    lines.push(`- ${label} — ${describeCandidateMatch(candidate)}`);
+  }
+  return lines.join('\n');
+}
+
+function describeCandidateMatch(candidate: RelatedThreadCandidate): string {
+  const parts: string[] = [];
+  if (candidate.memoryHitCount > 0) {
+    parts.push(candidate.memoryHitCount === 1 ? '1 memory match' : `${candidate.memoryHitCount} memory matches`);
+  }
+  if (candidate.threadTextMatched) {
+    parts.push('thread text match');
+  }
+  const reason = parts.length > 0 ? parts.join(' + ') : 'match';
+  if (candidate.topMemorySummary === null) {
+    return reason;
+  }
+  return `${reason}; top: "${truncateForRelatedThreads(candidate.topMemorySummary)}"`;
+}
+
+const RELATED_THREADS_SUMMARY_PREVIEW = 100;
+
+function truncateForRelatedThreads(text: string): string {
+  const collapsed = text.replace(/\s+/gu, ' ').trim();
+  if (collapsed.length <= RELATED_THREADS_SUMMARY_PREVIEW) {
+    return collapsed;
+  }
+  return `${collapsed.slice(0, RELATED_THREADS_SUMMARY_PREVIEW - 1).trimEnd()}…`;
 }
 
 export function addRememberedContextSections(

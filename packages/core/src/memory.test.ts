@@ -895,6 +895,285 @@ test('mergeThreads stamps superseded_by on the source', async (t) => {
   assert.ok(aliases !== undefined && aliases.includes('source-thread'));
 });
 
+test('resolveThread surfaces declared related_threads as candidates with reason "related"', async (t) => {
+  const vaultRoot = await createTempVault();
+  t.after(async () => {
+    await fs.rm(vaultRoot, { recursive: true, force: true });
+  });
+
+  const cwd = path.join(vaultRoot, 'project');
+  await fs.mkdir(cwd, { recursive: true });
+
+  const manager = new MemoryManager(
+    new NodeAdapter(),
+    defaultMemoryConfig(vaultRoot, 'integrated'),
+    { detectGitRemote: () => undefined, detectPackageNames: () => [] },
+  );
+
+  await manager.setThread('sibling-a', '', { name: 'Sibling A' });
+  await manager.setThread('sibling-b', '', { name: 'Sibling B' });
+  await manager.setThread('primary', '', {
+    paths: [cwd],
+    related_threads: ['sibling-a', 'sibling-b'],
+  });
+
+  const resolved = await manager.resolveThread({ cwd });
+  assert.equal(resolved.threadId, 'primary');
+  const related = (resolved.candidates ?? []).filter((c) => c.reason === 'related');
+  assert.deepEqual(related.map((c) => c.threadId).sort(), ['sibling-a', 'sibling-b']);
+  assert.equal(related.find((c) => c.threadId === 'sibling-a')?.name, 'Sibling A');
+});
+
+test('resolveThread related_threads candidates resolve via aliases and skip missing refs', async (t) => {
+  const vaultRoot = await createTempVault();
+  t.after(async () => {
+    await fs.rm(vaultRoot, { recursive: true, force: true });
+  });
+
+  const cwd = path.join(vaultRoot, 'project');
+  await fs.mkdir(cwd, { recursive: true });
+
+  const manager = new MemoryManager(
+    new NodeAdapter(),
+    defaultMemoryConfig(vaultRoot, 'integrated'),
+    { detectGitRemote: () => undefined, detectPackageNames: () => [] },
+  );
+
+  await manager.setThread('canonical-sibling', '', {
+    name: 'Canonical Sibling',
+    aliases: ['legacy-sibling'],
+  });
+  await manager.setThread('primary', '', {
+    paths: [cwd],
+    related_threads: ['legacy-sibling', 'does-not-exist'],
+  });
+
+  const resolved = await manager.resolveThread({ cwd });
+  const related = (resolved.candidates ?? []).filter((c) => c.reason === 'related');
+  assert.deepEqual(related.map((c) => c.threadId), ['canonical-sibling']);
+});
+
+test('resolveThread does not duplicate related_threads when same thread already matched', async (t) => {
+  const vaultRoot = await createTempVault();
+  t.after(async () => {
+    await fs.rm(vaultRoot, { recursive: true, force: true });
+  });
+
+  const cwd = path.join(vaultRoot, 'project');
+  await fs.mkdir(cwd, { recursive: true });
+
+  const manager = new MemoryManager(
+    new NodeAdapter(),
+    defaultMemoryConfig(vaultRoot, 'integrated'),
+    { detectGitRemote: () => 'git@github.com:example/project.git', detectPackageNames: () => [] },
+  );
+
+  // Two threads share the remote, primary will win, alt will appear as a remote-match candidate.
+  await manager.setThread('alt', '', {
+    name: 'Alt',
+    repositories: ['github.com/example/project'],
+  });
+  await manager.setThread('primary', '', {
+    paths: [cwd],
+    repositories: ['github.com/example/project'],
+    related_threads: ['alt'],
+  });
+
+  const resolved = await manager.resolveThread({ cwd });
+  assert.equal(resolved.threadId, 'primary');
+  const altCandidates = (resolved.candidates ?? []).filter((c) => c.threadId === 'alt');
+  assert.equal(altCandidates.length, 1, 'alt should appear once, not duplicated under "related"');
+  assert.notEqual(altCandidates[0].reason, 'related');
+});
+
+test('getContext surfaces a related-threads section when other threads have query hits', async (t) => {
+  const vaultRoot = await createTempVault();
+  t.after(async () => {
+    await fs.rm(vaultRoot, { recursive: true, force: true });
+  });
+
+  const manager = new MemoryManager(new NodeAdapter(), defaultMemoryConfig(vaultRoot, 'integrated'));
+  await manager.setThread('active-thread', '## Todo\n- [ ] Stay focused', { name: 'Active Thread' });
+  await manager.setThread('other-thread', '## Todo\n- [ ] Side quest', { name: 'Other Thread' });
+
+  await writeNote(
+    vaultRoot,
+    'memory/facts/active-fact.md',
+    {
+      memory_state: MemoryState.Default,
+      thread: 'active-thread',
+      summary: 'Active-thread fact about retrieval pipeline',
+    },
+    'Active-thread fact about retrieval pipeline',
+  );
+
+  await writeNote(
+    vaultRoot,
+    'memory/facts/cross-thread-fact.md',
+    {
+      memory_state: MemoryState.Default,
+      thread: 'other-thread',
+      summary: 'Other-thread retrieval pipeline tuning notes',
+    },
+    'Other-thread retrieval pipeline tuning notes',
+  );
+
+  const sections = await manager.getContext('retrieval pipeline', { max: 2000 }, 'active-thread');
+  const related = sections.find((s) => s.label === 'related-threads:active-thread');
+  assert.ok(related, 'related-threads section should be present');
+  assert.match(related.content, /Possibly related threads/);
+  assert.match(related.content, /other-thread \(Other Thread\)/);
+  assert.match(related.content, /Other-thread retrieval pipeline tuning notes/);
+  assert.doesNotMatch(related.content, /active-thread \(Active Thread\)/);
+
+  const labels = sections.map((s) => s.label);
+  assert.ok(!labels.includes('memory:facts/cross-thread-fact'), 'cross-thread note should not appear as a regular section');
+});
+
+test('getContext omits related-threads section when no other threads match the query', async (t) => {
+  const vaultRoot = await createTempVault();
+  t.after(async () => {
+    await fs.rm(vaultRoot, { recursive: true, force: true });
+  });
+
+  const manager = new MemoryManager(new NodeAdapter(), defaultMemoryConfig(vaultRoot, 'integrated'));
+  await manager.setThread('active-thread', '## Todo\n- [ ] Stay focused', { name: 'Active Thread' });
+  await manager.setThread('other-thread', '## Todo\n- [ ] Side quest', { name: 'Other Thread' });
+
+  await writeNote(
+    vaultRoot,
+    'memory/facts/cross-thread-fact.md',
+    {
+      memory_state: MemoryState.Default,
+      thread: 'other-thread',
+      summary: 'Completely unrelated topic about gardening',
+    },
+    'Completely unrelated topic about gardening',
+  );
+
+  const sections = await manager.getContext('retrieval pipeline', { max: 2000 }, 'active-thread');
+  assert.equal(sections.find((s) => s.label === 'related-threads:active-thread'), undefined);
+});
+
+test('getContext related-threads section caps at top-scoring threads ordered by score', async (t) => {
+  const vaultRoot = await createTempVault();
+  t.after(async () => {
+    await fs.rm(vaultRoot, { recursive: true, force: true });
+  });
+
+  const manager = new MemoryManager(new NodeAdapter(), defaultMemoryConfig(vaultRoot, 'integrated'));
+  await manager.setThread('active', '', { name: 'Active' });
+
+  // Five other threads with hits; only top 3 should surface.
+  for (let i = 0; i < 5; i += 1) {
+    const threadId = `cross-${i}`;
+    await manager.setThread(threadId, '', { name: `Cross ${i}` });
+    // Vary summary strength: i=0 has only one weak token, i=4 matches all tokens strongly.
+    const summaryWords = i >= 3
+      ? 'retrieval pipeline tuning'
+      : i === 2
+        ? 'retrieval pipeline'
+        : 'retrieval';
+    await writeNote(
+      vaultRoot,
+      `memory/facts/cross-${i}-fact.md`,
+      {
+        memory_state: MemoryState.Default,
+        thread: threadId,
+        summary: `Cross ${i} note about ${summaryWords}`,
+      },
+      `Cross ${i} note about ${summaryWords}`,
+    );
+  }
+
+  const sections = await manager.getContext('retrieval pipeline tuning', { max: 4000 }, 'active');
+  const related = sections.find((s) => s.label === 'related-threads:active');
+  assert.ok(related, 'related-threads section should be present');
+
+  const surfaced = ['cross-0', 'cross-1', 'cross-2', 'cross-3', 'cross-4']
+    .filter((id) => related.content.includes(id));
+  assert.equal(surfaced.length, 3, 'should cap at 3 related threads');
+  // The two strongest matches (cross-3, cross-4 — full token coverage) must be present.
+  assert.ok(surfaced.includes('cross-3'));
+  assert.ok(surfaced.includes('cross-4'));
+});
+
+test('getContext related-threads section surfaces threads matched by their own name/description', async (t) => {
+  const vaultRoot = await createTempVault();
+  t.after(async () => {
+    await fs.rm(vaultRoot, { recursive: true, force: true });
+  });
+
+  const manager = new MemoryManager(new NodeAdapter(), defaultMemoryConfig(vaultRoot, 'integrated'));
+  await manager.setThread('active-thread', '## Todo\n- [ ] Stay focused', { name: 'Active Thread' });
+  await manager.setThread('docs-only-thread', '', {
+    name: 'Retrieval Pipeline Tuning',
+    description: 'Iterating on the retrieval pipeline scoring weights and thresholds.',
+    goals: ['Improve recall', 'Trim noise from scoring'],
+  });
+
+  const sections = await manager.getContext('retrieval pipeline tuning', { max: 2000 }, 'active-thread');
+  const related = sections.find((s) => s.label === 'related-threads:active-thread');
+  assert.ok(related, 'related-threads section should be present');
+  assert.match(related.content, /docs-only-thread \(Retrieval Pipeline Tuning\)/);
+  assert.match(related.content, /thread text match/);
+  assert.doesNotMatch(related.content, /memory match/);
+});
+
+test('getContext related-threads section combines memory hits and thread-text matches for the same thread', async (t) => {
+  const vaultRoot = await createTempVault();
+  t.after(async () => {
+    await fs.rm(vaultRoot, { recursive: true, force: true });
+  });
+
+  const manager = new MemoryManager(new NodeAdapter(), defaultMemoryConfig(vaultRoot, 'integrated'));
+  await manager.setThread('active-thread', '', { name: 'Active Thread' });
+  await manager.setThread('combo-thread', '', {
+    name: 'Retrieval Pipeline',
+    description: 'Tuning the retrieval pipeline.',
+  });
+
+  await writeNote(
+    vaultRoot,
+    'memory/facts/combo-fact.md',
+    {
+      memory_state: MemoryState.Default,
+      thread: 'combo-thread',
+      summary: 'Notes on retrieval pipeline scoring',
+    },
+    'Notes on retrieval pipeline scoring',
+  );
+
+  const sections = await manager.getContext('retrieval pipeline', { max: 2000 }, 'active-thread');
+  const related = sections.find((s) => s.label === 'related-threads:active-thread');
+  assert.ok(related, 'related-threads section should be present');
+  assert.match(related.content, /combo-thread \(Retrieval Pipeline\) — 1 memory match \+ thread text match; top:/);
+});
+
+test('getContext skips related-threads section when no thread is active', async (t) => {
+  const vaultRoot = await createTempVault();
+  t.after(async () => {
+    await fs.rm(vaultRoot, { recursive: true, force: true });
+  });
+
+  const manager = new MemoryManager(new NodeAdapter(), defaultMemoryConfig(vaultRoot, 'integrated'));
+  await manager.setThread('other-thread', '', { name: 'Other Thread' });
+
+  await writeNote(
+    vaultRoot,
+    'memory/facts/cross-thread-fact.md',
+    {
+      memory_state: MemoryState.Default,
+      thread: 'other-thread',
+      summary: 'Other-thread retrieval pipeline tuning notes',
+    },
+    'Other-thread retrieval pipeline tuning notes',
+  );
+
+  const sections = await manager.getContext('retrieval pipeline', { max: 2000 });
+  assert.equal(sections.find((s) => s.label.startsWith('related-threads:')), undefined);
+});
+
 test('resolveThread auto-create stamps detected package names', async (t) => {
   const vaultRoot = await createTempVault();
   t.after(async () => {

@@ -73,6 +73,7 @@ export class MemoryManager {
       memoryTypeDir: (type) => this.memoryTypeDir(type),
       getGlobalInboxSummary: async (threadId) => await this.getGlobalInboxSummary(threadId),
       getThread: async (threadId) => await this.getThread(threadId),
+      listThreads: async () => await this.listThreads(),
       getThreadInboxSummary: async (threadId) => await this.getThreadInboxSummary(threadId),
       contextLabelFor: (note) => this.contextLabelFor(note),
       searchProvider: this.searchProvider,
