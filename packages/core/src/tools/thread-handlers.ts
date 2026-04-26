@@ -1,5 +1,6 @@
 import type { MemoryManager } from '../memory.js';
 import type { ResolvedThread } from '../thread-operations.js';
+import { assessThreadCoherence, formatCoherenceWarnings } from '../thread-coherence.js';
 import type { ThreadStatus } from '../types.js';
 import type { VaultNote } from '../vault.js';
 import { THREAD_STATUS_MAP } from './definitions.js';
@@ -44,19 +45,39 @@ export async function handleThreadTool(
         : textResult(thread.serialize());
     }
     case 'set': {
-      const thread = await manager.setThread(
-        requireStringArg(args, 'thread_id'),
-        requireStringArg(args, 'content'),
-        buildThreadFields(args),
-      );
+      const threadId = requireStringArg(args, 'thread_id');
+      const content = requireStringArg(args, 'content');
+      const force = optionalBooleanArg(args, 'force') === true;
+      const existing = await manager.getThread(threadId);
+      if (existing !== null && !force) {
+        const others = (await manager.listThreads()).filter(
+          (t) => t.frontmatter.thread_id !== threadId,
+        );
+        const warnings = assessThreadCoherence(existing, content, others);
+        if (warnings.length > 0) {
+          return textResult(formatCoherenceWarnings(warnings), true);
+        }
+      }
+      const thread = await manager.setThread(threadId, content, buildThreadFields(args));
       return textResult(`Thread written to: ${thread.path}`);
     }
     case 'update': {
-      const thread = await manager.updateThread(
-        requireStringArg(args, 'thread_id'),
-        optionalStringArg(args, 'content'),
-        buildThreadFields(args),
-      );
+      const threadId = requireStringArg(args, 'thread_id');
+      const content = optionalStringArg(args, 'content');
+      const force = optionalBooleanArg(args, 'force') === true;
+      if (content !== undefined && !force) {
+        const existing = await manager.getThread(threadId);
+        if (existing !== null) {
+          const others = (await manager.listThreads()).filter(
+            (t) => t.frontmatter.thread_id !== threadId,
+          );
+          const warnings = assessThreadCoherence(existing, content, others);
+          if (warnings.length > 0) {
+            return textResult(formatCoherenceWarnings(warnings), true);
+          }
+        }
+      }
+      const thread = await manager.updateThread(threadId, content, buildThreadFields(args));
       return textResult(`Thread updated at: ${thread.path}`);
     }
     case 'list': {
@@ -243,8 +264,9 @@ function appendThreadMeta(lines: string[], frontmatter: VaultNote['frontmatter']
 }
 
 function formatResolvedThread(result: ResolvedThread): string {
-  const { threadId, created, thread, candidates } = result;
-  const lines: string[] = [`thread_id: ${threadId} (${created ? 'created' : 'found'})`];
+  const { threadId, created, activated, thread, candidates } = result;
+  const status = created ? 'created' : activated ? 'activated' : 'found';
+  const lines: string[] = [`thread_id: ${threadId} (${status})`];
   appendThreadMeta(lines, thread.frontmatter, threadId);
   if (candidates !== undefined && candidates.length > 0) {
     lines.push('other_candidates:');

@@ -393,7 +393,7 @@ export async function runRemove(options: RemoveOptions): Promise<void> {
 
   if (existing.harnesses.cursor) {
     subheading('Note: Cursor rules must be removed manually.');
-    note('Open Cursor Settings > General > Rules, Skills, Subagents');
+    note('Open Cursor Settings > Cursor Settings > Rules, Skills, Subagents');
     note('Find and remove the Engram bootstrap rule.');
   }
 

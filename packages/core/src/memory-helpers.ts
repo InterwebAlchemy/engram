@@ -1,5 +1,6 @@
 import * as os from 'node:os';
 import { ThreadStatus } from './types.js';
+import { truncateToTokens } from './tokenizer.js';
 import type { FileSystemAdapter } from './adapters/types.js';
 import type { VaultNote } from './vault.js';
 
@@ -12,12 +13,14 @@ const CHECKLIST_ITEM_PATTERN =
   /^\s*(?:[*-]|\d+\.)\s+\[(?<checked>[ xX])\]\s+(?<text>.+?)\s*$/u;
 const TODO_HEADING_PATTERN = /^\s{0,3}#{1,6}\s+todos?\s*$/iu;
 const INBOX_HEADING_PATTERN = /^\s{0,3}#{1,6}\s+inbox\s*$/iu;
+const CONTEXT_HEADING_PATTERN = /^\s{0,3}#{1,6}\s+context\s*$/iu;
 const MARKDOWN_EXTENSION_PATTERN = /\.md$/iu;
 
-const MAX_TRUNCATION_ELLIPSIS_WIDTH = 1;
-const THREAD_DESCRIPTION_PREVIEW_LENGTH = 180;
-const GOAL_PREVIEW_LENGTH = 120;
-const INBOX_PREVIEW_LENGTH = 140;
+const ELLIPSIS = '…';
+const THREAD_DESCRIPTION_TOKEN_BUDGET = 50;
+const GOAL_TOKEN_BUDGET = 32;
+const INBOX_TOKEN_BUDGET = 40;
+const THREAD_CONTEXT_TOKEN_BUDGET = 400;
 const MAX_THREAD_SUMMARY_GOALS = 3;
 
 interface ChecklistSectionMatch {
@@ -88,14 +91,47 @@ export function readStringArray(value: unknown): string[] {
     : [];
 }
 
-function truncateInline(text: string, maxChars: number): string {
+function truncateInlineTokens(text: string, maxTokens: number): string {
   const normalized = text.replace(WHITESPACE_PATTERN, ' ').trim();
-  if (normalized.length <= maxChars) {
+  const truncated = truncateToTokens(normalized, maxTokens);
+  if (truncated.length === normalized.length) {
     return normalized;
   }
 
-  const sliceLength = Math.max(0, maxChars - MAX_TRUNCATION_ELLIPSIS_WIDTH);
-  return `${normalized.slice(0, sliceLength).trimEnd()}…`;
+  return `${truncated.trimEnd()}${ELLIPSIS}`;
+}
+
+function truncateBlockTokens(text: string, maxTokens: number): string {
+  const truncated = truncateToTokens(text, maxTokens);
+  if (truncated.length === text.length) {
+    return text;
+  }
+
+  return `${truncated.trimEnd()}${ELLIPSIS}`;
+}
+
+export function extractSectionBody(content: string, headingPattern: RegExp): string | null {
+  const lines = normalizeNoteContent(content).split('\n');
+  const { length: lineCount } = lines;
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index] ?? '';
+    if (!headingPattern.test(line)) {
+      continue;
+    }
+
+    let endIndex = lineCount;
+    for (let cursor = index + 1; cursor < lineCount; cursor += 1) {
+      if (ANY_HEADING_PATTERN.test(lines[cursor] ?? '')) {
+        endIndex = cursor;
+        break;
+      }
+    }
+
+    const body = lines.slice(index + 1, endIndex).join('\n').trim();
+    return body.length > 0 ? body : null;
+  }
+
+  return null;
 }
 
 function normalizeChecklistText(text: string): string {
@@ -205,7 +241,7 @@ function summarizeChecklist(label: string, items: ChecklistItem[]): string | nul
 
   return [
     `${label}:`,
-    ...items.map((item) => `- [ ] ${truncateInline(item.text, GOAL_PREVIEW_LENGTH)}`),
+    ...items.map((item) => `- [ ] ${truncateInlineTokens(item.text, GOAL_TOKEN_BUDGET)}`),
   ].join('\n');
 }
 
@@ -346,14 +382,20 @@ export function summarizeThread(thread: VaultNote): string {
 
   const description = readNonEmptyString(thread.frontmatter.description);
   if (description !== null) {
-    lines.push(`Description: ${truncateInline(description, THREAD_DESCRIPTION_PREVIEW_LENGTH)}`);
+    lines.push(`Description: ${truncateInlineTokens(description, THREAD_DESCRIPTION_TOKEN_BUDGET)}`);
+  }
+
+  const contextBody = extractSectionBody(thread.content, CONTEXT_HEADING_PATTERN);
+  if (contextBody !== null) {
+    lines.push('Context:');
+    lines.push(truncateBlockTokens(contextBody, THREAD_CONTEXT_TOKEN_BUDGET));
   }
 
   const goals = readStringArray(thread.frontmatter.goals).slice(0, MAX_THREAD_SUMMARY_GOALS);
   if (goals.length > 0) {
     lines.push('Goals:');
     for (const goal of goals) {
-      lines.push(`- ${truncateInline(goal, GOAL_PREVIEW_LENGTH)}`);
+      lines.push(`- ${truncateInlineTokens(goal, GOAL_TOKEN_BUDGET)}`);
     }
   }
 
@@ -408,5 +450,5 @@ export function summarizeInboxNote(relativePath: string, content: string): strin
   }
 
   const preview = firstNonHeadingLine(content) ?? '(empty note)';
-  return `${title} (${relativePath}): ${truncateInline(preview, INBOX_PREVIEW_LENGTH)}`;
+  return `${title} (${relativePath}): ${truncateInlineTokens(preview, INBOX_TOKEN_BUDGET)}`;
 }

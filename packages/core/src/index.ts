@@ -35,7 +35,13 @@ export type { PackageNameDetector } from './package-name.js';
 export { MemoryStateManager } from './memory-state.js';
 export { ContextBuilder } from './context.js';
 export { Conversation } from './conversation.js';
-export { estimateTokens } from './tokenizer.js';
+export { estimateTokens, truncateToTokens } from './tokenizer.js';
+export {
+  assessThreadCoherence,
+  formatCoherenceWarnings,
+  type CoherenceWarningKind,
+  type ThreadCoherenceWarning,
+} from './thread-coherence.js';
 export {
   BOOTSTRAP_ENTRY_MAX_CHARS,
   formatBootstrapScratchEntry,

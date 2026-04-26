@@ -1,6 +1,8 @@
 // ─── Thread ───────────────────────────────────────────────────────────────────
 
 export enum ThreadStatus {
+  /** Pre-declared for future work — promotes to Active when env signals match on resolve. */
+  Planned = 'planned',
   Active = 'active',
   Paused = 'paused',
   Closed = 'closed',
@@ -28,6 +30,10 @@ export interface ThreadFrontmatter {
   updated: string;   // ISO 8601
   /** Last time this thread was an active resolve target. System-managed. */
   last_active?: string; // ISO 8601
+  /** When the thread was first declared with status=planned. System-managed. */
+  planned_at?: string; // ISO 8601
+  /** When a planned thread was auto-promoted to active by resolve. System-managed. */
+  activated_at?: string; // ISO 8601
   tags?: string[];
   [key: string]: unknown;
 }
@@ -87,7 +93,7 @@ export enum MemoryType {
 // ─── Frontmatter ─────────────────────────────────────────────────────────────
 
 export type Confidence = 'high' | 'medium' | 'low';
-export type NoteStatus = 'active' | 'archived' | 'paused' | 'closed';
+export type NoteStatus = 'active' | 'archived' | 'paused' | 'closed' | 'planned';
 
 /**
  * How much context the author had when writing this memory.

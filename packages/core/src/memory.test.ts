@@ -6,7 +6,7 @@ import * as path from 'node:path';
 import { MemoryManager } from './memory.js';
 import { NodeAdapter } from './adapters/node.js';
 import { VaultNote } from './vault.js';
-import { defaultMemoryConfig, MemoryState, MemoryType, type NoteFrontmatter } from './types.js';
+import { defaultMemoryConfig, MemoryState, MemoryType, ThreadStatus, type NoteFrontmatter } from './types.js';
 
 async function createTempVault(): Promise<string> {
   return await fs.mkdtemp(path.join(os.tmpdir(), 'engram-memory-test-'));
@@ -144,7 +144,7 @@ test('getContext includes a compact active thread summary with open todos', asyn
     'demo-thread',
     [
       '## Context',
-      'Some background that should not matter much.',
+      'Background motivation that Fragments should rehydrate on bootstrap.',
       '',
       '## Todo',
       '- [ ] Tighten retrieval prompt',
@@ -165,11 +165,42 @@ test('getContext includes a compact active thread summary with open todos', asyn
   assert.equal(sections[0]?.label, 'thread:demo-thread');
   assert.match(sections[0]?.content ?? '', /Thread: Demo Thread/);
   assert.match(sections[0]?.content ?? '', /Status: active/);
+  assert.match(sections[0]?.content ?? '', /Context:\nBackground motivation that Fragments should rehydrate on bootstrap\./);
   assert.match(sections[0]?.content ?? '', /Goals:/);
   assert.match(sections[0]?.content ?? '', /- \[ \] Tighten retrieval prompt/);
   assert.match(sections[0]?.content ?? '', /- \[ \] Add note reference convention/);
   assert.doesNotMatch(sections[0]?.content ?? '', /Finish prior experiment/);
+  assert.doesNotMatch(sections[0]?.content ?? '', /Freeform thread notes/);
   assert.equal(sections[1]?.label, 'memory:entities/project');
+});
+
+test('thread Context section is token-bounded when it overflows', async (t) => {
+  const vaultRoot = await createTempVault();
+  t.after(async () => {
+    await fs.rm(vaultRoot, { recursive: true, force: true });
+  });
+
+  const manager = new MemoryManager(new NodeAdapter(), defaultMemoryConfig(vaultRoot, 'integrated'));
+
+  // ~1500 tokens of prose — well past the 400-token Context budget.
+  const longContext = Array.from({ length: 60 }, (_, index) =>
+    `Paragraph ${index + 1}: this thread holds a lot of detailed background that exceeds the Context budget so the loader must truncate it instead of dumping the whole body into the bootstrap context window.`,
+  ).join(' ');
+
+  await manager.setThread(
+    'overflow-thread',
+    ['## Context', longContext].join('\n'),
+    { name: 'Overflow Thread' },
+  );
+
+  const sections = await manager.getContext('overflow probe', { max: 4000 }, 'overflow-thread');
+  const summary = sections[0]?.content ?? '';
+  assert.match(summary, /Context:/);
+  assert.match(summary, /…$/m);
+  assert.ok(
+    summary.length < longContext.length,
+    'Context body should be truncated when it exceeds the token budget',
+  );
 });
 
 test('getContext includes thread inbox notes ahead of core memories', async (t) => {
@@ -1195,5 +1226,147 @@ test('resolveThread auto-create stamps detected package names', async (t) => {
   const resolved = await manager.resolveThread({ cwd });
   assert.equal(resolved.created, true);
   assert.deepEqual(resolved.thread.frontmatter.packages, ['@org/foo', '@org/workspace']);
+});
+
+test('setThread with status=planned stamps planned_at', async (t) => {
+  const vaultRoot = await createTempVault();
+  t.after(async () => {
+    await fs.rm(vaultRoot, { recursive: true, force: true });
+  });
+
+  const manager = new MemoryManager(new NodeAdapter(), defaultMemoryConfig(vaultRoot, 'integrated'));
+  const thread = await manager.setThread('future-revival', '## Context\nReviving the old project.', {
+    name: 'Future Revival',
+    status: ThreadStatus.Planned,
+    repositories: ['github.com/me/old-project'],
+  });
+
+  assert.equal(thread.frontmatter.status, ThreadStatus.Planned);
+  assert.equal(typeof thread.frontmatter.planned_at, 'string');
+  assert.equal(thread.frontmatter.activated_at, undefined);
+});
+
+test('resolveThread auto-activates a planned thread when git remote matches', async (t) => {
+  const vaultRoot = await createTempVault();
+  t.after(async () => {
+    await fs.rm(vaultRoot, { recursive: true, force: true });
+  });
+
+  const cwd = path.join(vaultRoot, 'fresh-clone');
+  await fs.mkdir(cwd, { recursive: true });
+
+  const manager = new MemoryManager(
+    new NodeAdapter(),
+    defaultMemoryConfig(vaultRoot, 'integrated'),
+    { detectGitRemote: () => 'git@github.com:me/old-project.git', detectPackageNames: () => [] },
+  );
+
+  await manager.setThread('future-revival', '## Context\nReviving the old project.', {
+    name: 'Future Revival',
+    status: ThreadStatus.Planned,
+    repositories: ['github.com/me/old-project'],
+  });
+
+  const resolved = await manager.resolveThread({ cwd });
+  assert.equal(resolved.threadId, 'future-revival');
+  assert.equal(resolved.created, false);
+  assert.equal(resolved.activated, true);
+  assert.equal(resolved.thread.frontmatter.status, ThreadStatus.Active);
+  assert.equal(typeof resolved.thread.frontmatter.activated_at, 'string');
+  assert.equal(typeof resolved.thread.frontmatter.planned_at, 'string');
+  assert.equal(typeof resolved.thread.frontmatter.last_active, 'string');
+});
+
+test('resolveThread auto-activates a planned thread when cwd path matches', async (t) => {
+  const vaultRoot = await createTempVault();
+  t.after(async () => {
+    await fs.rm(vaultRoot, { recursive: true, force: true });
+  });
+
+  const cwd = path.join(vaultRoot, 'planned-spot');
+  await fs.mkdir(cwd, { recursive: true });
+
+  const manager = new MemoryManager(
+    new NodeAdapter(),
+    defaultMemoryConfig(vaultRoot, 'integrated'),
+    { detectGitRemote: () => undefined, detectPackageNames: () => [] },
+  );
+
+  await manager.setThread('planned-via-path', '', {
+    name: 'Planned via Path',
+    status: ThreadStatus.Planned,
+    paths: [cwd],
+  });
+
+  const resolved = await manager.resolveThread({ cwd });
+  assert.equal(resolved.threadId, 'planned-via-path');
+  assert.equal(resolved.activated, true);
+  assert.equal(resolved.thread.frontmatter.status, ThreadStatus.Active);
+});
+
+test('resolveThread does not select a planned thread when no env signal matches', async (t) => {
+  const vaultRoot = await createTempVault();
+  t.after(async () => {
+    await fs.rm(vaultRoot, { recursive: true, force: true });
+  });
+
+  const cwd = path.join(vaultRoot, 'unrelated-dir');
+  await fs.mkdir(cwd, { recursive: true });
+
+  const manager = new MemoryManager(
+    new NodeAdapter(),
+    defaultMemoryConfig(vaultRoot, 'integrated'),
+    { detectGitRemote: () => undefined, detectPackageNames: () => [] },
+  );
+
+  await manager.setThread('untouched-plan', '', {
+    name: 'Untouched Plan',
+    status: ThreadStatus.Planned,
+    repositories: ['github.com/me/some-other-repo'],
+    paths: [path.join(vaultRoot, 'somewhere-else')],
+  });
+
+  const resolved = await manager.resolveThread({ cwd });
+  // Falls through to auto-create a new thread for cwd; the planned thread must not be picked.
+  assert.notEqual(resolved.threadId, 'untouched-plan');
+  assert.equal(resolved.activated, false);
+
+  const planned = await manager.getThread('untouched-plan');
+  assert.equal(planned?.frontmatter.status, ThreadStatus.Planned);
+  assert.equal(planned?.frontmatter.activated_at, undefined);
+});
+
+test('resolveThread prefers active match over planned match when both have signals', async (t) => {
+  const vaultRoot = await createTempVault();
+  t.after(async () => {
+    await fs.rm(vaultRoot, { recursive: true, force: true });
+  });
+
+  const cwd = path.join(vaultRoot, 'shared-cwd');
+  await fs.mkdir(cwd, { recursive: true });
+
+  const manager = new MemoryManager(
+    new NodeAdapter(),
+    defaultMemoryConfig(vaultRoot, 'integrated'),
+    { detectGitRemote: () => undefined, detectPackageNames: () => [] },
+  );
+
+  await manager.setThread('current-active', '', {
+    name: 'Current Active',
+    status: ThreadStatus.Active,
+    paths: [cwd],
+  });
+  await manager.setThread('also-planned', '', {
+    name: 'Also Planned',
+    status: ThreadStatus.Planned,
+    paths: [cwd],
+  });
+
+  const resolved = await manager.resolveThread({ cwd });
+  assert.equal(resolved.threadId, 'current-active');
+  assert.equal(resolved.activated, false);
+
+  const stillPlanned = await manager.getThread('also-planned');
+  assert.equal(stillPlanned?.frontmatter.status, ThreadStatus.Planned);
 });
 

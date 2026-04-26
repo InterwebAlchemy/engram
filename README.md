@@ -228,7 +228,7 @@ Some harnesses may require additional configuration or have limitations around l
 
 Here's what we've observed so far:
 
-### Curosor
+### Cursor
 
 Engram cannot automatically inject the bootstrap instructions into Cursor because Cursor's Rules system can only apply a global Rule via the Settings UI.
 

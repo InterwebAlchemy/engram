@@ -47,7 +47,7 @@ export const CONFIDENCE_VALUES = ['high', 'medium', 'low'] as const;
 export const BOOTSTRAP_STATES = ['full', 'partial', 'none'] as const;
 export const MEMORY_TYPES = ['fact', 'entity', 'reflection'] as const;
 export const MEMORY_STATES = ['core', 'remembered', 'default', 'forgotten'] as const;
-export const THREAD_STATUSES = ['active', 'paused', 'closed'] as const;
+export const THREAD_STATUSES = ['planned', 'active', 'paused', 'closed'] as const;
 
 export const MEMORY_TYPE_MAP: Record<(typeof MEMORY_TYPES)[number], MemoryType> = {
   fact: MemoryType.Fact,
@@ -63,6 +63,7 @@ export const MEMORY_STATE_MAP: Record<(typeof MEMORY_STATES)[number], MemoryStat
 };
 
 export const THREAD_STATUS_MAP: Record<(typeof THREAD_STATUSES)[number], ThreadStatus> = {
+  planned: ThreadStatus.Planned,
   active: ThreadStatus.Active,
   paused: ThreadStatus.Paused,
   closed: ThreadStatus.Closed,
@@ -249,6 +250,7 @@ export const TOOLS = [
         item: stringProp('Todo item text.'),
         include_completed: booleanProp('Include done items.'),
         prepend: booleanProp('Insert at top.'),
+        force: booleanProp('Override coherence warnings on set/update (when content references a different thread or unknown project).'),
       },
       required: ['action'],
     },

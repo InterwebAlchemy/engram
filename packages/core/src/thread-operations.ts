@@ -84,6 +84,8 @@ export type { ResolvedThreadCandidate } from './thread-resolve-helpers.js';
 export interface ResolvedThread {
   threadId: string;
   created: boolean;
+  /** True when an existing planned thread was auto-promoted to active by this resolve call. */
+  activated: boolean;
   thread: VaultNote;
   /** Other plausible matches when the result is ambiguous (e.g. multiple remote matches or likely rename). */
   candidates?: ResolvedThreadCandidate[];
@@ -365,12 +367,29 @@ export class ThreadOperations {
     const relatedSuppress = new Set([...suppressIds, ...matchedIds]);
     const relatedCandidates = describeRelatedThreadCandidates(resolved, threads, relatedSuppress);
     const candidates = [...matchCandidates, ...relatedCandidates];
-    await this.bumpLastActive(resolved);
-    const result: ResolvedThread = { threadId: finalId, created: false, thread: resolved };
+    const activated = await this.promoteIfPlanned(resolved);
+    if (!activated) {
+      await this.bumpLastActive(resolved);
+    }
+    const result: ResolvedThread = { threadId: finalId, created: false, activated, thread: resolved };
     if (candidates.length > 0) {
       result.candidates = candidates;
     }
     return result;
+  }
+
+  private async promoteIfPlanned(thread: VaultNote): Promise<boolean> {
+    if (thread.frontmatter.status !== ThreadStatus.Planned) {
+      return false;
+    }
+    const now = new Date().toISOString();
+    thread.updateFrontmatter({
+      status: ThreadStatus.Active,
+      activated_at: now,
+      last_active: now,
+    });
+    await thread.save(this.deps.adapter);
+    return true;
   }
 
   private async createThreadForCwd(
@@ -387,7 +406,7 @@ export class ThreadOperations {
       ...(packageNames.length === 0 ? {} : { packages: packageNames }),
     });
     await this.bumpLastActive(thread);
-    return { threadId, created: true, thread };
+    return { threadId, created: true, activated: false, thread };
   }
 
   private async bumpLastActive(thread: VaultNote): Promise<void> {

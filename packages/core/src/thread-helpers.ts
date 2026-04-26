@@ -5,8 +5,9 @@ import type { NoteFrontmatter, ThreadFields } from './types.js';
 import { expandHome, readNonEmptyString, readStringArray } from './memory-helpers.js';
 import type { VaultNote } from './vault.js';
 
-const ACTIVE_THREAD_STATUS_RANK = 2;
-const PAUSED_THREAD_STATUS_RANK = 1;
+const ACTIVE_THREAD_STATUS_RANK = 3;
+const PAUSED_THREAD_STATUS_RANK = 2;
+const PLANNED_THREAD_STATUS_RANK = 1;
 
 export interface ThreadMatch {
   thread: VaultNote;
@@ -30,6 +31,9 @@ function threadStatusRank(status: unknown): number {
   }
   if (status === ThreadStatus.Paused) {
     return PAUSED_THREAD_STATUS_RANK;
+  }
+  if (status === ThreadStatus.Planned) {
+    return PLANNED_THREAD_STATUS_RANK;
   }
 
   return 0;
@@ -198,15 +202,48 @@ export function mergeThreadDescription(
   return undefined;
 }
 
+function readCreated(existing: VaultNote | null): string | undefined {
+  if (existing === null) {
+    return undefined;
+  }
+
+  return readNonEmptyString(existing.frontmatter.created) ?? undefined;
+}
+
+function readPlannedAt(existing: VaultNote | null): string | undefined {
+  if (existing === null) {
+    return undefined;
+  }
+
+  return readNonEmptyString(existing.frontmatter.planned_at) ?? undefined;
+}
+
+function readActivatedAt(existing: VaultNote | null): string | undefined {
+  if (existing === null) {
+    return undefined;
+  }
+
+  return readNonEmptyString(existing.frontmatter.activated_at) ?? undefined;
+}
+
+function resolvePlannedAt(
+  status: ThreadStatus,
+  existingPlannedAt: string | undefined,
+  now: string,
+): string | undefined {
+  if (status !== ThreadStatus.Planned) {
+    return existingPlannedAt;
+  }
+
+  return existingPlannedAt ?? now;
+}
+
 export function buildThreadFrontmatter(
   threadId: string,
   existing: VaultNote | null,
   fields: ThreadFields,
 ): NoteFrontmatter {
   const now = new Date().toISOString();
-  const created = existing === null
-    ? now
-    : readNonEmptyString(existing.frontmatter.created) ?? now;
   const {
     name,
     status,
@@ -220,6 +257,11 @@ export function buildThreadFrontmatter(
     superseded_by: supersededBy,
     related_threads: relatedThreads,
   } = fields;
+  const resolvedStatus = status ?? ThreadStatus.Active;
+  const created = readCreated(existing) ?? now;
+  const existingPlannedAt = readPlannedAt(existing);
+  const existingActivatedAt = readActivatedAt(existing);
+  const plannedAt = resolvePlannedAt(resolvedStatus, existingPlannedAt, now);
 
   return {
     type: 'thread',
@@ -228,7 +270,7 @@ export function buildThreadFrontmatter(
     tags: tags ?? ['engram/thread', `engram/thread/${threadId}`],
     thread_id: threadId,
     name: name ?? threadId,
-    status: status ?? ThreadStatus.Active,
+    status: resolvedStatus,
     ...definedEntries({
       description,
       goals,
@@ -238,6 +280,8 @@ export function buildThreadFrontmatter(
       aliases,
       superseded_by: supersededBy,
       related_threads: relatedThreads,
+      planned_at: plannedAt,
+      activated_at: existingActivatedAt,
     }),
   };
 }

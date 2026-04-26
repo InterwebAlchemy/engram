@@ -108,6 +108,7 @@ export function emptyThreadHealth(): ThreadHealth {
     totalCount: 0,
     totalSizeBytes: 0,
     countsByStatus: {
+      [ThreadStatus.Planned]: 0,
       [ThreadStatus.Active]: 0,
       [ThreadStatus.Paused]: 0,
       [ThreadStatus.Closed]: 0,
@@ -170,6 +171,7 @@ export function analyzeThreadCoverage(notes: VaultNote[]): ThreadCoverageGap[] {
 
 export function analyzeThreadHealth(threads: VaultNote[]): ThreadHealth {
   const countsByStatus: Record<ThreadStatus, number> = {
+    [ThreadStatus.Planned]: 0,
     [ThreadStatus.Active]: 0,
     [ThreadStatus.Paused]: 0,
     [ThreadStatus.Closed]: 0,

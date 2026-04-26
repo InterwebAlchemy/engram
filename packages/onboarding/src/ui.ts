@@ -337,11 +337,12 @@ export async function runManualZedSetup(options: {
     waitForCopyPrompt,
     waitForContinue,
     steps: [
-      `  ${palette.accent('1.')} Open Zed Agent settings and enable the ${palette.bold('engram')} MCP server (first-time setup only).`,
-      `  ${palette.accent('2.')} In the Agent panel, choose ${palette.bold('Rules')} from the settings menu.`,
-      `  ${palette.accent('3.')} Add a Rule and paste the bootstrap from your clipboard into the rule body.`,
-      `  ${palette.accent('4.')} Name it ${palette.bold('Engram')}.`,
-      `  ${palette.accent('5.')} Click ${palette.bold('Add to Default Rules')}.`,
+      `  ${palette.accent('1.')} Open Zed and make sure the ${palette.bold('Agent Panel')} is visible.`,
+      `  ${palette.accent('2.')} Click the menu button in the top right corner of the Agent Panel and select ${palette.bold('Rules')}.`,
+      `  ${palette.accent('3.')} Click the ${palette.bold('+')} button to add a new Rule.`,
+      `  ${palette.accent('4.')} Paste the bootstrap instructions from your clipboard into the Rule content.`,
+      `  ${palette.accent('5.')} Name the Rule ${palette.bold('Engram')} and click the ${palette.bold('Add to Default Rules')} button to the right of the Rule name.`,
+      `  ${palette.accent('6.')} Restart Zed.`,
     ],
   });
 }
@@ -360,11 +361,12 @@ export async function runManualCursorSetup(options: {
     waitForCopyPrompt,
     waitForContinue,
     steps: [
-      `  ${palette.accent('1.')} Open Cursor ${palette.bold('Settings > General > Rules, Skills, Subagents')}.`,
-      `  ${palette.accent('2.')} Select ${palette.bold('User')} from the dropdown.`,
-      `  ${palette.accent('3.')} Click ${palette.bold('New User Rule')} (or ${palette.bold('+ New > User Rule')} if rules exist).`,
-      `  ${palette.accent('4.')} Paste the bootstrap instructions from your clipboard.`,
-      `  ${palette.accent('5.')} Click ${palette.bold('Done')}.`,
+      `  ${palette.accent('1.')} Open Cursor and go to ${palette.bold('Settings > Cursor Settings > Rules, Skills, Subagents')}.`,
+      `  ${palette.accent('2.')} Click ${palette.bold('+ New')} next to the ${palette.bold('Rules')} section's heading.`,
+      `  ${palette.accent('3.')} Choose ${palette.bold('User Rule')} from the dropdown.`,
+      `  ${palette.accent('4.')} Paste the bootstrap instructions from your clipboard into the Rule content.`,
+      `  ${palette.accent('5.')} Click ${palette.bold('Done')} to save the rule.`,
+      `  ${palette.accent('6.')} Restart Cursor.`,
     ],
   });
 }
@@ -415,7 +417,7 @@ function buildNextSteps(answers: InitAnswers, repoContext: boolean): string[] {
   }
 
   if (answers.harnesses.cursor) {
-    steps.push(`${palette.accent(`${String(stepNumber)}.`)} In Cursor, verify your Engram User Rule is saved (Settings > General > Rules, Skills, Subagents).`);
+    steps.push(`${palette.accent(`${String(stepNumber)}.`)} In Cursor, verify your Engram User Rule is saved (Settings > Cursor Settings > Rules, Skills, Subagents).`);
     stepNumber += 1;
   }
 

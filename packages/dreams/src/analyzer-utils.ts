@@ -53,6 +53,7 @@ export function readMemoryState(value: unknown): MemoryState {
 
 export function readThreadStatus(value: unknown): ThreadStatus {
   switch (value) {
+    case ThreadStatus.Planned:
     case ThreadStatus.Active:
     case ThreadStatus.Paused:
     case ThreadStatus.Closed:
