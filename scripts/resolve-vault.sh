@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 #
-# resolve-vault.sh — Shared helper to resolve the dev vault path.
-# Sourced by setup-dev.sh and dev.sh. Sets VAULT_PATH.
+# resolve-vault.sh — Resolve the runtime Engram vault path.
+# Sourced by mcp.sh and serve.sh. Sets VAULT_PATH.
 #
-# Priority: CLI arg ($1) > ENGRAM_VAULT_PATH env var > ~/.engram/config.json > .env file > default
+# Priority: CLI arg ($1) > ENGRAM_VAULT_PATH env var > ~/.engram/config.json > .env ENGRAM_VAULT_PATH > default
 #
 
 REPO_ROOT="${REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"

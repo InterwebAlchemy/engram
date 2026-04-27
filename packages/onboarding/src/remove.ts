@@ -209,6 +209,7 @@ async function clearEngramEnvValues(envPath: string, harnessEnvKeys: string[]): 
   const keysToRemove = new Set([
     'ENGRAM_NAME',
     'ENGRAM_VAULT_PATH',
+    'ENGRAM_DEV_VAULT_PATH',
     'ENGRAM_ROOT',
     'ENGRAM_VOICE_PRESET',
     'ENGRAM_GIT_IDENTITY',

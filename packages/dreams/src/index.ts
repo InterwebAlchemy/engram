@@ -249,16 +249,25 @@ async function resolveVaultPath(cliVault?: string): Promise<string> {
 
   try {
     const raw = await fs.readFile(envPath, 'utf8');
-    for (const line of raw.split(CARRIAGE_RETURN_PATTERN)) {
-      if (!line.startsWith('ENGRAM_VAULT_PATH=')) continue;
-      const value = line.slice('ENGRAM_VAULT_PATH='.length).trim();
-      if (value.length > 0) return expandHome(stripQuotes(value));
-    }
+    const devVaultPath = getEnvFileValue(raw, 'ENGRAM_DEV_VAULT_PATH');
+    if (devVaultPath !== undefined) return expandHome(devVaultPath);
+    const legacyVaultPath = getEnvFileValue(raw, 'ENGRAM_VAULT_PATH');
+    if (legacyVaultPath !== undefined) return expandHome(legacyVaultPath);
   } catch {
     // Fall through to the default dev vault path.
   }
 
-  return path.join(repoRoot, 'tmp', 'vault');
+  return path.join(repoRoot, 'tmp', 'Engram Test Vault');
+}
+
+function getEnvFileValue(raw: string, key: string): string | undefined {
+  const prefix = `${key}=`;
+  for (const line of raw.split(CARRIAGE_RETURN_PATTERN)) {
+    if (!line.startsWith(prefix)) continue;
+    const value = line.slice(prefix.length).trim();
+    if (value.length > 0) return stripQuotes(value);
+  }
+  return undefined;
 }
 
 async function resolveEngramRoot(cliEngramRoot?: string): Promise<string | undefined> {
