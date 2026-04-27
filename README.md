@@ -281,6 +281,35 @@ That likely means testing it will require either a remotely hosted Engram MCP se
 
 **Note**: Given the in-development status of the Engram project, this is currently out of scope until more important core features are finalized.
 
+## Dogfooding
+
+While Engram was used thoroughly in developing Engram itself, I also use it regularly to contribute to other projects and try to understand how it actualy feels to collaborate with the Engram across different repositories, projects, and contexts.
+
+During development of Engram, the Engram connected to my agents and my Obsidian Vault has contributed to:
+
+- [Engram](https://github.com/InterwebAlchemy/engram)
+- [Obsidian AI Research Assistant](https://github.com/InterwebAlchemy/obsidian-ai-research-assistant)
+- [Model Metadata Central](https://github.com/InterwebAlchemy/model-metadata-central)
+
+## Use of AI
+
+Engram was actively developed using the Engram system itself across multiple harnesses and providers:
+
+1. Claude Code (Opus 4.6 and 4.7)
+2. OpenAI Codex (GPT-5.3-Codex and GPT-5.4)
+3. OpenCode (MiniMax M2.5)
+4. Github Copilot (various models via `Auto` and Claude Sonnet 4.6)
+5. Zed (GPT-5.3-Codex)
+
+Research and comparitive analysis of other memory systems for agents was conducted using:
+
+1. Claude Desktop (Opus 4.6 and 4.7)
+2. ChatGPT Desktop (GPT-5 and GPT-5.3)
+
+All documentation was primarily written by hand by a human, but some was drafted initially by one of the models above during the development process and then edited and expanded upon by a human.
+
+**Note**: _all models and harness listed in roughly the order of how much they were used during development_.
+
 ## Prior Art
 
 Engram builds on previous work from the [Obsidian AI Research Assistant plugin](https://github.com/InterwebAlchemy/obsidian-ai-research-assistant) and its [Memory framework](https://github.com/InterwebAlchemy/obsidian-ai-research-assistant?tab=readme-ov-file#memories).
