@@ -9,6 +9,7 @@ import {
   stderr,
   stdout,
 } from 'node:process';
+import { getProviderModelId } from 'model-metadata-central';
 import { runDreams, runDreamsCleanup } from './runner.js';
 import type {
   DreamsFocus,
@@ -16,7 +17,8 @@ import type {
   DreamsRunnerOptions,
 } from './types.js';
 
-const DEFAULT_MODEL = 'claude-sonnet-4-6';
+const DEFAULT_MODEL =
+  getProviderModelId('claude-sonnet-4-6', 'anthropic') ?? 'claude-sonnet-4-6';
 const CLI_ARG_START_INDEX = 2;
 const REPO_ROOT_SEGMENTS_UP = '../../..';
 const DEFAULT_ENGRAM_ROOT = 'engram';

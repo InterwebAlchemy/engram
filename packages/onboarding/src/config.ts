@@ -233,7 +233,7 @@ function buildEnvFallbackConfig(
   const gitIdentity = envValues.GIT_IDENTITY ?? envValues.ENGRAM_GIT_IDENTITY ?? '';
   return {
     version: 1,
-    vaultPath: expandHome(envValues.ENGRAM_VAULT_PATH ?? path.join(repoRoot, 'tmp', 'vault')),
+    vaultPath: expandHome(envValues.ENGRAM_VAULT_PATH ?? path.join(repoRoot, 'tmp', 'Engram Test Vault')),
     engramRoot: normalizeEngramRoot(envValues.ENGRAM_ROOT ?? DEFAULT_ENGRAM_ROOT),
     snapshotDir: getDefaultSnapshotDir(),
     agentName: envValues.ENGRAM_NAME ?? DEFAULT_AGENT_NAME,
@@ -273,7 +273,7 @@ export async function loadExistingConfig(
 
   return buildExistingConfig('default', configPath, {
     version: 1,
-    vaultPath: path.join(repoRoot, 'tmp', 'vault'),
+    vaultPath: path.join(repoRoot, 'tmp', 'Engram Test Vault'),
     engramRoot: DEFAULT_ENGRAM_ROOT,
     snapshotDir: getDefaultSnapshotDir(),
     agentName: DEFAULT_AGENT_NAME,

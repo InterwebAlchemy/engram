@@ -21,19 +21,15 @@ import {
   safeJsonParse,
   streamSsePayloads,
 } from './provider-utils';
+import { getKnownModels } from '../services/modelRegistry';
 
 const ANTHROPIC_API_URL = 'https://api.anthropic.com';
 const ANTHROPIC_VERSION = '2023-06-01';
+const TRAILING_SLASH_PATTERN = /\/$/u;
 const THINKING_MIN_TOKENS = 1280;
 const DEFAULT_MAX_TOKENS = 16000;
 const MAX_BUDGET_TOKENS = 10000;
 const BUDGET_RATIO = 0.8;
-
-const ANTHROPIC_MODELS: Model[] = [
-  { id: 'claude-opus-4-6', name: 'Claude Opus 4.6', contextWindow: 200000 },
-  { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6', contextWindow: 200000 },
-  { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5', contextWindow: 200000 },
-];
 
 /**
  * Adapter for the Anthropic Messages API.
@@ -46,22 +42,25 @@ const ANTHROPIC_MODELS: Model[] = [
 export class AnthropicAdapter implements ProviderAdapter {
   readonly id: string;
   readonly name: string;
+  private baseUrl: string;
   private apiKey: string;
-  private readonly models = ANTHROPIC_MODELS;
 
   constructor(config: ProviderConfig) {
     const {
       id,
       name,
+      baseUrl = ANTHROPIC_API_URL,
       apiKey = '',
     } = config;
     this.id = id;
     this.name = name;
+    this.baseUrl = baseUrl.replace(TRAILING_SLASH_PATTERN, '');
     this.apiKey = apiKey;
   }
 
   updateConfig(config: Partial<ProviderConfig>): void {
-    const { apiKey } = config;
+    const { baseUrl, apiKey } = config;
+    if (baseUrl !== undefined) this.baseUrl = baseUrl.replace(TRAILING_SLASH_PATTERN, '');
     if (apiKey !== undefined) this.apiKey = apiKey;
   }
 
@@ -73,7 +72,7 @@ export class AnthropicAdapter implements ProviderAdapter {
   ): Promise<CompletionResult> {
     const body = buildAnthropicRequestBody(messages as ExtendedChatMessage[], config, false);
     const response = await requestUrl({
-      url: `${ANTHROPIC_API_URL}/v1/messages`,
+      url: `${this.baseUrl}/v1/messages`,
       method: 'POST',
       headers: this.headers(),
       body: JSON.stringify(body),
@@ -91,7 +90,7 @@ export class AnthropicAdapter implements ProviderAdapter {
   ): AsyncIterable<StreamChunk> {
     const body = buildAnthropicRequestBody(messages, config, true);
 
-    const response = await fetch(`${ANTHROPIC_API_URL}/v1/messages`, {
+    const response = await fetch(`${this.baseUrl}/v1/messages`, {
       method: 'POST',
       headers: this.headers(),
       body: JSON.stringify(body),
@@ -124,7 +123,7 @@ export class AnthropicAdapter implements ProviderAdapter {
   // ─── Model listing ──────────────────────────────────────────────────────
 
   async listModels(): Promise<Model[]> {
-    return await Promise.resolve(this.models);
+    return await Promise.resolve(getKnownModels(this.id));
   }
 
   // ─── Private ────────────────────────────────────────────────────────────

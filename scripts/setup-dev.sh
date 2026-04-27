@@ -7,7 +7,7 @@
 # Safe to re-run — skips anything that already exists.
 #
 # Usage:
-#   ./scripts/setup-dev.sh                 # uses ENGRAM_VAULT_PATH from .env, or /tmp/engram-dev-vault
+#   ./scripts/setup-dev.sh                 # uses ENGRAM_VAULT_PATH from .env, or tmp/Engram Test Vault
 #   ./scripts/setup-dev.sh /path/to/vault  # explicit vault path
 #
 set -euo pipefail
@@ -239,7 +239,7 @@ fi
 
 # ─── Seed dev vault with sample notes ─────────────────────────────────────
 # Only runs when:
-#   - VAULT_PATH is the default tmp/vault (safe to overwrite), OR
+#   - VAULT_PATH is the default tmp/Engram Test Vault (safe to overwrite), OR
 #   - ENGRAM_SEED_VAULT=true is set explicitly in .env
 # Never seeds a user-configured vault by default.
 

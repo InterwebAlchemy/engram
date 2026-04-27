@@ -9,6 +9,7 @@ import { ObsidianAdapter } from './adapters/obsidian';
 import { OpenAICompatibleAdapter } from './providers/openai-compat';
 import { AnthropicAdapter } from './providers/anthropic';
 import type { ProviderAdapter } from './providers/types';
+import { getApiType } from './services/modelRegistry';
 import { EngramSettingTab } from './settings';
 import { EngramView } from './views/engram';
 import { ChatTab } from './views/chat';
@@ -114,11 +115,7 @@ export default class EngramPlugin extends Plugin {
 
   private initializeProviders(): void {
     for (const [id, cfg] of Object.entries(this.settings.providers)) {
-      if (id === 'anthropic') {
-        this.providers.set(id, new AnthropicAdapter(cfg));
-      } else {
-        this.providers.set(id, new OpenAICompatibleAdapter(cfg));
-      }
+      this.providers.set(id, instantiateProviderAdapter(cfg));
     }
   }
 
@@ -128,11 +125,7 @@ export default class EngramPlugin extends Plugin {
       return;
     }
 
-    if (id === 'anthropic') {
-      this.providers.set(id, new AnthropicAdapter(cfg));
-    } else {
-      this.providers.set(id, new OpenAICompatibleAdapter(cfg));
-    }
+    this.providers.set(id, instantiateProviderAdapter(cfg));
   }
 
   getActiveProvider(): ProviderAdapter | undefined {
@@ -146,14 +139,7 @@ export default class EngramPlugin extends Plugin {
     }
 
     const apiKey = this.getProviderApiKey(providerId);
-    if (providerId === 'anthropic') {
-      return new AnthropicAdapter({
-        ...cfg,
-        apiKey,
-      });
-    }
-
-    return new OpenAICompatibleAdapter({
+    return instantiateProviderAdapter({
       ...cfg,
       apiKey,
     });
@@ -301,6 +287,12 @@ export default class EngramPlugin extends Plugin {
         ...(loadedSettings.providers?.[id] ?? {}),
       };
     }
+    for (const [id, provider] of Object.entries(loadedSettings.providers ?? {})) {
+      if (Object.hasOwn(this.settings.providers, id)) {
+        continue;
+      }
+      this.settings.providers[id] = provider;
+    }
   }
 
   async saveSettings(): Promise<void> {
@@ -338,4 +330,14 @@ function removeReactFlowStyles(): void {
 
 function isSettingsRecord(value: unknown): value is Partial<EngramSettings> {
   return typeof value === 'object' && value !== null;
+}
+
+function instantiateProviderAdapter(
+  cfg: ProviderSettings & { apiKey?: string },
+): ProviderAdapter {
+  if (getApiType(cfg.id) === 'anthropic') {
+    return new AnthropicAdapter(cfg);
+  }
+
+  return new OpenAICompatibleAdapter(cfg);
 }

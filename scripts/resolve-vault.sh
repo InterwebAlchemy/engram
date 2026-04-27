@@ -8,7 +8,7 @@
 
 REPO_ROOT="${REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 
-DEFAULT_VAULT_PATH="$REPO_ROOT/tmp/vault"
+DEFAULT_VAULT_PATH="$REPO_ROOT/tmp/Engram Test Vault"
 
 if [ -n "${1:-}" ] && [[ "$1" != --* ]]; then
   VAULT_PATH="$1"
