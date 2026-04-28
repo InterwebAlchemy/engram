@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@interwebalchemy/engram-core": "*",
+    "model-metadata-central": "^0.2.0",
     "reactflow": "^11.11.4"
   },
   "devDependencies": {

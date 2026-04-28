@@ -60,7 +60,7 @@ export async function persistInitState(options: {
   verboseStatus('Saved config', existing.configPath);
 
   if (repoContext) {
-    await upsertEnvFile(envPath, envUpdates);
+    await upsertEnvFile(envPath, buildRepoEnvUpdates(envUpdates, answers.vaultPath));
     const envRelative = path.relative(repoRoot, envPath);
     verboseStatus('Repo dev env', envRelative.length > 0 ? envRelative : '.env', 'synced');
   }
@@ -89,6 +89,17 @@ export async function persistInitState(options: {
   if (shellProfilePath !== answers.shellProfilePath) {
     await saveCliConfig(buildPersistedConfig({ ...answers, shellProfilePath }));
   }
+}
+
+function buildRepoEnvUpdates(
+  envUpdates: Record<string, string>,
+  devVaultPath: string,
+): Record<string, string> {
+  const { ENGRAM_VAULT_PATH: _runtimeVaultPath, ...repoEnvUpdates } = envUpdates;
+  return {
+    ...repoEnvUpdates,
+    ENGRAM_DEV_VAULT_PATH: devVaultPath,
+  };
 }
 
 function reportShellRemoval(result: {

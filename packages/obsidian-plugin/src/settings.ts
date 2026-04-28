@@ -288,10 +288,10 @@ export class EngramSettingTab extends PluginSettingTab {
         text: 'Routes requests to 200+ models via a single API key. Get yours at openrouter.ai/keys.',
         cls: 'setting-item-description',
       });
-    } else if (id !== 'anthropic') {
+    } else {
       new Setting(inner)
         .setName('Base URL')
-        .setDesc('OpenAI-compatible API base (without /v1).')
+        .setDesc('API base URL (without /v1).')
         .addText((text) =>
           text
             .setPlaceholder('http://localhost:11434')

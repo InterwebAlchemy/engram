@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 #
-# mcp.sh — Launch the Engram MCP server against the dev vault.
+# mcp.sh — Launch the Engram MCP server against the configured runtime vault.
 #
 # Used as the "command" in MCP client configs (Claude Desktop, Cursor, etc.)
-# Reads ENGRAM_VAULT_PATH from .env if present; falls back to the default vault.
+# Reads ENGRAM_VAULT_PATH from the environment or ~/.engram/config.json.
+# Repo-local dev vaults use ENGRAM_DEV_VAULT_PATH instead and are ignored here.
 #
 # Any extra arguments are forwarded to the MCP server:
 #   --mode standalone
@@ -14,15 +15,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
-# Load .env so ENGRAM_ROOT and related config are available.
-if [ -f "$REPO_ROOT/.env" ]; then
-  set -a
-  # shellcheck source=/dev/null
-  source "$REPO_ROOT/.env" || true
-  set +a
-fi
-
-# Load vault path from .env / environment
+# Resolve runtime vault path from explicit env, global config, or legacy .env.
 # shellcheck source=/dev/null
 source "$REPO_ROOT/scripts/resolve-vault.sh"
 
@@ -39,6 +32,12 @@ try {
 " "$HOME/.engram/config.json")" || true
   [ -n "$_engram_root_from_config" ] && ENGRAM_ROOT="$_engram_root_from_config"
   unset _engram_root_from_config
+fi
+
+if [ -z "${ENGRAM_ROOT:-}" ] && [ -f "$REPO_ROOT/.env" ]; then
+  _engram_root_from_file="$(grep -E '^ENGRAM_ROOT=' "$REPO_ROOT/.env" | cut -d= -f2- | xargs)" || true
+  [ -n "$_engram_root_from_file" ] && ENGRAM_ROOT="$_engram_root_from_file"
+  unset _engram_root_from_file
 fi
 
 ENGRAM_ROOT="${ENGRAM_ROOT:-engram}"

@@ -24,6 +24,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.54.0",
     "@interwebalchemy/engram-core": "*",
+    "model-metadata-central": "^0.2.0",
     "openai": "^4.104.0"
   },
   "devDependencies": {

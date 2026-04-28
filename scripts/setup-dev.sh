@@ -7,7 +7,7 @@
 # Safe to re-run — skips anything that already exists.
 #
 # Usage:
-#   ./scripts/setup-dev.sh                 # uses ENGRAM_VAULT_PATH from .env, or /tmp/engram-dev-vault
+#   ./scripts/setup-dev.sh                 # uses ENGRAM_DEV_VAULT_PATH from .env, or tmp/Engram Test Vault
 #   ./scripts/setup-dev.sh /path/to/vault  # explicit vault path
 #
 set -euo pipefail
@@ -80,7 +80,7 @@ print_section() {
 # ─── Resolve vault path ────────────────────────────────────────────────────
 
 # shellcheck source=/dev/null
-source "$REPO_ROOT/scripts/resolve-vault.sh"
+source "$REPO_ROOT/scripts/resolve-dev-vault.sh"
 
 ENGRAM_ROOT="${ENGRAM_ROOT:-engram}"
 ENGRAM_ROOT="${ENGRAM_ROOT#/}"
@@ -219,14 +219,14 @@ else
   detail "Skipping Obsidian plugin install (ENGRAM_INSTALL_OBSIDIAN_PLUGIN=$INSTALL_OBSIDIAN_PLUGIN)."
 fi
 
-# ─── Persist vault path to .env ───────────────────────────────────────────
+# ─── Persist dev vault path to .env ───────────────────────────────────────
 
-if ! grep -qsE '^ENGRAM_VAULT_PATH=' "$REPO_ROOT/.env" 2>/dev/null; then
-  upsert_env_var "ENGRAM_VAULT_PATH" "$VAULT_PATH"
-  detail "Saved vault path to .env"
-elif [ "$(grep -E '^ENGRAM_VAULT_PATH=' "$REPO_ROOT/.env" | cut -d= -f2-)" = "" ]; then
-  upsert_env_var "ENGRAM_VAULT_PATH" "$VAULT_PATH"
-  detail "Updated vault path in .env"
+if ! grep -qsE '^ENGRAM_DEV_VAULT_PATH=' "$REPO_ROOT/.env" 2>/dev/null; then
+  upsert_env_var "ENGRAM_DEV_VAULT_PATH" "$VAULT_PATH"
+  detail "Saved dev vault path to .env"
+elif [ "$(grep -E '^ENGRAM_DEV_VAULT_PATH=' "$REPO_ROOT/.env" | cut -d= -f2-)" = "" ]; then
+  upsert_env_var "ENGRAM_DEV_VAULT_PATH" "$VAULT_PATH"
+  detail "Updated dev vault path in .env"
 fi
 
 if ! grep -qsE '^ENGRAM_ROOT=' "$REPO_ROOT/.env" 2>/dev/null; then
@@ -239,7 +239,7 @@ fi
 
 # ─── Seed dev vault with sample notes ─────────────────────────────────────
 # Only runs when:
-#   - VAULT_PATH is the default tmp/vault (safe to overwrite), OR
+#   - VAULT_PATH is the default tmp/Engram Test Vault (safe to overwrite), OR
 #   - ENGRAM_SEED_VAULT=true is set explicitly in .env
 # Never seeds a user-configured vault by default.
 

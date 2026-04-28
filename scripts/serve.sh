@@ -2,7 +2,8 @@
 #
 # serve.sh — Start the Engram MCP server in HTTP mode.
 #
-# Reads ENGRAM_VAULT_PATH and MCP_PORT from .env (or environment).
+# Reads ENGRAM_VAULT_PATH from the environment or ~/.engram/config.json.
+# Reads MCP_PORT from .env or environment.
 # Suitable for tunneling via cloudflared or similar.
 #
 # Usage:
@@ -13,12 +14,24 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
-# Load .env
+# Load local server settings. ENGRAM_DEV_VAULT_PATH is intentionally ignored by
+# runtime resolution; set ENGRAM_VAULT_PATH to override explicitly.
 if [ -f "$REPO_ROOT/.env" ]; then
+  _runtime_vault_path="${ENGRAM_VAULT_PATH-}"
+  _had_runtime_vault_path=false
+  if [ -n "${ENGRAM_VAULT_PATH+x}" ]; then
+    _had_runtime_vault_path=true
+  fi
   set -a
   # shellcheck source=/dev/null
   source "$REPO_ROOT/.env" || true
   set +a
+  if [ "$_had_runtime_vault_path" = "true" ]; then
+    ENGRAM_VAULT_PATH="$_runtime_vault_path"
+  else
+    unset ENGRAM_VAULT_PATH
+  fi
+  unset _runtime_vault_path _had_runtime_vault_path
 fi
 
 # Resolve vault path

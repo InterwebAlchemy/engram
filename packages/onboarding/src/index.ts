@@ -362,7 +362,7 @@ async function runSetup(options: {
     env: {
       ...process.env,
       ...envUpdates,
-      ENGRAM_VAULT_PATH: vaultPath,
+      ENGRAM_DEV_VAULT_PATH: vaultPath,
       ENGRAM_ROOT: engramRoot,
       ENGRAM_INSTALL_OBSIDIAN_PLUGIN: installObsidianPluginNow ? 'true' : 'false',
       ENGRAM_SETUP_QUIET: 'true',
