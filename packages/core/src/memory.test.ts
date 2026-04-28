@@ -811,6 +811,122 @@ test('appendScratch auto-sweeps bootstrap-invisible entries from the file', asyn
   assert.deepEqual(remaining.map((e) => e.content), ['recent entry', 'new entry']);
 });
 
+test('appendScratch persists thread tags and round-trips through readScratch', async (t) => {
+  const vaultRoot = await createTempVault();
+  t.after(async () => {
+    await fs.rm(vaultRoot, { recursive: true, force: true });
+  });
+
+  const manager = new MemoryManager(new NodeAdapter(), defaultMemoryConfig(vaultRoot, 'integrated'));
+
+  await manager.appendScratch('session-a', 'engram-only entry', ['engram']);
+  await manager.appendScratch('session-a', 'oara-only entry', ['obsidian-ai-research-assistant']);
+  await manager.appendScratch('session-a', 'cross-thread entry', ['engram', 'obsidian-ai-research-assistant']);
+  await manager.appendScratch('session-a', 'threadless entry');
+
+  const entries = await manager.readScratch();
+  const byContent = new Map(entries.map((entry) => [entry.content, entry.threadIds]));
+
+  assert.deepEqual(byContent.get('engram-only entry'), ['engram']);
+  assert.deepEqual(byContent.get('oara-only entry'), ['obsidian-ai-research-assistant']);
+  assert.deepEqual(byContent.get('cross-thread entry'), ['engram', 'obsidian-ai-research-assistant']);
+  assert.deepEqual(byContent.get('threadless entry'), []);
+});
+
+test('bootstrap read filters scratch entries by active thread, keeping threadless', async (t) => {
+  const vaultRoot = await createTempVault();
+  t.after(async () => {
+    await fs.rm(vaultRoot, { recursive: true, force: true });
+  });
+
+  const manager = new MemoryManager(new NodeAdapter(), defaultMemoryConfig(vaultRoot, 'integrated'));
+
+  await manager.appendScratch('session-a', 'engram milestone', ['engram']);
+  await manager.appendScratch('session-a', 'oara milestone', ['obsidian-ai-research-assistant']);
+  await manager.appendScratch('session-a', 'shared milestone', ['engram', 'obsidian-ai-research-assistant']);
+  await manager.appendScratch('session-a', 'threadless plugin chat note');
+
+  const engramBootstrap = await manager.readScratch({ bootstrap: true, activeThreadId: 'engram' });
+  const engramContents = engramBootstrap.map((entry) => entry.content).sort();
+  assert.deepEqual(engramContents, [
+    'engram milestone',
+    'shared milestone',
+    'threadless plugin chat note',
+  ]);
+
+  const oaraBootstrap = await manager.readScratch({ bootstrap: true, activeThreadId: 'obsidian-ai-research-assistant' });
+  const oaraContents = oaraBootstrap.map((entry) => entry.content).sort();
+  assert.deepEqual(oaraContents, [
+    'oara milestone',
+    'shared milestone',
+    'threadless plugin chat note',
+  ]);
+
+  const unscopedBootstrap = await manager.readScratch({ bootstrap: true });
+  assert.equal(unscopedBootstrap.length, 4, 'no thread filter shows everything');
+});
+
+test('legacy 2-field scratch entries (no thread tag) survive parsing and pass bootstrap filter', async (t) => {
+  const vaultRoot = await createTempVault();
+  t.after(async () => {
+    await fs.rm(vaultRoot, { recursive: true, force: true });
+  });
+
+  const manager = new MemoryManager(new NodeAdapter(), defaultMemoryConfig(vaultRoot, 'integrated'));
+  const scratchPath = path.join(vaultRoot, 'engram', '.scratch');
+  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+
+  await fs.mkdir(path.dirname(scratchPath), { recursive: true });
+  await fs.writeFile(
+    scratchPath,
+    [
+      `[session-legacy | ${oneHourAgo}] legacy untagged entry`,
+      `[session-new | engram | ${new Date(Date.now() - 30 * 60 * 1000).toISOString()}] tagged entry`,
+    ].join('\n'),
+  );
+
+  const all = await manager.readScratch();
+  const legacy = all.find((entry) => entry.content === 'legacy untagged entry');
+  assert.ok(legacy, 'legacy entry parses');
+  assert.deepEqual(legacy?.threadIds, []);
+
+  const tagged = all.find((entry) => entry.content === 'tagged entry');
+  assert.deepEqual(tagged?.threadIds, ['engram']);
+
+  const filtered = await manager.readScratch({ bootstrap: true, activeThreadId: 'engram' });
+  const filteredContents = filtered.map((entry) => entry.content).sort();
+  assert.deepEqual(filteredContents, ['legacy untagged entry', 'tagged entry']);
+});
+
+test('compaction preserves thread tags across the union of compacted entries', async (t) => {
+  const vaultRoot = await createTempVault();
+  t.after(async () => {
+    await fs.rm(vaultRoot, { recursive: true, force: true });
+  });
+
+  const manager = new MemoryManager(new NodeAdapter(), defaultMemoryConfig(vaultRoot, 'integrated'));
+
+  await manager.appendScratch('session-a', 'first milestone', ['engram']);
+  await manager.appendScratch('session-a', 'second milestone', ['engram', 'obsidian-ai-research-assistant']);
+
+  await manager.compactScratch({
+    sessionId: 'session-a',
+    thresholdMs: 0,
+    compactedContent: 'session-a wrapped up the cross-thread MMC integration milestone',
+  });
+
+  const entries = await manager.readScratch();
+  assert.equal(entries.length, 1);
+  const compacted = entries[0];
+  assert.ok(compacted, 'compacted entry exists');
+  assert.ok(compacted.content.startsWith('[COMPACTED]'));
+  assert.deepEqual(
+    [...compacted.threadIds].sort(),
+    ['engram', 'obsidian-ai-research-assistant'],
+    'compacted entry carries union of source thread tags',
+  );
+});
+
 test('resolveThread stamps detected git remote on auto-created threads', async (t) => {
   const vaultRoot = await createTempVault();
   t.after(async () => {

@@ -11,7 +11,7 @@ import type {
 } from './types.js';
 
 const SCRATCH_ENTRY_PATTERN =
-  /^\[(?<sessionId>[^\]]+) \| (?<timestamp>[^\]]+)\] (?<content>.+)$/u;
+  /^\[(?<sessionId>[^|\]]+?) \| (?:(?<threadIds>[^|\]]*) \| )?(?<timestamp>[^\]]+)\] (?<content>.+)$/u;
 const NEWLINES_PATTERN = /\n+/gu;
 const MIN_ENTRIES_TO_COMPACT = 2;
 const SCRATCH_BOOTSTRAP_RETENTION_DAYS = 7;
@@ -30,13 +30,30 @@ const EMPTY_LOG = '';
 
 interface ParsedScratchLine {
   sessionId: string;
+  threadIds: string[];
   timestamp: string;
   content: string;
+}
+
+function parseThreadIds(raw: string | undefined): string[] {
+  if (raw === undefined || raw.length === 0) {
+    return [];
+  }
+
+  return raw
+    .split(',')
+    .map((id) => id.trim())
+    .filter((id) => id.length > 0);
+}
+
+function serializeThreadIds(threadIds: readonly string[]): string {
+  return threadIds.filter((id) => id.length > 0).join(',');
 }
 
 interface EntrySelection {
   firstIndex: number;
   indexes: Set<number>;
+  threadIds: string[];
 }
 
 export interface PendingDream {
@@ -63,8 +80,13 @@ function parseScratchLine(line: string): ParsedScratchLine | null {
     return null;
   }
 
-  const { sessionId, timestamp, content } = groups;
-  return { sessionId, timestamp, content };
+  const { sessionId, threadIds, timestamp, content } = groups;
+  return {
+    sessionId,
+    threadIds: parseThreadIds(threadIds),
+    timestamp,
+    content,
+  };
 }
 
 function shouldKeepEntry(
@@ -198,6 +220,7 @@ function selectSessionEntryIndexes(
   cutoff: number,
 ): EntrySelection {
   const indexes = new Set<number>();
+  const threadIdSet = new Set<string>();
   let firstIndex = -1;
 
   lines.forEach((line, index) => {
@@ -210,9 +233,14 @@ function selectSessionEntryIndexes(
     if (firstIndex === -1) {
       firstIndex = index;
     }
+    if (parsed !== null) {
+      for (const id of parsed.threadIds) {
+        threadIdSet.add(id);
+      }
+    }
   });
 
-  return { firstIndex, indexes };
+  return { firstIndex, indexes, threadIds: Array.from(threadIdSet) };
 }
 
 export function formatScratchContent(content: string): string {
@@ -223,8 +251,13 @@ export function formatScratchLine(
   sessionId: string,
   timestamp: string,
   content: string,
+  threadIds: readonly string[] = [],
 ): string {
-  return `[${sessionId} | ${timestamp}] ${formatScratchContent(content)}`;
+  const tag = serializeThreadIds(threadIds);
+  const header = tag.length > 0
+    ? `${sessionId} | ${tag} | ${timestamp}`
+    : `${sessionId} | ${timestamp}`;
+  return `[${header}] ${formatScratchContent(content)}`;
 }
 
 export function parseScratchLog(raw: string): ScratchEntry[] {
@@ -236,6 +269,7 @@ export function parseScratchLog(raw: string): ScratchEntry[] {
         ? null
         : {
             sessionId: parsed.sessionId,
+            threadIds: parsed.threadIds,
             timestamp: parsed.timestamp,
             content: parsed.content,
           };
@@ -243,54 +277,87 @@ export function parseScratchLog(raw: string): ScratchEntry[] {
     .filter((entry): entry is ScratchEntry => entry !== null);
 }
 
+export interface BootstrapScratchFilterOptions {
+  /** Filter to entries at/after this ISO timestamp. */
+  since?: string;
+  /** Override Date.now() for tests. */
+  now?: number;
+  /** Active thread for scoping — entries pass if threadless or include this id. */
+  activeThreadId?: string;
+}
+
+interface BootstrapFilterCutoffs {
+  ageCutoff: number;
+  compactedCutoff: number;
+  sinceTimestamp: number | null;
+  activeThreadId: string | undefined;
+}
+
 export function bootstrapScratchEntries(
   entries: ScratchEntry[],
   limit: number,
-  since?: string,
-  now = Date.now(),
+  options: BootstrapScratchFilterOptions = {},
 ): ScratchEntry[] {
-  const ageCutoff = now - millisecondsFromDays(SCRATCH_BOOTSTRAP_RETENTION_DAYS);
-  const compactedCutoff = now - millisecondsFromHours(DREAM_COMPACTED_RETENTION_HOURS);
-  const sinceTimestamp = since === undefined ? null : new Date(since).getTime();
+  const now = options.now ?? Date.now();
+  const cutoffs: BootstrapFilterCutoffs = {
+    ageCutoff: now - millisecondsFromDays(SCRATCH_BOOTSTRAP_RETENTION_DAYS),
+    compactedCutoff: now - millisecondsFromHours(DREAM_COMPACTED_RETENTION_HOURS),
+    sinceTimestamp: options.since === undefined ? null : new Date(options.since).getTime(),
+    activeThreadId: options.activeThreadId,
+  };
   const transformed: ScratchEntry[] = [];
 
   for (let index = 0; index < entries.length; index += 1) {
-    const entry = entries.at(index);
-    if (entry === undefined) {
-      break;
-    }
-
-    const entryTimestamp = new Date(entry.timestamp).getTime();
-
-    if (!entryIsVisible(entryTimestamp, ageCutoff, sinceTimestamp)) {
-      continue;
-    }
-    if (entry.content.startsWith(COMPACTED_PREFIX) && entryTimestamp < compactedCutoff) {
-      continue;
-    }
-    if (entry.content.startsWith(DREAM_START_PREFIX)) {
-      const cursor = appendDreamBootstrapEntries(
-        transformed,
-        entries,
-        index,
-        {
-          ageCutoff,
-          sinceTimestamp,
-        },
-      );
-      if (cursor === null) {
-        continue;
-      }
-
+    const cursor = collectBootstrapEntry(transformed, entries, index, cutoffs);
+    if (cursor !== null) {
       index = cursor;
-      continue;
     }
-
-    transformed.push(entry);
   }
 
   transformed.sort((left, right) => new Date(right.timestamp).getTime() - new Date(left.timestamp).getTime());
   return transformed.slice(0, limit);
+}
+
+function collectBootstrapEntry(
+  transformed: ScratchEntry[],
+  entries: ScratchEntry[],
+  index: number,
+  cutoffs: BootstrapFilterCutoffs,
+): number | null {
+  const entry = entries.at(index);
+  if (entry === undefined) {
+    return null;
+  }
+
+  const entryTimestamp = new Date(entry.timestamp).getTime();
+  if (!entryIsVisible(entryTimestamp, cutoffs.ageCutoff, cutoffs.sinceTimestamp)) {
+    return null;
+  }
+  if (entry.content.startsWith(COMPACTED_PREFIX) && entryTimestamp < cutoffs.compactedCutoff) {
+    return null;
+  }
+  if (entry.content.startsWith(DREAM_START_PREFIX)) {
+    return appendDreamBootstrapEntries(transformed, entries, index, {
+      ageCutoff: cutoffs.ageCutoff,
+      sinceTimestamp: cutoffs.sinceTimestamp,
+    });
+  }
+  if (!entryMatchesActiveThread(entry, cutoffs.activeThreadId)) {
+    return null;
+  }
+
+  transformed.push(entry);
+  return null;
+}
+
+function entryMatchesActiveThread(entry: ScratchEntry, activeThreadId: string | undefined): boolean {
+  if (activeThreadId === undefined || activeThreadId.length === 0) {
+    return true;
+  }
+  if (entry.threadIds.length === 0) {
+    return true;
+  }
+  return entry.threadIds.includes(activeThreadId);
 }
 
 export function findCompleteDreamSequences(entries: ScratchEntry[]): ScratchEntry[][] {
@@ -358,6 +425,8 @@ export interface RenderBootstrapScratchOptions {
   /** Token estimator; defaults to chars/4 for dependency-free use. */
   estimateTokens?: (text: string) => number;
   now?: number;
+  /** Active thread for scoping — entries pass if threadless or include this id. */
+  activeThreadId?: string;
 }
 
 export interface RenderBootstrapScratchResult {
@@ -413,7 +482,11 @@ export function renderBootstrapScratch(
 ): RenderBootstrapScratchResult {
   const now = options.now ?? Date.now();
   const limit = options.limit ?? DEFAULT_BOOTSTRAP_SCRATCH_LIMIT;
-  const filtered = bootstrapScratchEntries(entries, limit, options.since, now);
+  const filtered = bootstrapScratchEntries(entries, limit, {
+    since: options.since,
+    now,
+    activeThreadId: options.activeThreadId,
+  });
   let included = filtered.map((entry) => ({
     entry,
     rendered: formatBootstrapScratchEntry(entry, now),
@@ -460,6 +533,7 @@ export function compactScratchLog(
     options.sessionId,
     timestamp,
     `${COMPACTED_PREFIX} ${strippedContent}`,
+    selection.threadIds,
   );
 
   return lines
@@ -569,14 +643,19 @@ export function deleteScratchLog(
   return { content: kept.join('\n'), removed };
 }
 
+export interface ScratchAppendInput {
+  sessionId: string;
+  content: string;
+  threadIds?: readonly string[];
+}
+
 export async function appendScratchEntry(
   adapter: FileSystemAdapter,
   logPath: string,
-  sessionId: string,
-  content: string,
+  input: ScratchAppendInput,
 ): Promise<void> {
   const timestamp = new Date().toISOString();
-  const line = formatScratchLine(sessionId, timestamp, content);
+  const line = formatScratchLine(input.sessionId, timestamp, input.content, input.threadIds ?? []);
 
   if (supportsProcess(adapter)) {
     await adapter.process(logPath, (existing) => {
@@ -624,7 +703,10 @@ export async function readScratchEntries(
   }
 
   if (options.bootstrap === true) {
-    return bootstrapScratchEntries(entries, options.limit ?? defaults.bootstrapLimit, options.since);
+    return bootstrapScratchEntries(entries, options.limit ?? defaults.bootstrapLimit, {
+      since: options.since,
+      activeThreadId: options.activeThreadId,
+    });
   }
 
   if (typeof options.since === 'string' && options.since.length > 0) {

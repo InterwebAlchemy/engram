@@ -418,9 +418,9 @@ export class MemoryManager {
 
   private get scratchFilePath(): string { return path.join(this.writeRoot, this.config.scratchFile); }
 
-  async appendScratch(sessionId: string, content: string): Promise<void> {
+  async appendScratch(sessionId: string, content: string, threadIds: readonly string[] = []): Promise<void> {
     this.assertWriteAllowed(this.scratchFilePath);
-    await appendScratchEntry(this.adapter, this.scratchFilePath, sessionId, content);
+    await appendScratchEntry(this.adapter, this.scratchFilePath, { sessionId, content, threadIds });
   }
 
   async readScratch(options: ScratchReadOptions = {}): Promise<ScratchEntry[]> {

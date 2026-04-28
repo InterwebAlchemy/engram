@@ -241,6 +241,13 @@ export interface PruneOptions {
 
 export interface ScratchEntry {
   sessionId: string;
+  /**
+   * Threads this entry is scoped to. Empty array means threadless — the writer
+   * had no active thread (e.g. plugin chat outside a project) or wrote across
+   * thread boundaries. Bootstrap reads filter to active-thread + threadless,
+   * so threadless entries always surface.
+   */
+  threadIds: string[];
   timestamp: string; // ISO 8601
   content: string;
 }
@@ -254,6 +261,8 @@ export interface ScratchReadOptions {
   since?: string;
   /** Apply bootstrap pruning and dream-sequence compaction. */
   bootstrap?: boolean;
+  /** Active thread for bootstrap filtering — entries pass if threadless or include this id. */
+  activeThreadId?: string;
 }
 
 export interface ScratchCompactOptions {

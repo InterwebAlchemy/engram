@@ -7,13 +7,13 @@ Engram is a memory continuity system for AI agents.
 Run these in order at the start of every session:
 
 ```
-soul(action: "get")                                        → restores identity
-thread(action: "resolve")                                  → auto-detects or creates Thread from cwd
-context(action: "load", query: "session focus", thread_id) → scopes memory to that Thread
-scratch(action: "read", bootstrap: true)                   → recent scratch activity
+soul(action: "get")                                                 → restores identity
+thread(action: "resolve")                                           → auto-detects or creates Thread from cwd
+context(action: "load", query: "session focus", thread_id)          → scopes memory to that Thread
+scratch(action: "read", bootstrap: true, thread_id)                 → recent scratch activity, filtered to this Thread
 ```
 
-Pass the `thread_id` from `resolve` to `context`. If `resolve` returns `status: "created"`, flesh out the thread once you have context. If a thread duplicates an existing one, use `thread(action: "merge")`.
+Pass the `thread_id` from `resolve` to `context` and `scratch(read, bootstrap)`. The scratch bootstrap shows entries scoped to the active thread plus threadless entries (e.g. plugin chat or Dream summaries). If `resolve` returns `status: "created"`, flesh out the thread once you have context. If a thread duplicates an existing one, use `thread(action: "merge")`.
 
 ## Threads
 
@@ -43,7 +43,7 @@ Inbox items surface during `context(action: "load")` (FIFO). Surface them in the
 
 ## Working Memory
 
-Scratch is the shared working log between sessions. Write to it at task start, milestones, tradeoffs, and stopping points via `scratch(action: "append")`.
+Scratch is the shared working log between sessions. Write to it at task start, milestones, tradeoffs, and stopping points via `scratch(action: "append", thread_id)` — the thread tag scopes entries so other threads' bootstraps don't surface yours. Pass `thread_ids: [...]` only for the rare case an entry honestly belongs to multiple threads; durable cross-thread findings should graduate to memory or thread Context. Omit both fields when working without an active thread (plugin chat, threadless work) — those entries surface in every bootstrap.
 
 Close-out: `scratch(action: "compact", session_id: SESSION_ID, compacted_content: summary)`, then `memory(action: "store")` for key insights.
 

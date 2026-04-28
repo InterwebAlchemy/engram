@@ -208,9 +208,13 @@ export async function handleScratchTool(
   args: ToolArgs,
 ): Promise<ToolResponse> {
   switch (requireEnumArg(args, 'action', SCRATCH_ACTIONS)) {
-    case 'append':
-      await manager.appendScratch(SESSION_ID, requireStringArg(args, 'content'));
+    case 'append': {
+      const explicit = optionalStringArrayArg(args, 'thread_ids');
+      const fallback = optionalStringArg(args, 'thread_id');
+      const threadIds = explicit ?? (fallback === undefined ? [] : [fallback]);
+      await manager.appendScratch(SESSION_ID, requireStringArg(args, 'content'), threadIds);
       return textResult('Appended to scratch log.');
+    }
     case 'read':
       return await handleScratchRead(manager, args);
     case 'read_dream':
@@ -232,18 +236,20 @@ export async function handleScratchTool(
 async function handleScratchRead(manager: MemoryManager, args: ToolArgs): Promise<ToolResponse> {
   const isBootstrap = optionalBooleanArg(args, 'bootstrap') === true;
   const tokenBudget = optionalNumberArg(args, 'token_budget');
+  const activeThreadId = optionalStringArg(args, 'thread_id');
   const entries = await manager.readScratch({
     sessionId: optionalStringArg(args, 'session_id'),
     limit: optionalNumberArg(args, 'limit'),
     since: optionalStringArg(args, 'since'),
     bootstrap: isBootstrap,
+    activeThreadId,
   });
   if (entries.length === 0) {
     return textResult('Scratch log is empty.');
   }
 
   if (isBootstrap) {
-    const { included } = renderBootstrapScratch(entries, { tokenBudget, estimateTokens });
+    const { included } = renderBootstrapScratch(entries, { tokenBudget, estimateTokens, activeThreadId });
     let text = included.map(({ rendered }) => rendered).join('\n');
     const pending = await manager.readFirstPendingDream();
     if (pending !== null) {
