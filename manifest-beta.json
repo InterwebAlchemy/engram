@@ -1,7 +1,7 @@
 {
 	"id": "engram",
 	"name": "Engram",
-	"version": "0.1.0",
+	"version": "0.1.0-beta.40",
 	"minAppVersion": "1.11.4",
 	"description": "Chat with LLMs from within Obsidian. Provider-agnostic, with persistent memory management backed by your vault.",
 	"author": "Interweb Alchemy",
