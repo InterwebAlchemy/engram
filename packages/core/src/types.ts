@@ -184,6 +184,7 @@ export interface MemoryConfig {
   conversationsPath: string;
   workingPath: string;
   scratchFile: string;
+  bootstrapFile: string;
   archivePath: string;
   readPaths: string[];
   tokenCorrections: Record<string, number>;
@@ -205,6 +206,7 @@ export function defaultMemoryConfig(
     conversationsPath: 'conversations',
     workingPath: 'working',
     scratchFile: '.scratch',
+    bootstrapFile: '.bootstrap',
     archivePath: 'archive',
     readPaths: [],
     tokenCorrections: {},

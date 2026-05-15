@@ -1,4 +1,7 @@
-import { overlayTargetKey } from './donut-chart-metrics';
+import {
+  BOOTSTRAP_INSTRUCTIONS_TARGET_KEY,
+  overlayTargetKey,
+} from './donut-chart-metrics';
 import {
   buildInnerSegments,
   getInnerValue,
@@ -21,6 +24,15 @@ export function buildBootstrapLegendItems(
       meta: `~${formatCount(sharedBootstrapValue)} ${data.unit === 'tokens' ? 'tok' : 'items'}`,
       swatchVariant: 'context',
       target: { kind: 'bootstrap', key: 'bootstrap' } as const,
+    });
+  }
+  if (data.bootstrapInstructions.exists) {
+    items.push({
+      color: data.bootstrapInstructions.color,
+      label: 'Bootstrap Instructions',
+      meta: `~${formatCount(data.bootstrapInstructions.tokens)} tok`,
+      swatchVariant: 'solid',
+      target: { kind: 'overlay', key: BOOTSTRAP_INSTRUCTIONS_TARGET_KEY } as const,
     });
   }
 

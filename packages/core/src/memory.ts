@@ -438,6 +438,23 @@ export class MemoryManager {
   async sweepScratch(): Promise<number> { this.assertWriteAllowed(this.scratchFilePath); return await sweepScratchFile(this.adapter, this.scratchFilePath); }
   async clearScratch(): Promise<void> { this.assertWriteAllowed(this.scratchFilePath); await this.adapter.delete(this.scratchFilePath).catch(() => undefined); }
 
+  // ─── Bootstrap instructions ───────────────────────────────────────────────
+
+  private get bootstrapFilePath(): string { return path.join(this.writeRoot, this.config.bootstrapFile); }
+
+  async getBootstrapInstructions(): Promise<string | null> {
+    if (!await this.adapter.exists(this.bootstrapFilePath)) {
+      return null;
+    }
+    return await this.adapter.read(this.bootstrapFilePath);
+  }
+
+  async writeBootstrapInstructions(content: string): Promise<void> {
+    this.assertWriteAllowed(this.bootstrapFilePath);
+    await this.adapter.mkdir(path.dirname(this.bootstrapFilePath));
+    await this.adapter.write(this.bootstrapFilePath, content);
+  }
+
   // ─── Archive & conversation (delegated to MemoryExtraOperations) ──────────
 
   async archiveForgotten(olderThanDays?: number): Promise<string[]> { return await this.extraOperations.archiveForgotten(olderThanDays); }

@@ -74,6 +74,7 @@ const ctx = await esbuild.context({
   treeShaking: true,
   loader: {
     '.css': 'text',
+    '.md': 'text',
   },
   external: [
     'obsidian',

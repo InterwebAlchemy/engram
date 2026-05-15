@@ -9,7 +9,7 @@ import {
   updateRawNote,
 } from './note-helpers.js';
 
-const NOTE_PREVIEW_LENGTH = 200;
+const NOTE_PREVIEW_TOKENS = 50;
 const DEFAULT_NOTE_SEARCH_LIMIT = 10;
 
 export interface NoteOperationDependencies {
@@ -86,7 +86,7 @@ export class NoteOperations {
         prefix,
         noteRelativePath: (filePath) => this.deps.noteRelativePath(filePath),
         readNote: async (notePath) => await this.readNote(notePath),
-        previewLength: NOTE_PREVIEW_LENGTH,
+        previewTokens: NOTE_PREVIEW_TOKENS,
       },
     );
   }
@@ -102,7 +102,7 @@ export class NoteOperations {
       {
         limit: options.limit ?? DEFAULT_NOTE_SEARCH_LIMIT,
         noteRelativePath: (filePath) => this.deps.noteRelativePath(filePath),
-        previewLength: NOTE_PREVIEW_LENGTH,
+        previewTokens: NOTE_PREVIEW_TOKENS,
       },
     );
   }

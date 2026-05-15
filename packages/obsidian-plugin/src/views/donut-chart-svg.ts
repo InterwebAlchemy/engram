@@ -9,6 +9,8 @@ export const OUTER_R_OUT = 122;
 export const OUTER_R_IN = 94;
 export const INNER_R_OUT = 88;
 export const INNER_R_IN = 64;
+export const BOOTSTRAP_INSTRUCTIONS_R_OUT = 56;
+export const BOOTSTRAP_INSTRUCTIONS_R_IN = 50;
 export const ARC_GAP_DEG = 1.5;
 export const SECTION_GAP_DEG = 3;
 export const ARC_START_DEG = -90;
@@ -157,6 +159,24 @@ export function appendBootstrapLabel(svg: SVGElement, startDeg: number, endDeg: 
   text.textContent = 'bootstrap';
   svg.appendChild(text);
   return text;
+}
+
+export function appendBootstrapInstructionsArc(
+  svg: SVGElement,
+  startDeg: number,
+  endDeg: number,
+  color: string,
+): SVGPathElement {
+  const path = appendArc({
+    svg,
+    rOut: BOOTSTRAP_INSTRUCTIONS_R_OUT,
+    rIn: BOOTSTRAP_INSTRUCTIONS_R_IN,
+    startDeg,
+    endDeg,
+    color,
+  });
+  path.classList.add('engram-donut-bootstrap-instructions-arc');
+  return path;
 }
 
 export function appendReclaimArc(svg: SVGElement, startDeg: number, endDeg: number): void {

@@ -1,6 +1,7 @@
 import * as path from 'node:path';
 import type { FileSystemAdapter } from './adapters/types.js';
 import { supportsProcess, normalizeNoteContent } from './memory-helpers.js';
+import { truncateToTokens } from './tokenizer.js';
 import { VaultNote } from './vault.js';
 
 const BACKSLASH_PATTERN = /\\/gu;
@@ -44,8 +45,8 @@ export function appendNoteContent(
   return `${current}${separator}${addition}`;
 }
 
-export function notePreview(content: string, maxChars: number): string {
-  return content.slice(0, maxChars);
+export function notePreview(content: string, maxTokens: number): string {
+  return truncateToTokens(content, maxTokens);
 }
 
 export function stripMarkdownExtension(pathValue: string): string {
@@ -198,7 +199,7 @@ export async function listRawNotes(
     prefix?: string;
     noteRelativePath: (filePath: string) => string;
     readNote: (filePath: string) => Promise<string>;
-    previewLength: number;
+    previewTokens: number;
   },
 ): Promise<Array<{ path: string; preview: string }>> {
   const files = await adapter.list(notesRoot).catch(() => [] as string[]);
@@ -215,7 +216,7 @@ export async function listRawNotes(
       const content = await options.readNote(relativePath);
       return {
         path: relativePath,
-        preview: notePreview(content, options.previewLength),
+        preview: notePreview(content, options.previewTokens),
       };
     }),
   );
@@ -228,7 +229,7 @@ export async function searchRawNotes(
   options: {
     limit?: number;
     noteRelativePath: (filePath: string) => string;
-    previewLength: number;
+    previewTokens: number;
   },
 ): Promise<Array<{ path: string; preview: string; score?: number }>> {
   const results = await adapter.search(query, notesRoot).catch(() => [] as Array<{
@@ -241,7 +242,7 @@ export async function searchRawNotes(
     .slice(0, options.limit ?? DEFAULT_LIST_LIMIT)
     .map((result) => ({
       path: options.noteRelativePath(result.path),
-      preview: notePreview(result.content, options.previewLength),
+      preview: notePreview(result.content, options.previewTokens),
       score: result.score,
     }));
 }

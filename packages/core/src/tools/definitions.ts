@@ -29,8 +29,8 @@ interface StringSchemaProperty {
 
 export const SESSION_ID = randomUUID();
 export const JSON_INDENT = 2;
-export const SHORT_PREVIEW_LENGTH = 120;
-export const LONG_PREVIEW_LENGTH = 200;
+export const SHORT_PREVIEW_TOKENS = 30;
+export const LONG_PREVIEW_TOKENS = 50;
 export const DEFAULT_CONTEXT_TOKEN_BUDGET = 2000;
 export const DEFAULT_LIST_LIMIT = 20;
 export const DEFAULT_SEARCH_LIMIT = 10;

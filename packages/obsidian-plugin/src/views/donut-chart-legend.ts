@@ -198,6 +198,10 @@ export function soulTooltipBody(formatCount: (n: number) => string, tokens: numb
   return `Soul · 1 doc · ~${formatCount(tokens)} tok`;
 }
 
+export function bootstrapInstructionsTooltipBody(formatCount: (n: number) => string, tokens: number): string {
+  return `Bootstrap Instructions · 1 file · ~${formatCount(tokens)} tok`;
+}
+
 export function globalInboxTooltipBody(
   formatCount: (n: number) => string,
   details: {
