@@ -3,11 +3,11 @@ import type EngramPlugin from './main';
 import { DEFAULT_SETTINGS, KNOWN_MODELS, BUILTIN_PROVIDER_IDS } from './constants';
 import type { ProviderSettings } from './constants';
 import { renderDreamsModelDefaults } from './dreams-settings';
+import { renderModelSection } from './settings-models';
 
 const MAX_MEMORY_COUNT = 50;
 const TEMPERATURE_MAX = 2;
 const TEMPERATURE_STEP = 0.1;
-const CONTEXT_WINDOW_DIVISOR = 1000;
 const DEFAULT_CUSTOM_PROVIDER_URL = 'http://localhost:11434';
 
 export class EngramSettingTab extends PluginSettingTab {
@@ -22,6 +22,8 @@ export class EngramSettingTab extends PluginSettingTab {
     } = this;
     const { settings } = plugin;
     const { providers } = settings;
+    const openProviderIds = this.captureOpenProviderIds();
+    const customSectionOpen = this.captureCustomSectionOpen();
     containerEl.empty();
 
     // ─── Active Provider ──────────────────────────────────────────────────
@@ -66,12 +68,13 @@ export class EngramSettingTab extends PluginSettingTab {
     containerEl.createEl('h3', { text: 'Built-in providers' });
 
     for (const id of BUILTIN_PROVIDER_IDS) {
-      this.renderProviderSection(containerEl, id, false);
+      this.renderProviderSection(containerEl, id, false, openProviderIds.has(id));
     }
 
     // ─── Custom OpenAI-compatible providers ───────────────────────────────
 
     const customSection = containerEl.createEl('details', { cls: 'engram-section-details' });
+    if (customSectionOpen) customSection.setAttribute('open', '');
     const customSummary = customSection.createEl('summary', { cls: 'engram-section-summary' });
     customSummary.createSpan({ cls: 'engram-section-summary-name', text: 'Custom providers' });
     if (customIds.length > 0) {
@@ -87,7 +90,7 @@ export class EngramSettingTab extends PluginSettingTab {
     this.renderAddProviderForm(customInner);
 
     for (const id of customIds) {
-      this.renderProviderSection(customInner, id, true);
+      this.renderProviderSection(customInner, id, true, openProviderIds.has(id));
     }
 
     // ─── Dreams ───────────────────────────────────────────────────────────
@@ -238,12 +241,35 @@ export class EngramSettingTab extends PluginSettingTab {
       );
   }
 
+  // ─── Accordion open-state preservation ─────────────────────────────────────
+
+  private captureOpenProviderIds(): Set<string> {
+    const open = new Set<string>();
+    const nodes = this.containerEl.querySelectorAll<HTMLDetailsElement>(
+      'details[data-provider-id]',
+    );
+    nodes.forEach((el) => {
+      if (el.open && el.dataset.providerId !== undefined) {
+        open.add(el.dataset.providerId);
+      }
+    });
+    return open;
+  }
+
+  private captureCustomSectionOpen(): boolean {
+    const el = this.containerEl.querySelector<HTMLDetailsElement>(
+      'details.engram-section-details',
+    );
+    return el?.open ?? false;
+  }
+
   // ─── Per-provider accordion section ───────────────────────────────────────
 
   private renderProviderSection(
     containerEl: HTMLElement,
     id: string,
     canRemove: boolean,
+    open: boolean,
   ): void {
     const { plugin } = this;
     const { settings } = plugin;
@@ -251,7 +277,11 @@ export class EngramSettingTab extends PluginSettingTab {
     const { [id]: cfg } = providers;
     const isActive = id === activeProviderId;
 
-    const details = containerEl.createEl('details', { cls: 'engram-provider-details' });
+    const details = containerEl.createEl('details', {
+      cls: 'engram-provider-details',
+      attr: { 'data-provider-id': id },
+    });
+    if (open) details.setAttribute('open', '');
     const summary = details.createEl('summary', { cls: 'engram-provider-summary' });
     summary.createSpan({ cls: 'engram-provider-summary-name', text: cfg.name });
     if (isActive) {
@@ -315,7 +345,10 @@ export class EngramSettingTab extends PluginSettingTab {
         await this.plugin.saveSettings();
       });
 
-    this.renderModelSection(inner, id);
+    renderModelSection(inner, id, this.plugin, {
+      onRefresh: () => { this.refreshModelBackedViews(); },
+      redisplay: () => { this.display(); },
+    });
   }
 
   // ─── Add custom provider form ──────────────────────────────────────────────
@@ -363,128 +396,6 @@ export class EngramSettingTab extends PluginSettingTab {
       );
   }
 
-  // ─── Model management section ──────────────────────────────────────────────
-
-  private renderModelSection(containerEl: HTMLElement, id: string): void {
-    const { plugin } = this;
-    const { settings } = plugin;
-    const { providers } = settings;
-    const { [id]: cfg } = providers;
-    const knownModels = KNOWN_MODELS[id] ?? [];
-
-    const getModelNameForProvider = (mid: string): string =>
-      knownModels.find((m) => m.id === mid)?.name ?? mid;
-
-    containerEl.createEl('h4', { text: 'Models' });
-
-    // Known models sorted alphabetically by display name
-    const sortedKnown = [...knownModels].sort((a, b) => a.name.localeCompare(b.name));
-
-    for (const model of sortedKnown) {
-      const desc = model.contextWindow === undefined
-        ? model.id
-        : `${model.id} · ${Math.round(model.contextWindow / CONTEXT_WINDOW_DIVISOR)}K ctx`;
-
-      new Setting(containerEl)
-        .setName(model.name)
-        .setDesc(desc)
-        .addToggle((t) =>
-          t.setValue(cfg.enabledModels.includes(model.id)).onChange(async (on) => {
-            if (on) {
-              if (!cfg.enabledModels.includes(model.id)) cfg.enabledModels.push(model.id);
-            } else {
-              cfg.enabledModels = cfg.enabledModels.filter((m) => m !== model.id);
-              if (cfg.defaultModel === model.id) cfg.defaultModel = firstModelOrEmpty(cfg.enabledModels);
-            }
-            await this.plugin.saveSettings();
-            this.refreshModelBackedViews();
-            this.display();
-          }),
-        );
-    }
-
-    // Custom model entries sorted alphabetically, each removable
-    const sortedCustom = [...cfg.customModels].sort((a, b) => a.localeCompare(b));
-
-    for (const customId of sortedCustom) {
-      new Setting(containerEl)
-        .setName(customId)
-        .setDesc('Custom model')
-        .addExtraButton((btn) =>
-          btn
-            .setIcon('trash')
-            .setTooltip('Remove')
-            .onClick(async () => {
-              cfg.customModels = cfg.customModels.filter((m) => m !== customId);
-              cfg.enabledModels = cfg.enabledModels.filter((m) => m !== customId);
-              if (cfg.defaultModel === customId) cfg.defaultModel = firstModelOrEmpty(cfg.enabledModels);
-              await this.plugin.saveSettings();
-              this.refreshModelBackedViews();
-              this.display();
-            }),
-        );
-    }
-
-    // Add custom model
-    let newModelId = '';
-    new Setting(containerEl)
-      .setName('Add custom model')
-      .setDesc('Enter any model ID supported by this endpoint.')
-      .addText((t) =>
-        t
-          .setPlaceholder('model-id or org/model-id')
-          .onChange((v) => {
-            newModelId = v.trim();
-          }),
-      )
-      .addButton((btn) =>
-        btn.setButtonText('Add').onClick(async () => {
-          if (newModelId.length === 0 || cfg.customModels.includes(newModelId)) return;
-          cfg.customModels.push(newModelId);
-          cfg.enabledModels.push(newModelId);
-          if (cfg.defaultModel.length === 0) {
-            cfg.defaultModel = newModelId;
-          }
-          newModelId = '';
-          await this.plugin.saveSettings();
-          this.refreshModelBackedViews();
-          this.display();
-        }),
-      );
-
-    // Default model dropdown (from enabled models, sorted alpha) or text fallback
-    const sortedEnabled = [...cfg.enabledModels].sort((a, b) =>
-      getModelNameForProvider(a).localeCompare(getModelNameForProvider(b)),
-    );
-
-    if (sortedEnabled.length > 0) {
-      new Setting(containerEl)
-        .setName('Default model')
-        .setDesc('Pre-selected when switching to this provider in the chat.')
-        .addDropdown((dd) => {
-          for (const mid of sortedEnabled) dd.addOption(mid, getModelNameForProvider(mid));
-          dd.setValue(cfg.defaultModel.length > 0 ? cfg.defaultModel : firstModelOrEmpty(sortedEnabled));
-          dd.onChange(async (value) => {
-            cfg.defaultModel = value;
-            await this.plugin.saveSettings();
-            this.refreshModelBackedViews();
-          });
-        });
-    } else {
-      new Setting(containerEl)
-        .setName('Default model')
-        .setDesc('No models enabled. Toggle models above or add a custom model ID.')
-        .addText((t) =>
-          t
-            .setPlaceholder('model-id')
-            .setValue(cfg.defaultModel)
-            .onChange(async (value) => {
-              cfg.defaultModel = value;
-              await this.plugin.saveSettings();
-            }),
-        );
-    }
-  }
   private refreshModelBackedViews(): void {
     this.plugin.refreshEngramView('chat');
     this.plugin.refreshEngramView('memories');
@@ -503,10 +414,6 @@ function parseExtractionMode(value: string): 'auto' | 'manual' | 'disabled' {
 
 function slugifyProviderId(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/gu, '-');
-}
-
-function firstModelOrEmpty(modelIds: string[]): string {
-  return modelIds[0] ?? '';
 }
 
 function getModelName(providerId: string, modelId: string): string {
