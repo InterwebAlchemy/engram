@@ -19,6 +19,12 @@ export interface SoulInfo {
   tokens: number;
 }
 
+export interface BootstrapInstructionsInfo {
+  color: string;
+  exists: boolean;
+  tokens: number;
+}
+
 export interface GlobalInboxInfo {
   bootstrapCount: number;
   bootstrapTokens: number;
@@ -65,6 +71,7 @@ export interface ScratchInfo {
 
 export interface DonutChartData {
   bootstrapCount: number;
+  bootstrapInstructions: BootstrapInstructionsInfo;
   bootstrapTokens: number;
   centerLabel: string;
   centerValue: number;

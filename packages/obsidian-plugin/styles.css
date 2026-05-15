@@ -10,6 +10,7 @@
   --engram-type-reflection: #f0a63b;
   --engram-type-other: var(--text-muted);
   --engram-soul: #d6b86b;
+  --engram-bootstrap-instructions: #c7d66b;
   --engram-global-inbox: #7ab7cf;
   --engram-thread: #f09a6b;
   --engram-thread-1: #f09a6b;
@@ -1208,6 +1209,10 @@ details[open] > .engram-reasoning-summary::before {
 
 .engram-donut-soul-slice {
   filter: drop-shadow(0 0 3px color-mix(in srgb, var(--engram-soul, var(--text-accent)) 55%, transparent));
+}
+
+.engram-donut-bootstrap-instructions-arc {
+  filter: drop-shadow(0 0 3px color-mix(in srgb, var(--engram-bootstrap-instructions) 42%, transparent));
 }
 
 .engram-donut-global-inbox-slice {

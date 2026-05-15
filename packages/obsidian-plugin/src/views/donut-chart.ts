@@ -8,9 +8,6 @@ import {
   OUTER_R_OUT,
   SECTION_GAP_DEG,
   appendArc,
-  appendBootstrapLabel,
-  appendBootstrapOutline,
-  appendBootstrapOverlay,
   appendReclaimArc,
   appendTrackRing,
   createSvg,
@@ -46,6 +43,8 @@ import {
   overlayTargetKey,
   resolveFocusedCenter,
 } from './donut-chart-metrics';
+import { renderBootstrapInstructionsArc } from './donut-chart-bootstrap-instructions';
+import { renderBootstrapWedge } from './donut-chart-bootstrap-wedge';
 import { renderContextCapOverlay } from './donut-chart-overlays';
 import type {
   DonutChartData,
@@ -54,6 +53,7 @@ import type {
 import { InteractionState } from './donut-chart-types';
 
 export type {
+  BootstrapInstructionsInfo,
   DonutChartData,
   GlobalInboxInfo,
   ScratchInfo,
@@ -144,7 +144,26 @@ function renderRing(ctx: RenderContext): void {
   if (layout.grandTotal > 0) {
     renderOuterRing(svg, ctx, layout);
     renderInnerRing(svg, ctx, layout);
-    renderBootstrapWedge(svg, ctx, layout);
+    renderBootstrapWedge({
+      data: ctx.data,
+      formatCount: ctx.formatCount,
+      frame: ctx.frame,
+      interaction: ctx.interaction,
+      onInteractionChange: ctx.onInteractionChange,
+      placement: layout.bootstrapWedge,
+      svg,
+    });
+    renderBootstrapInstructionsArc({
+      data: ctx.data,
+      formatCount: ctx.formatCount,
+      frame: ctx.frame,
+      interaction: ctx.interaction,
+      onInteractionChange: ctx.onInteractionChange,
+      placement: layout.bootstrapWedge,
+      svg,
+      tooltip: ctx.tooltip,
+      wrapper: ctx.wrapper,
+    });
     renderReclaimOverlay(svg, ctx, layout);
   }
 
@@ -378,24 +397,6 @@ function innerTooltipBody(ctx: RenderContext, segment: InnerSegment): string {
     case 'scratch-cold':
       return scratchColdTooltipBody(ctx.formatCount, segment.count, segment.tokens);
   }
-}
-
-function renderBootstrapWedge(svg: SVGElement, ctx: RenderContext, layout: InnerLayout): void {
-  if (layout.bootstrapWedge === null) {
-    return;
-  }
-  const target = { kind: 'bootstrap', key: 'bootstrap' } as const;
-  const overlay = appendBootstrapOverlay(svg, layout.bootstrapWedge.startDeg, layout.bootstrapWedge.endDeg);
-  const outline = appendBootstrapOutline(svg, layout.bootstrapWedge.startDeg, layout.bootstrapWedge.endDeg);
-  const label = appendBootstrapLabel(svg, layout.bootstrapWedge.startDeg, layout.bootstrapWedge.endDeg);
-  label.setAttribute(
-    'aria-label',
-    `Bootstrap context · ~${ctx.formatCount(ctx.data.bootstrapTokens + ctx.data.scratch.bootstrapTokens)} ${ctx.data.unit}`,
-  );
-
-  decorateInteractiveElement(overlay, ctx, target, { bootstrap: true, interactive: false });
-  decorateInteractiveElement(outline, ctx, target, { bootstrap: true, interactive: false });
-  decorateInteractiveElement(label, ctx, target, { bootstrap: true });
 }
 
 function renderReclaimOverlay(svg: SVGElement, ctx: RenderContext, layout: InnerLayout): void {

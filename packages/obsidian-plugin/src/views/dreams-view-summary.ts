@@ -6,6 +6,7 @@ import {
 import type { DreamsReport } from '../../../dreams/src/types';
 import {
   renderDonutChart,
+  type BootstrapInstructionsInfo,
   type DonutChartData,
   type GlobalInboxInfo,
   type SoulInfo,
@@ -14,6 +15,7 @@ import {
 import type { ThreadChartData } from './dreams-view-dashboard-data';
 import {
   TYPE_COLOR_BY_LABEL,
+  buildBootstrapInstructionsInfo,
   buildScratchInfo,
   buildStateBreakdown,
   estimateMemoryTokens,
@@ -46,6 +48,7 @@ interface QueueGroup {
 interface SummaryData {
   approxTokens: number;
   bootstrapCount: number;
+  bootstrapInstructions: BootstrapInstructionsInfo;
   bootstrapTokens: number;
   dreamTargetCount: number;
   globalInbox: GlobalInboxInfo;
@@ -60,6 +63,7 @@ interface SummaryData {
 }
 
 export interface SummarySectionInputs {
+  bootstrapInstructions: string | null;
   memoryNotes: VaultNote[];
   report: DreamsReport;
   scratchEntries: ScratchEntry[];
@@ -111,10 +115,23 @@ function renderDonutForMode(parent: HTMLElement, data: SummaryData, mode: ChartM
   const soulItem = data.soul.exists ? 1 : 0;
   const threadTokenTotal = data.threads.reduce((sum, thread) => sum + thread.storedTokens, 0);
   const threadItemTotal = data.threads.reduce((sum, thread) => sum + thread.storedCount, 0);
-  const tokenTotal = data.approxTokens + data.scratch.totalTokens + data.globalInbox.storedTokens + threadTokenTotal;
-  const itemTotal = data.totalMemories + soulItem + data.scratch.totalEntries + data.globalInbox.storedCount + threadItemTotal;
+  const bootstrapInstructionItem = data.bootstrapInstructions.exists ? 1 : 0;
+  const tokenTotal =
+    data.approxTokens +
+    data.bootstrapInstructions.tokens +
+    data.scratch.totalTokens +
+    data.globalInbox.storedTokens +
+    threadTokenTotal;
+  const itemTotal =
+    data.totalMemories +
+    soulItem +
+    bootstrapInstructionItem +
+    data.scratch.totalEntries +
+    data.globalInbox.storedCount +
+    threadItemTotal;
   const chartData: DonutChartData = {
     bootstrapCount: data.bootstrapCount,
+    bootstrapInstructions: data.bootstrapInstructions,
     bootstrapTokens: data.bootstrapTokens,
     centerLabel: isTokens ? 'est. tokens' : 'items',
     centerValue: isTokens ? tokenTotal : itemTotal,
@@ -169,10 +186,8 @@ function renderMaintenanceQueue(parent: HTMLElement, data: SummaryData): void {
 }
 
 function buildSummaryData(inputs: SummarySectionInputs): SummaryData {
-  const { memoryNotes, report, scratchEntries, soulNote, threadData } = inputs;
-  const nonSoulNotes = soulNote === null
-    ? memoryNotes
-    : memoryNotes.filter((note) => note.path !== soulNote.path);
+  const { bootstrapInstructions, memoryNotes, report, scratchEntries, soulNote, threadData } = inputs;
+  const nonSoulNotes = memoryNotesWithoutSoul(memoryNotes, soulNote);
 
   const breakdown = buildStateBreakdown(nonSoulNotes);
 
@@ -193,27 +208,17 @@ function buildSummaryData(inputs: SummarySectionInputs): SummaryData {
     report.threadCoverageGaps.length +
     report.scratchThreadCandidates.filter((candidate) => candidate.candidateThreadId === null).length;
 
-  const soulTokens = soulNote === null ? 0 : estimateNoteTokens(soulNote);
-  const bootstrapNotes = nonSoulNotes.filter(
-    (note) => note.frontmatter.memory_state === MemoryState.Core || note.frontmatter.memory_state === MemoryState.Remembered,
-  );
-  const emptyThreadData: ThreadChartData = {
-    globalInbox: {
-      bootstrapCount: 0,
-      bootstrapTokens: 0,
-      color: 'var(--engram-global-inbox, #7ab7cf)',
-      exists: false,
-      storedCount: 0,
-      storedTokens: 0,
-    },
-    resolvedThreadId: null,
-    threads: [],
-  };
-  const threadState = threadData ?? emptyThreadData;
+  const soulTokens = estimateSoulTokens(soulNote);
+  const bootstrapInstructionsInfo = buildBootstrapInstructionsInfo(bootstrapInstructions);
+  const bootstrapNotes = nonSoulNotes.filter(isBootstrapMemoryNote);
+  const threadState = threadDataOrEmpty(threadData);
   const resolvedThread = threadState.threads.find((thread) => thread.threadId === threadState.resolvedThreadId) ?? null;
+  const soulItem = soulItemCount(soulNote);
+  const bootstrapInstructionsItem = bootstrapInstructionsInfo.exists ? 1 : 0;
   const bootstrapTokens =
     estimateMemoryTokens(bootstrapNotes) +
     soulTokens +
+    bootstrapInstructionsInfo.tokens +
     (resolvedThread?.bootstrapTokens ?? 0) +
     threadState.globalInbox.bootstrapTokens;
   const soulInfo: SoulInfo = { color: SOUL_COLOR, exists: soulNote !== null, tokens: soulTokens };
@@ -223,8 +228,11 @@ function buildSummaryData(inputs: SummarySectionInputs): SummaryData {
     bootstrapCount:
       coreCount +
       rememberedCount +
+      soulItem +
+      bootstrapInstructionsItem +
       (resolvedThread?.bootstrapCount ?? 0) +
       threadState.globalInbox.bootstrapCount,
+    bootstrapInstructions: bootstrapInstructionsInfo,
     bootstrapTokens,
     dreamTargetCount,
     globalInbox: threadState.globalInbox,
@@ -236,6 +244,45 @@ function buildSummaryData(inputs: SummarySectionInputs): SummaryData {
     stateBreakdown: breakdown,
     threads: threadState.threads,
     totalMemories: report.stateDistribution.total,
+  };
+}
+
+function memoryNotesWithoutSoul(memoryNotes: VaultNote[], soulNote: VaultNote | null): VaultNote[] {
+  if (soulNote === null) {
+    return memoryNotes;
+  }
+  return memoryNotes.filter((note) => note.path !== soulNote.path);
+}
+
+function estimateSoulTokens(soulNote: VaultNote | null): number {
+  return soulNote === null ? 0 : estimateNoteTokens(soulNote);
+}
+
+function soulItemCount(soulNote: VaultNote | null): number {
+  return soulNote === null ? 0 : 1;
+}
+
+function isBootstrapMemoryNote(note: VaultNote): boolean {
+  return note.frontmatter.memory_state === MemoryState.Core ||
+    note.frontmatter.memory_state === MemoryState.Remembered;
+}
+
+function threadDataOrEmpty(threadData: ThreadChartData | null): ThreadChartData {
+  if (threadData !== null) {
+    return threadData;
+  }
+
+  return {
+    globalInbox: {
+      bootstrapCount: 0,
+      bootstrapTokens: 0,
+      color: 'var(--engram-global-inbox, #7ab7cf)',
+      exists: false,
+      storedCount: 0,
+      storedTokens: 0,
+    },
+    resolvedThreadId: null,
+    threads: [],
   };
 }
 

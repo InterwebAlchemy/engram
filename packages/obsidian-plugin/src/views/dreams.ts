@@ -73,6 +73,7 @@ export class DreamsTab implements EngramTab {
   private memoryNotes: VaultNote[] = [];
   private soulNote: VaultNote | null = null;
   private scratchEntries: ScratchEntry[] = [];
+  private bootstrapInstructions: string | null = null;
   private threadData: ThreadChartData | null = null;
   private latestPlan: DreamsPlanResult | null = null;
   private latestExecution: DreamsExecutionResult | null = null;
@@ -167,6 +168,7 @@ export class DreamsTab implements EngramTab {
       return;
     }
     renderSummarySection(this.parent, {
+      bootstrapInstructions: this.bootstrapInstructions,
       memoryNotes: this.memoryNotes,
       report: this.report,
       scratchEntries: this.scratchEntries,
@@ -344,7 +346,8 @@ export class DreamsTab implements EngramTab {
     const { preCleanup, report, snapshot } = result;
     this.report = report;
     this.latestRunSnapshot = snapshot;
-    const { memoryNotes, soulNote, scratchEntries, threadData } = await loadMemoryArtifacts(this.plugin);
+    const { bootstrapInstructions, memoryNotes, soulNote, scratchEntries, threadData } = await loadMemoryArtifacts(this.plugin);
+    this.bootstrapInstructions = bootstrapInstructions;
     this.memoryNotes = memoryNotes;
     this.soulNote = soulNote;
     this.scratchEntries = scratchEntries;
@@ -390,7 +393,8 @@ export class DreamsTab implements EngramTab {
     return new SnapshotManager();
   }
   private async loadDashboardData(options: { includeHistory?: boolean } = {}): Promise<void> {
-    const { report, memoryNotes, soulNote, scratchEntries, threadData } = await loadDashboardData(this.plugin, options);
+    const { bootstrapInstructions, report, memoryNotes, soulNote, scratchEntries, threadData } = await loadDashboardData(this.plugin, options);
+    this.bootstrapInstructions = bootstrapInstructions;
     this.report = report;
     this.memoryNotes = memoryNotes;
     this.soulNote = soulNote;

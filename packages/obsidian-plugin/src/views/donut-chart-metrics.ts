@@ -43,16 +43,19 @@ export function buildAccessibleSummary(
   formatCount: (value: number) => string,
 ): string {
   const soulItems = data.soul.exists ? 1 : 0;
+  const bootstrapInstructionItems = data.bootstrapInstructions.exists ? 1 : 0;
   const threadStoredItems = data.threads.reduce((sum, thread) => sum + thread.storedCount, 0);
   const threadStoredTokens = data.threads.reduce((sum, thread) => sum + thread.storedTokens, 0);
   const totalItems = data.stateBreakdown.reduce((sum, state) => sum + state.count, 0)
     + soulItems
+    + bootstrapInstructionItems
     + data.globalInbox.storedCount
     + threadStoredItems
     + data.scratch.totalEntries;
-  const bootstrapItems = data.bootstrapCount + soulItems + data.scratch.bootstrapEntries;
+  const bootstrapItems = data.bootstrapCount + data.scratch.bootstrapEntries;
   const totalTokens = data.stateBreakdown.reduce((sum, state) => sum + state.tokens, 0)
     + data.soul.tokens
+    + data.bootstrapInstructions.tokens
     + data.globalInbox.storedTokens
     + threadStoredTokens
     + data.scratch.totalTokens;
@@ -116,6 +119,19 @@ export function overlayTooltipBody(
   }
 }
 
+export const BOOTSTRAP_INSTRUCTIONS_TARGET_KEY = 'bootstrap-instructions';
+
+export function bootstrapInstructionsCenter(
+  data: DonutChartData,
+): { label: string; value: number } {
+  return {
+    label: `Bootstrap Instructions · ${data.centerLabel}`,
+    value: data.unit === 'tokens'
+      ? data.bootstrapInstructions.tokens
+      : (data.bootstrapInstructions.exists ? 1 : 0),
+  };
+}
+
 export function isCurrentBootstrapOverlay(segment: InnerSegment, resolvedThreadId: string | null): boolean {
   if (segment.kind === 'global-inbox') {
     return segment.bootstrapCount > 0;
@@ -156,6 +172,9 @@ function resolveOverlayFocusedCenter(
   segments: InnerSegment[],
   key: string,
 ): { label: string; value: number } {
+  if (key === BOOTSTRAP_INSTRUCTIONS_TARGET_KEY) {
+    return bootstrapInstructionsCenter(data);
+  }
   const segment = segments.find((entry) => overlayTargetKey(entry) === key);
   if (segment === undefined) {
     return { label: data.centerLabel, value: data.centerValue };

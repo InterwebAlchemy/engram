@@ -4,13 +4,13 @@ import {
   DEFAULT_LIST_LIMIT,
   DEFAULT_SCRATCH_THRESHOLD_HOURS,
   DEFAULT_SEARCH_LIMIT,
-  LONG_PREVIEW_LENGTH,
+  LONG_PREVIEW_TOKENS,
   MARKDOWN_SUFFIX_PATTERN,
   MEMORY_STATE_MAP,
   MEMORY_TYPE_MAP,
   MILLISECONDS_PER_HOUR,
   SESSION_ID,
-  SHORT_PREVIEW_LENGTH,
+  SHORT_PREVIEW_TOKENS,
   buildCheckpointReminder,
 } from './definitions.js';
 import {
@@ -32,7 +32,7 @@ import {
 } from './args.js';
 import { renderBootstrapScratch } from '../scratch-helpers.js';
 import { buildMemoryFrontmatterUpdates, buildMemoryMetaUpdates } from './memory-update-helpers.js';
-import { estimateTokens } from '../tokenizer.js';
+import { estimateTokens, truncateToTokens } from '../tokenizer.js';
 
 const MEMORY_ACTIONS = ['store', 'read', 'update', 'search', 'list', 'archive'] as const;
 const SOUL_ACTIONS = ['get', 'set'] as const;
@@ -196,7 +196,7 @@ export async function handleSkillTool(
         slug: note.path.split('/').pop()?.replace(MARKDOWN_SUFFIX_PATTERN, '') ?? note.path,
         tags: note.frontmatter.tags ?? [],
         updated: note.frontmatter.updated,
-        preview: note.content.slice(0, SHORT_PREVIEW_LENGTH),
+        preview: truncateToTokens(note.content, SHORT_PREVIEW_TOKENS),
       }));
       return textResult(jsonText(results));
     }
@@ -364,7 +364,7 @@ async function handleMemorySearch(
     bootstrap_state: note.frontmatter.bootstrap_state,
     agent: note.frontmatter.agent,
     platform: note.frontmatter.platform,
-    preview: note.content.slice(0, LONG_PREVIEW_LENGTH),
+    preview: truncateToTokens(note.content, LONG_PREVIEW_TOKENS),
   }));
   return textResult(jsonText(results));
 }
@@ -391,7 +391,7 @@ async function handleMemoryList(
     bootstrap_state: note.frontmatter.bootstrap_state,
     agent: note.frontmatter.agent,
     platform: note.frontmatter.platform,
-    preview: note.content.slice(0, SHORT_PREVIEW_LENGTH),
+    preview: truncateToTokens(note.content, SHORT_PREVIEW_TOKENS),
   }));
   return textResult(jsonText(results));
 }

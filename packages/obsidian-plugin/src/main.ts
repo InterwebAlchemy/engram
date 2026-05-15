@@ -1,5 +1,6 @@
 import { Plugin } from 'obsidian';
 import reactFlowStyles from 'reactflow/dist/style.css';
+import bootstrapInstructionsTemplate from '../../../templates/engram-bootstrap.tmpl.md';
 import {
   MemoryManager,
   Conversation,
@@ -23,6 +24,7 @@ import {
 } from './constants';
 
 const REACT_FLOW_STYLE_ELEMENT_ID = 'engram-reactflow-style';
+const BOOTSTRAP_INSTRUCTIONS_FILE = '.bootstrap';
 
 export default class EngramPlugin extends Plugin {
   settings!: EngramSettings;
@@ -50,6 +52,7 @@ export default class EngramPlugin extends Plugin {
         readPaths: this.settings.readPaths,
       },
     );
+    await this.ensureBootstrapInstructionsTemplate();
 
     this.conversation = new Conversation();
 
@@ -238,6 +241,25 @@ export default class EngramPlugin extends Plugin {
     return getStringProperty(this.app.vault.adapter, 'basePath') ?? '';
   }
 
+  getBootstrapInstructionsPath(): string {
+    const root = this.settings.engramRoot.replace(/\/+$/u, '');
+    return root.length > 0
+      ? `${root}/${BOOTSTRAP_INSTRUCTIONS_FILE}`
+      : BOOTSTRAP_INSTRUCTIONS_FILE;
+  }
+
+  async readBootstrapInstructionsTemplate(): Promise<string | null> {
+    const target = this.getBootstrapInstructionsPath();
+    try {
+      if (!(await this.fileAdapter.exists(target))) {
+        return null;
+      }
+      return normalizeBootstrapTemplate(await this.fileAdapter.read(target));
+    } catch {
+      return null;
+    }
+  }
+
   // ─── Autosave ──────────────────────────────────────────────────────────
 
   private startAutosave(): void {
@@ -256,6 +278,22 @@ export default class EngramPlugin extends Plugin {
     if (this.autosaveInterval !== null) {
       clearInterval(this.autosaveInterval);
       this.autosaveInterval = null;
+    }
+  }
+
+  private async ensureBootstrapInstructionsTemplate(): Promise<void> {
+    const target = this.getBootstrapInstructionsPath();
+    const template = normalizeBootstrapTemplate(bootstrapInstructionsTemplate);
+    try {
+      const current = await this.fileAdapter.exists(target)
+        ? normalizeBootstrapTemplate(await this.fileAdapter.read(target))
+        : null;
+      if (current === template) {
+        return;
+      }
+      await this.fileAdapter.write(target, template);
+    } catch {
+      // Bootstrap visualization should never block plugin startup.
     }
   }
 
@@ -326,6 +364,10 @@ function injectReactFlowStyles(): void {
 
 function removeReactFlowStyles(): void {
   document.getElementById(REACT_FLOW_STYLE_ELEMENT_ID)?.remove();
+}
+
+function normalizeBootstrapTemplate(content: string): string {
+  return `${content.trimEnd()}\n`;
 }
 
 function isSettingsRecord(value: unknown): value is Partial<EngramSettings> {

@@ -25,6 +25,7 @@ export interface ThreadChartData {
 }
 
 export interface DashboardData {
+  bootstrapInstructions: string | null;
   report: DreamsReport;
   snapshotCount: number;
   memoryNotes: VaultNote[];
@@ -47,7 +48,7 @@ export async function loadDashboardData(
     ? readDreamsRunHistory(plugin.fileAdapter, basePath, plugin.settings.engramRoot, 'working')
     : Promise.resolve<DreamsRunHistory | null>(null);
 
-  const [report, snapshots, notes, soul, scratch, history, threadData] = await Promise.all([
+  const [report, snapshots, notes, soul, scratch, history, threadData, bootstrapInstructions] = await Promise.all([
     analyzer.analyze(),
     snapshotManager.list(),
     plugin.memoryManager.list(),
@@ -55,9 +56,11 @@ export async function loadDashboardData(
     plugin.memoryManager.readScratch().catch((): ScratchEntry[] => []),
     historyPromise,
     loadThreadData(plugin, basePath),
+    plugin.readBootstrapInstructionsTemplate(),
   ]);
 
   return {
+    bootstrapInstructions,
     report,
     snapshotCount: snapshots.length,
     memoryNotes: notes,
@@ -69,19 +72,21 @@ export async function loadDashboardData(
 }
 
 export async function loadMemoryArtifacts(plugin: EngramPlugin): Promise<{
+  bootstrapInstructions: string | null;
   memoryNotes: VaultNote[];
   soulNote: VaultNote | null;
   scratchEntries: ScratchEntry[];
   threadData: ThreadChartData;
 }> {
   const basePath = plugin.getVaultBasePath();
-  const [notes, soul, scratch, threadData] = await Promise.all([
+  const [notes, soul, scratch, threadData, bootstrapInstructions] = await Promise.all([
     plugin.memoryManager.list(),
     plugin.memoryManager.getSoulDocument().catch(() => null),
     plugin.memoryManager.readScratch().catch((): ScratchEntry[] => []),
     loadThreadData(plugin, basePath),
+    plugin.readBootstrapInstructionsTemplate(),
   ]);
-  return { memoryNotes: notes, soulNote: soul, scratchEntries: scratch, threadData };
+  return { bootstrapInstructions, memoryNotes: notes, soulNote: soul, scratchEntries: scratch, threadData };
 }
 
 async function loadThreadData(plugin: EngramPlugin, basePath: string): Promise<ThreadChartData> {

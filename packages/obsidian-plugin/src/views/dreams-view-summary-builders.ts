@@ -8,6 +8,7 @@ import {
 } from '@interwebalchemy/engram-core';
 import { summarizeThread } from '../../../core/src/memory-helpers';
 import type {
+  BootstrapInstructionsInfo,
   GlobalInboxInfo,
   ScratchInfo,
   ScratchSession,
@@ -25,6 +26,7 @@ const SCRATCH_PALETTE = [
 const SCRATCH_COLOR = 'var(--engram-scratch-base, var(--color-accent))';
 const THREAD_COLOR = 'var(--engram-thread, var(--color-orange))';
 const GLOBAL_INBOX_COLOR = 'var(--engram-global-inbox, #7ab7cf)';
+const BOOTSTRAP_INSTRUCTIONS_COLOR = 'var(--engram-bootstrap-instructions, #c7d66b)';
 const THREAD_PALETTE = [
   'var(--engram-thread-1, #f09a6b)',
   'var(--engram-thread-2, #8ab6ff)',
@@ -251,6 +253,15 @@ export function buildGlobalInboxInfo(parts: {
     exists: items.length > 0,
     storedCount: items.length,
     storedTokens,
+  };
+}
+
+export function buildBootstrapInstructionsInfo(content: string | null): BootstrapInstructionsInfo {
+  const normalized = content?.trim() ?? '';
+  return {
+    color: BOOTSTRAP_INSTRUCTIONS_COLOR,
+    exists: normalized.length > 0,
+    tokens: normalized.length > 0 ? estimateTokens(normalized) : 0,
   };
 }
 
