@@ -10,7 +10,9 @@
   "bin": {
     "engram-mcp": "dist/index.js"
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc",
     "build:watch": "tsc --watch",
@@ -22,12 +24,15 @@
   },
   "dependencies": {
     "@interwebalchemy/engram-core": "*",
-    "@modelcontextprotocol/sdk": "^1.9.0"
+    "@modelcontextprotocol/sdk": "1.27.1"
   },
-  "devDependencies": {
-    "@types/node": "^20.14.0",
-    "typescript": "^5.4.5"
-  },
-  "keywords": ["mcp", "llm", "memory", "obsidian", "claude", "ai"],
+  "keywords": [
+    "mcp",
+    "llm",
+    "memory",
+    "obsidian",
+    "claude",
+    "ai"
+  ],
   "license": "GPL-3.0-only"
 }

@@ -25,10 +25,6 @@
   "dependencies": {
     "@interwebalchemy/engram-core": "*"
   },
-  "devDependencies": {
-    "@types/node": "^20.14.0",
-    "typescript": "^5.4.5"
-  },
   "keywords": [
     "engram",
     "agent",

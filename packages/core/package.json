@@ -8,7 +8,9 @@
   },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc",
     "build:watch": "tsc --watch",
@@ -19,13 +21,16 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "gpt-tokenizer": "^2.7.0",
-    "yaml": "^2.4.5"
+    "gpt-tokenizer": "2.9.0",
+    "yaml": "2.8.3"
   },
-  "devDependencies": {
-    "@types/node": "^20.14.0",
-    "typescript": "^5.4.5"
-  },
-  "keywords": ["llm", "memory", "obsidian", "vault", "ai", "mcp"],
+  "keywords": [
+    "llm",
+    "memory",
+    "obsidian",
+    "vault",
+    "ai",
+    "mcp"
+  ],
   "license": "GPL-3.0-only"
 }
