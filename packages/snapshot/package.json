@@ -11,7 +11,9 @@
   "bin": {
     "engram-snapshot": "dist/index.js"
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc",
     "clean": "rm -rf dist",
@@ -20,10 +22,12 @@
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run build"
   },
-  "devDependencies": {
-    "@types/node": "^20.14.0",
-    "typescript": "^5.4.5"
-  },
-  "keywords": ["engram", "snapshot", "restore", "vault", "backup"],
+  "keywords": [
+    "engram",
+    "snapshot",
+    "restore",
+    "vault",
+    "backup"
+  ],
   "license": "GPL-3.0-only"
 }
