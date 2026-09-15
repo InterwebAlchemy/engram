@@ -22,13 +22,13 @@ import { syncSoulDocument } from './soul-sync.js';
 import {
   bullet,
   clearScreen,
+  error,
   muted,
   note,
   printBanner,
   printInitSummary,
   section,
   setVerbose,
-  skipped,
   status,
   subheading,
   writeLine,
@@ -407,9 +407,20 @@ async function runSetup(options: {
 }
 
 async function installPluginFromCli(repoRoot: string, vaultPath: string): Promise<void> {
-  const sourcePluginDir = await resolveObsidianPluginSource(repoRoot);
+  let sourcePluginDir = await resolveObsidianPluginSource(repoRoot);
+
+  // main.js is a build artifact (gitignored), so a fresh clone won't have it
+  // until the obsidian-plugin package is built. Build it on demand rather than
+  // silently skipping the install.
+  if (sourcePluginDir === null && (await buildObsidianPlugin(repoRoot))) {
+    sourcePluginDir = await resolveObsidianPluginSource(repoRoot);
+  }
+
   if (sourcePluginDir === null) {
-    skipped('Obsidian plugin install', 'plugin assets not found near this CLI build');
+    error(
+      'Obsidian plugin install failed — plugin assets (main.js) not found and could not be built. ' +
+        'Run `npm run build` from the repo root, then re-run onboarding.',
+    );
     return;
   }
 
@@ -427,6 +438,44 @@ async function resolveObsidianPluginSource(repoRoot: string): Promise<string | n
   if (await hasPluginAssets(packagedPluginDir)) return packagedPluginDir;
 
   return null;
+}
+
+// Builds the obsidian-plugin package in place (esbuild emits main.js next to
+// the committed manifest.json/styles.css). Only viable in a repo checkout,
+// where the esbuild config exists; returns false otherwise so callers can fall
+// back to any pre-bundled assets. Mirrors what scripts/setup-dev.sh does.
+async function buildObsidianPlugin(repoRoot: string): Promise<boolean> {
+  const pluginDir = path.join(repoRoot, 'packages', 'obsidian-plugin');
+  const esbuildConfig = path.join(pluginDir, 'esbuild.config.mjs');
+  if (!(await fileExists(esbuildConfig))) return false;
+
+  subheading('Building Obsidian plugin…');
+  const child = spawn('node', [esbuildConfig], {
+    cwd: pluginDir,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  const stderrChunks: string[] = [];
+  child.stderr.on('data', (chunk: Buffer | string) => {
+    stderrChunks.push(typeof chunk === 'string' ? chunk : chunk.toString('utf8'));
+  });
+
+  const result: unknown = await once(child, 'exit');
+  const code: unknown = Array.isArray(result) ? result.at(0) : undefined;
+  if (code !== 0) {
+    const detail = stderrChunks.join('').trim();
+    error(`Obsidian plugin build failed${detail.length > 0 ? `:\n${detail}` : '.'}`);
+    return false;
+  }
+  return true;
+}
+
+async function fileExists(filePath: string): Promise<boolean> {
+  try {
+    await fs.access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function hasPluginAssets(dirPath: string): Promise<boolean> {
