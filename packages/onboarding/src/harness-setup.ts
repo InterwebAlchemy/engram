@@ -1,3 +1,5 @@
+import { spawn } from 'node:child_process';
+import { once } from 'node:events';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 
@@ -193,10 +195,88 @@ async function runHarnessTask(
   }
 }
 
+async function fileExists(filePath: string): Promise<boolean> {
+  try {
+    await fs.access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Builds @interwebalchemy/engram-mcp via turbo (which builds its engram-core
+// dependency first). Throws with captured output on a non-zero exit.
+async function buildMcpServer(repoRoot: string): Promise<void> {
+  const turboBin = path.join(repoRoot, 'node_modules', '.bin', 'turbo');
+  const useLocalTurbo = await fileExists(turboBin);
+  const command = useLocalTurbo ? turboBin : 'npx';
+  const args = useLocalTurbo
+    ? ['run', 'build', '--filter=@interwebalchemy/engram-mcp']
+    : ['turbo', 'run', 'build', '--filter=@interwebalchemy/engram-mcp'];
+
+  const child = spawn(command, args, { cwd: repoRoot, stdio: ['ignore', 'pipe', 'pipe'] });
+  child.stdout.resume();
+  const stderrChunks: string[] = [];
+  child.stderr.on('data', (chunk: Buffer | string) => {
+    stderrChunks.push(typeof chunk === 'string' ? chunk : chunk.toString('utf8'));
+  });
+
+  const result: unknown = await once(child, 'exit');
+  const code: unknown = Array.isArray(result) ? result.at(0) : undefined;
+  if (code !== 0) {
+    const detail = stderrChunks.join('').trim();
+    const codeStr = typeof code === 'number' ? String(code) : 'unknown';
+    throw new Error(`turbo build exited with code ${codeStr}${detail.length > 0 ? `:\n${detail}` : ''}`);
+  }
+}
+
+// The MCP server is not part of onboarding's own build graph, so a fresh
+// checkout won't have it built — yet every MCP harness config points its
+// command at it. Build it on demand here so the configured server actually
+// launches instead of exiting with "MCP server not built".
+async function ensureMcpServerBuilt(repoRoot: string, verbose: boolean): Promise<void> {
+  const distPath = path.join(repoRoot, 'packages', 'mcp-server', 'dist', 'index.js');
+  if (await fileExists(distPath)) return;
+
+  // Only viable in a repo checkout; a published install uses a different command.
+  const pkgPath = path.join(repoRoot, 'packages', 'mcp-server', 'package.json');
+  if (!(await fileExists(pkgPath))) return;
+
+  const result = await runHarnessTask('MCP server build', async () => {
+    await buildMcpServer(repoRoot);
+    if (!(await fileExists(distPath))) {
+      return { status: 'failed', summary: 'build ran but dist/index.js is still missing' };
+    }
+    return { status: 'ok', summary: 'built packages/mcp-server/dist' };
+  });
+
+  harnessLine({
+    status: result.status,
+    label: 'MCP server build',
+    summary: verbose ? result.summary : undefined,
+  });
+}
+
+function anyMcpHarnessEnabled(harnesses: InitAnswers['harnesses']): boolean {
+  return (
+    harnesses.claudeCode ||
+    harnesses.claudeDesktop ||
+    harnesses.cursor ||
+    harnesses.vscode ||
+    harnesses.zed ||
+    harnesses.copilot ||
+    harnesses.windsurf ||
+    harnesses.opencode
+  );
+}
+
 export async function runHarnessSetupStage(options: HarnessSetupOptions): Promise<void> {
   const { repoRoot, mcpScriptPath, answers, prompt, verbose = false } = options;
 
   section('Harness setup');
+  if (anyMcpHarnessEnabled(answers.harnesses)) {
+    await ensureMcpServerBuilt(repoRoot, verbose);
+  }
   const bootstrapTemplate = await readBootstrapTemplate(repoRoot);
   const claudeBootstrapPlacement = await resolveBootstrapPlacement(answers);
 
