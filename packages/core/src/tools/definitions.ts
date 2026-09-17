@@ -212,6 +212,8 @@ export const TOOLS = [
         token_budget: numberProp('Token limit for bootstrap read.'),
         threshold_hours: numberProp('Age threshold hours (default 1).'),
         compacted_content: stringProp('Summary replacement (compact).'),
+        thread_id: stringProp('Active thread (bootstrap read filter; append default scope).'),
+        thread_ids: stringArrayProp('Threads to scope this entry to (append). Omit for threadless. Belongs-to-multiple is rare — usually graduate cross-thread findings to memory or thread Context instead.'),
       },
       required: ['action'],
     },

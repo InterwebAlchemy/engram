@@ -37,7 +37,7 @@ export async function buildEngramBootstrap(plugin: EngramPlugin): Promise<Engram
     parts.push(inboxPart);
   }
 
-  const scratchPart = await loadScratchPart(plugin);
+  const scratchPart = await loadScratchPart(plugin, threadId);
   if (scratchPart !== null) {
     parts.push(scratchPart);
   }
@@ -115,9 +115,12 @@ async function loadInboxPart(plugin: EngramPlugin, threadId: string | undefined)
   return sections.length === 0 ? null : `## Inbox\n\n${sections.join('\n\n')}`;
 }
 
-async function loadScratchPart(plugin: EngramPlugin): Promise<string | null> {
+async function loadScratchPart(
+  plugin: EngramPlugin,
+  activeThreadId: string | undefined,
+): Promise<string | null> {
   try {
-    const entries = await plugin.memoryManager.readScratch({ bootstrap: true });
+    const entries = await plugin.memoryManager.readScratch({ bootstrap: true, activeThreadId });
     if (entries.length === 0) {
       return null;
     }
