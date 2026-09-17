@@ -263,7 +263,7 @@ export interface ScratchReadOptions {
   since?: string;
   /** Apply bootstrap pruning and dream-sequence compaction. */
   bootstrap?: boolean;
-  /** Active thread for bootstrap filtering — entries pass if threadless or include this id. */
+  /** Active thread to scope the read to — entries pass if threadless or include this id. */
   activeThreadId?: string;
 }
 

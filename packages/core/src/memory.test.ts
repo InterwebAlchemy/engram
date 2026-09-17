@@ -898,6 +898,66 @@ test('legacy 2-field scratch entries (no thread tag) survive parsing and pass bo
   assert.deepEqual(filteredContents, ['legacy untagged entry', 'tagged entry']);
 });
 
+test('non-bootstrap reads are scoped to the active thread too', async (t) => {
+  const vaultRoot = await createTempVault();
+  t.after(async () => {
+    await fs.rm(vaultRoot, { recursive: true, force: true });
+  });
+
+  const manager = new MemoryManager(new NodeAdapter(), defaultMemoryConfig(vaultRoot, 'integrated'));
+
+  await manager.appendScratch('session-a', 'engram entry', ['engram']);
+  await manager.appendScratch('session-b', 'c0ach entry', ['c0ach']);
+  await manager.appendScratch('session-c', 'threadless entry');
+
+  const scoped = await manager.readScratch({ activeThreadId: 'engram' });
+  assert.deepEqual(scoped.map((entry) => entry.content), [
+    'engram entry',
+    'threadless entry',
+  ]);
+
+  const unscoped = await manager.readScratch();
+  assert.equal(unscoped.length, 3);
+});
+
+test('compactScratch unions the thread tags of the entries it replaces', async (t) => {
+  const vaultRoot = await createTempVault();
+  t.after(async () => {
+    await fs.rm(vaultRoot, { recursive: true, force: true });
+  });
+
+  const manager = new MemoryManager(new NodeAdapter(), defaultMemoryConfig(vaultRoot, 'integrated'));
+  const scratchPath = path.join(vaultRoot, 'engram', '.scratch');
+  const hoursAgo = (hours: number) => new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
+
+  await fs.mkdir(path.dirname(scratchPath), { recursive: true });
+  await fs.writeFile(
+    scratchPath,
+    [
+      `[mine | engram | ${hoursAgo(5)}] First`,
+      `[mine | c0ach | ${hoursAgo(4)}] Second`,
+      `[other | engram | ${hoursAgo(3)}] Someone else's entry`,
+    ].join('\n'),
+  );
+
+  await manager.compactScratch({
+    sessionId: 'mine',
+    thresholdMs: 60 * 60 * 1000,
+    compactedContent: 'Wrapped up both',
+  });
+
+  const compacted = (await manager.readScratch())
+    .find((entry) => entry.content.startsWith('[COMPACTED]'));
+  assert.ok(compacted !== undefined);
+  assert.deepEqual(compacted.threadIds, ['engram', 'c0ach']);
+
+  // The summary stays reachable from both threads it absorbed.
+  for (const activeThreadId of ['engram', 'c0ach']) {
+    const scoped = await manager.readScratch({ activeThreadId });
+    assert.ok(scoped.some((entry) => entry.content.startsWith('[COMPACTED]')));
+  }
+});
+
 test('compaction preserves thread tags across the union of compacted entries', async (t) => {
   const vaultRoot = await createTempVault();
   t.after(async () => {

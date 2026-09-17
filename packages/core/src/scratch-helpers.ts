@@ -709,6 +709,10 @@ export async function readScratchEntries(
     });
   }
 
+  // Plain reads honour the active thread too, so callers that page through
+  // scratch outside bootstrap don't get other threads' entries back.
+  entries = entries.filter((entry) => entryMatchesActiveThread(entry, options.activeThreadId));
+
   if (typeof options.since === 'string' && options.since.length > 0) {
     const sinceTimestamp = new Date(options.since).getTime();
     entries = entries.filter((entry) => new Date(entry.timestamp).getTime() >= sinceTimestamp);
