@@ -987,6 +987,34 @@ test('compaction preserves thread tags across the union of compacted entries', a
   );
 });
 
+test('resolveThread rejects a missing cwd instead of falling back to the server process cwd', async (t) => {
+  const vaultRoot = await createTempVault();
+  t.after(async () => {
+    await fs.rm(vaultRoot, { recursive: true, force: true });
+  });
+
+  const manager = new MemoryManager(new NodeAdapter(), defaultMemoryConfig(vaultRoot, 'integrated'));
+
+  await assert.rejects(
+    () => manager.resolveThread({}),
+    /cwd is required/,
+  );
+});
+
+test('resolveThread rejects an explicit filesystem-root cwd instead of creating a catch-all thread', async (t) => {
+  const vaultRoot = await createTempVault();
+  t.after(async () => {
+    await fs.rm(vaultRoot, { recursive: true, force: true });
+  });
+
+  const manager = new MemoryManager(new NodeAdapter(), defaultMemoryConfig(vaultRoot, 'integrated'));
+
+  await assert.rejects(
+    () => manager.resolveThread({ cwd: '/' }),
+    /filesystem root/,
+  );
+});
+
 test('resolveThread stamps detected git remote on auto-created threads', async (t) => {
   const vaultRoot = await createTempVault();
   t.after(async () => {

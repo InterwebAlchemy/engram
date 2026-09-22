@@ -334,7 +334,19 @@ export class ThreadOperations {
     gitRemote?: string;
     autoCreate?: boolean;
   }): Promise<ResolvedThread> {
-    const cwd = path.resolve(expandHome(hints.cwd ?? process.cwd()));
+    if (hints.cwd === undefined) {
+      // The MCP server (or Obsidian plugin host) is a separate long-running process. Its own
+      // process.cwd() reflects wherever *that process* happened to start — which for a spawned
+      // server can be a stale worktree, a harness's sandbox root before it chdirs into the real
+      // project, or a directory shared across multiple concurrent sessions. None of those is ever
+      // the caller's actual working directory, so silently falling back to it just misroutes
+      // resolution (and can permanently pollute the vault via auto-create) with no visible error.
+      throw new Error(
+        "resolveThread: cwd is required. Pass the caller's actual working directory explicitly — " +
+          "never rely on the server process's own cwd as a stand-in for it.",
+      );
+    }
+    const cwd = path.resolve(expandHome(hints.cwd));
     const gitRemote = hints.gitRemote ?? (this.deps.detectGitRemote ?? detectGitRemote)(cwd);
     const packageNames = (this.deps.detectPackageNames ?? detectPackageNames)(cwd);
 
@@ -397,10 +409,17 @@ export class ThreadOperations {
     gitRemote: string | undefined,
     packageNames: string[],
   ): Promise<ResolvedThread> {
-    const threadId = slugify(path.basename(cwd));
+    const baseName = path.basename(cwd);
+    if (baseName.length === 0) {
+      throw new Error(
+        `resolveThread: cannot create a thread scoped to filesystem root (${cwd}). Pass an explicit, ` +
+          'project-scoped cwd.',
+      );
+    }
+    const threadId = slugify(baseName);
     const repositories = gitRemote === undefined ? undefined : [normalizeRemoteUrl(gitRemote)];
     const thread = await this.setThread(threadId, EMPTY_CONTENT, {
-      name: path.basename(cwd),
+      name: baseName,
       paths: [cwd],
       ...(repositories === undefined ? {} : { repositories }),
       ...(packageNames.length === 0 ? {} : { packages: packageNames }),

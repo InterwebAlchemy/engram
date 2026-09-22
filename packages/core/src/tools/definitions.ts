@@ -246,7 +246,10 @@ export const TOOLS = [
         superseded_by: stringProp('Forward pointer — resolves redirect to this thread ID.'),
         related_threads: stringArrayProp('Related thread IDs.'),
         tags: stringArrayProp('Tags.'),
-        cwd: stringProp('Working directory (resolve).'),
+        cwd: stringProp(
+          'Working directory (resolve). Always pass the caller\'s actual cwd — if omitted, the server ' +
+            "falls back to its own process cwd, which usually does not match the caller's and misroutes resolution.",
+        ),
         git_remote: stringProp('Git remote URL (resolve; auto-detected from cwd if omitted).'),
         auto_create: booleanProp('Auto-create on resolve.'),
         item: stringProp('Todo item text.'),
