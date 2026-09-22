@@ -8,12 +8,12 @@ Run these in order at the start of every session:
 
 ```
 soul(action: "get")                                                 → restores identity
-thread(action: "resolve")                                           → auto-detects or creates Thread from cwd
+thread(action: "resolve", cwd: <your actual working directory>)     → auto-detects or creates Thread from cwd
 context(action: "load", query: "session focus", thread_id)          → scopes memory to that Thread
 scratch(action: "read", bootstrap: true, thread_id)                 → recent scratch activity, filtered to this Thread
 ```
 
-Pass the `thread_id` from `resolve` to `context` and `scratch(read, bootstrap)`. The scratch bootstrap shows entries scoped to the active thread plus threadless entries (e.g. plugin chat or Dream summaries). If `resolve` returns `status: "created"`, flesh out the thread once you have context. If a thread duplicates an existing one, use `thread(action: "merge")`.
+Always pass `cwd` explicitly to `resolve` — your own working directory, not left for the server to guess. The MCP server is a separate long-running process; its own `process.cwd()` reflects wherever *it* was launched from, not where the current session is working, and trusting it silently misroutes resolution to the wrong Thread (or to a stale catch-all one) with no visible error. Pass the `thread_id` from `resolve` to `context` and `scratch(read, bootstrap)`. The scratch bootstrap shows entries scoped to the active thread plus threadless entries (e.g. plugin chat or Dream summaries). If `resolve` returns `status: "created"`, flesh out the thread once you have context. If a thread duplicates an existing one, use `thread(action: "merge")`.
 
 ## Threads
 

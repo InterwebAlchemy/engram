@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { pickBestThreadMatch, rankThreadMatches } from './thread-helpers.js';
+import * as path from 'node:path';
+import { isFilesystemRoot, pickBestThreadMatch, rankThreadMatches } from './thread-helpers.js';
 import { ThreadStatus } from './types.js';
 import type { VaultNote } from './vault.js';
 import type { NoteFrontmatter } from './types.js';
@@ -38,6 +39,25 @@ function makeThread(overrides: {
 test('pickBestThreadMatch returns null when nothing overlaps', () => {
   const threads = [makeThread({ threadId: 'other', paths: ['/opt/other'] })];
   assert.equal(pickBestThreadMatch(threads, '/home/user/project'), null);
+});
+
+test('isFilesystemRoot identifies the platform root but not a normal path', () => {
+  assert.equal(isFilesystemRoot(path.parse(process.cwd()).root), true);
+  assert.equal(isFilesystemRoot('/home/user'), false);
+});
+
+test('pickBestThreadMatch never matches a thread scoped to the filesystem root', () => {
+  const threads = [makeThread({ threadId: 'note', paths: ['/'] })];
+  assert.equal(pickBestThreadMatch(threads, '/'), null);
+});
+
+test('pickBestThreadMatch ignores a root-scoped thread even when a real project also matches', () => {
+  const threads = [
+    makeThread({ threadId: 'note', paths: ['/'] }),
+    makeThread({ threadId: 'project', paths: ['/home/user/project'] }),
+  ];
+  const best = pickBestThreadMatch(threads, '/home/user/project/src');
+  assert.equal(best?.frontmatter.thread_id, 'project');
 });
 
 test('pickBestThreadMatch picks thread whose path contains cwd', () => {

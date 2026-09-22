@@ -39,8 +39,22 @@ function threadStatusRank(status: unknown): number {
   return 0;
 }
 
+/**
+ * True when `resolvedPath` is the root of its filesystem (e.g. `/` on POSIX,
+ * `C:\` on Windows). A root can never identify a single project, so it must
+ * never be treated as a usable resolution signal.
+ */
+export function isFilesystemRoot(resolvedPath: string): boolean {
+  return path.dirname(resolvedPath) === resolvedPath;
+}
+
 function pathOverlapScore(cwd: string, threadPath: string): number | null {
   const resolved = path.resolve(expandHome(threadPath));
+  if (isFilesystemRoot(resolved)) {
+    // A thread scoped to the filesystem root (e.g. a stray `paths: ["/"]` from
+    // an earlier bad resolve) must never match — it would shadow every real project.
+    return null;
+  }
   const cwdInThread = cwd === resolved || cwd.startsWith(resolved + path.sep);
   const threadInCwd = resolved === cwd || resolved.startsWith(cwd + path.sep);
   if (!cwdInThread && !threadInCwd) {
