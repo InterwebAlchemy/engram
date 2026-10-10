@@ -25,6 +25,7 @@ import {
   optionalNumberArg,
   optionalStringArg,
   optionalStringArrayArg,
+  rejectUnknownArgs,
   requireEnumArg,
   requireStringArg,
   requiredMappedArg,
@@ -34,7 +35,9 @@ import { renderBootstrapScratch } from '../scratch-helpers.js';
 import { buildMemoryFrontmatterUpdates, buildMemoryMetaUpdates } from './memory-update-helpers.js';
 import { estimateTokens, truncateToTokens } from '../tokenizer.js';
 
-const MEMORY_ACTIONS = ['store', 'read', 'update', 'search', 'list', 'archive'] as const;
+const MEMORY_ACTIONS = ['store', 'read', 'update', 'search', 'list', 'archive', 'restore'] as const;
+const MEMORY_ARCHIVE_ARGS = ['action', 'path', 'older_than_days', 'dry_run'] as const;
+const MEMORY_RESTORE_ARGS = ['action', 'path'] as const;
 const SOUL_ACTIONS = ['get', 'set'] as const;
 const NOTE_ACTIONS = ['create', 'read', 'update', 'append', 'list', 'search', 'delete'] as const;
 const CONVERSATION_ACTIONS = ['save'] as const;
@@ -58,6 +61,8 @@ export async function handleMemoryTool(
       return await handleMemoryList(manager, args);
     case 'archive':
       return await handleMemoryArchive(manager, args);
+    case 'restore':
+      return await handleMemoryRestore(manager, args);
   }
 }
 
@@ -406,9 +411,54 @@ async function handleMemoryArchive(
   manager: MemoryManager,
   args: ToolArgs,
 ): Promise<ToolResponse> {
-  const archived = await manager.archiveForgotten(optionalNumberArg(args, 'older_than_days'));
+  rejectUnknownArgs(args, MEMORY_ARCHIVE_ARGS, 'memory archive');
+  const notePath = optionalStringArg(args, 'path');
+  const olderThanDays = optionalNumberArg(args, 'older_than_days');
+  if (notePath !== undefined && olderThanDays !== undefined) {
+    throw new Error("memory archive takes either 'path' (one memory) or 'older_than_days' (forgotten sweep), not both.");
+  }
+
+  if (notePath !== undefined) {
+    return await archiveOneMemory(manager, notePath, optionalBooleanArg(args, 'dry_run') === true);
+  }
+
+  if (olderThanDays === undefined || olderThanDays <= 0) {
+    throw new Error(
+      "memory archive requires a scope: 'path' to archive one memory, or 'older_than_days' > 0 to sweep forgotten memories.",
+    );
+  }
+
+  // Sweeps default to a dry run: the caller must see the list before anything moves.
+  if (optionalBooleanArg(args, 'dry_run') ?? true) {
+    const candidates = await manager.listForgottenForArchive(olderThanDays);
+    return textResult(candidates.length === 0
+      ? 'No forgotten notes matched the criteria.'
+      : `Dry run — would archive ${candidates.length} forgotten note(s); re-run with dry_run: false to apply:\n${candidates.map((note) => note.path).join('\n')}`);
+  }
+
+  const archived = await manager.archiveForgotten(olderThanDays);
   const message = archived.length === 0
     ? 'No forgotten notes matched the criteria.'
-    : `Archived ${archived.length} forgotten note(s):\n${archived.join('\n')}`;
+    : `Archived ${archived.length} forgotten note(s); undo per note with memory(action: "restore", path):\n${archived.join('\n')}`;
   return textResult(message);
+}
+
+async function archiveOneMemory(
+  manager: MemoryManager,
+  notePath: string,
+  isDryRun: boolean,
+): Promise<ToolResponse> {
+  const destination = await manager.archiveMemory(notePath, isDryRun);
+  return textResult(isDryRun
+    ? `Dry run — would archive:\n${notePath} -> ${destination}`
+    : `Archived ${notePath} -> ${destination}\nUndo with memory(action: "restore", path: "${destination}").`);
+}
+
+async function handleMemoryRestore(
+  manager: MemoryManager,
+  args: ToolArgs,
+): Promise<ToolResponse> {
+  rejectUnknownArgs(args, MEMORY_RESTORE_ARGS, 'memory restore');
+  const restored = await manager.restoreArchived(requireStringArg(args, 'path'));
+  return textResult(`Restored to: ${restored}`);
 }

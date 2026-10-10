@@ -25,6 +25,12 @@ interface MemoryExtraOperationDependencies {
   conversationDir: (dateStr?: string) => string;
 }
 
+function assertInside(filePath: string, dir: string, action: string, label: string): void {
+  if (!path.resolve(filePath).startsWith(path.resolve(dir) + path.sep)) {
+    throw new Error(`${action} only accepts paths inside ${label} ("${dir}"): ${filePath}`);
+  }
+}
+
 export class MemoryExtraOperations {
   constructor(private readonly deps: MemoryExtraOperationDependencies) {}
 
@@ -96,29 +102,74 @@ export class MemoryExtraOperations {
     return notes.filter((note): note is VaultNote => note !== null);
   }
 
-  async archiveForgotten(olderThanDays?: number): Promise<string[]> {
+  async listForgottenForArchive(olderThanDays?: number): Promise<VaultNote[]> {
     const forgotten = await this.deps.listMemories({ state: MemoryState.Forgotten });
     const cutoff = olderThanDays === undefined
       ? null
       : new Date(Date.now() - olderThanDays * MILLISECONDS_PER_DAY);
-    const toArchive = cutoff === null
+    return cutoff === null
       ? forgotten
       : forgotten.filter((note) => new Date(note.frontmatter.updated) <= cutoff);
+  }
 
+  async archiveForgotten(olderThanDays?: number): Promise<string[]> {
+    const toArchive = await this.listForgottenForArchive(olderThanDays);
     const archived: string[] = [];
     await Promise.all(
       toArchive.map(async (note) => {
-        const relative = path.relative(this.deps.writeRoot, note.path);
-        const destination = path.join(this.deps.archiveDir(), relative);
-        this.deps.assertWriteAllowed(note.path);
-        await this.deps.adapter.mkdir(path.dirname(destination));
-        await this.deps.adapter.write(destination, note.serialize());
-        await this.deps.adapter.delete(note.path);
-        archived.push(destination);
+        archived.push(await this.moveToArchive(note));
       }),
     );
 
     return archived;
+  }
+
+  /**
+   * Archive a single memory note by absolute path. Returns the archive destination.
+   * With `dryRun`, validates the path and returns the destination without moving anything.
+   */
+  async archiveMemory(filePath: string, dryRun = false): Promise<string> {
+    assertInside(filePath, this.deps.memoryDir(), 'archive', 'the memory directory');
+    if (filePath === path.join(this.deps.memoryDir(), `${SOUL_DOCUMENT_SLUG}.md`)) {
+      throw new Error('archive refuses the Soul document.');
+    }
+    const note = await VaultNote.read(this.deps.adapter, filePath);
+    return dryRun ? this.archiveDestination(note.path) : await this.moveToArchive(note);
+  }
+
+  /** Destination a note occupies in the archive (mirrors its path under the write root). */
+  archiveDestination(filePath: string): string {
+    return path.join(this.deps.archiveDir(), path.relative(this.deps.writeRoot, filePath));
+  }
+
+  /**
+   * Move an archived note back to the location it was archived from. Refuses to
+   * overwrite a note that already exists there. Returns the restored path.
+   */
+  async restoreArchived(filePath: string): Promise<string> {
+    const archiveDir = this.deps.archiveDir();
+    assertInside(filePath, archiveDir, 'restore', 'the archive directory');
+    const destination = path.join(this.deps.writeRoot, path.relative(archiveDir, filePath));
+    this.deps.assertWriteAllowed(destination);
+    this.deps.assertWriteAllowed(filePath);
+    if (await this.deps.adapter.exists(destination)) {
+      throw new Error(`restore refuses to overwrite existing note: ${destination}`);
+    }
+
+    const note = await VaultNote.read(this.deps.adapter, filePath);
+    await this.deps.adapter.mkdir(path.dirname(destination));
+    await this.deps.adapter.write(destination, note.serialize());
+    await this.deps.adapter.delete(filePath);
+    return destination;
+  }
+
+  private async moveToArchive(note: VaultNote): Promise<string> {
+    const destination = this.archiveDestination(note.path);
+    this.deps.assertWriteAllowed(note.path);
+    await this.deps.adapter.mkdir(path.dirname(destination));
+    await this.deps.adapter.write(destination, note.serialize());
+    await this.deps.adapter.delete(note.path);
+    return destination;
   }
 
   async saveConversation(conversation: Conversation, slug?: string): Promise<VaultNote> {

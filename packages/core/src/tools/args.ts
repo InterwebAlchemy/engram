@@ -46,6 +46,19 @@ export function hasOwnArg(args: ToolArgs, key: string): boolean {
   return Object.hasOwn(args, key);
 }
 
+/**
+ * Fail loudly when a caller passes arguments the action does not read. Handlers
+ * otherwise drop unknown keys silently, which turns a misunderstood contract
+ * (e.g. `path` on a bulk action) into a silent, wrong-scope operation.
+ */
+export function rejectUnknownArgs(args: ToolArgs, allowed: readonly string[], context: string): void {
+  const unknown = Object.keys(args).filter((key) => !allowed.includes(key) && args[key] !== undefined);
+  if (unknown.length > 0) {
+    const list = unknown.map((key) => `'${key}'`).join(', ');
+    throw new Error(`${context} does not accept ${list}. Accepted arguments: ${allowed.join(', ')}.`);
+  }
+}
+
 export function requireStringArg(args: ToolArgs, key: string): string {
   const { [key]: value } = args;
   if (typeof value !== 'string' || value.trim().length === 0) {
