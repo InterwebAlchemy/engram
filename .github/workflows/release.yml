@@ -40,16 +40,15 @@ jobs:
 
       - name: Determine beta version
         run: |
-          # Latest beta tag (bare, no v prefix); strip -beta.N suffix for base
-          LAST_BETA=$(git tag | grep -E '^[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+$' | sort -V | tail -1)
-          if [ -n "$LAST_BETA" ]; then
-            BASE_VERSION=$(echo "$LAST_BETA" | sed 's/-beta\..*//')
-            BETA_COUNT=$(git tag | grep -E "^${BASE_VERSION}-beta\." | wc -l | tr -d ' ')
-          else
-            BASE_VERSION=$(node -p "require('./manifest.json').version" | sed 's/-.*//')
-            BETA_COUNT=0
+          # Root package.json holds the version the next stable release will
+          # ship as; betas are pre-releases of it (bare tags, no v prefix).
+          BASE_VERSION=$(node -p "require('./package.json').version")
+          if git rev-parse -q --verify "refs/tags/${BASE_VERSION}" >/dev/null; then
+            echo "::error::${BASE_VERSION} is already released; bump the version in package.json"
+            exit 1
           fi
-          NEXT_BETA=$((BETA_COUNT + 1))
+          LAST_BETA=$(git tag -l "${BASE_VERSION}-beta.*" | sed "s/^${BASE_VERSION}-beta\.//" | sort -n | tail -1)
+          NEXT_BETA=$(( ${LAST_BETA:-0} + 1 ))
           BETA_VERSION="${BASE_VERSION}-beta.${NEXT_BETA}"
           echo "BETA_VERSION=${BETA_VERSION}" >> $GITHUB_ENV
 
