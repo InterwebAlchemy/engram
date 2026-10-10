@@ -62,19 +62,31 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add manifest-beta.json
+          # version-bump.mjs writes both files; leaving either unstaged makes
+          # `git pull --rebase` refuse to run and the push to main never lands
+          git add manifest-beta.json packages/obsidian-plugin/manifest.json
           git commit -m "chore(release): updating to $BETA_VERSION [skip ci]"
-          # Bare tag — no v prefix (Obsidian/BRAT convention)
-          git tag $BETA_VERSION
 
           # Rebase-retry loop in case beta commit races with another push
           MAX_RETRIES=3
+          PUSHED=false
           for i in $(seq 1 $MAX_RETRIES); do
-            git pull --rebase origin main && git push origin main && break
+            if git pull --rebase origin main && git push origin main; then
+              PUSHED=true
+              break
+            fi
             echo "Push failed (attempt $i/$MAX_RETRIES), retrying..."
             sleep 2
           done
 
+          if [ "$PUSHED" != true ]; then
+            echo "::error::Could not push release commit to main"
+            exit 1
+          fi
+
+          # Tag after the rebase so the tag points at the commit on main.
+          # Bare tag — no v prefix (Obsidian/BRAT convention)
+          git tag $BETA_VERSION
           git push origin $BETA_VERSION
 
       - name: Create GitHub pre-release
