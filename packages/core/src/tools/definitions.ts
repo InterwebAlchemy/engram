@@ -86,12 +86,12 @@ const stringArrayProp = (description: string): ArraySchemaProperty => ({
 export const TOOLS = [
   {
     name: 'memory',
-    description: 'Manage vault memories. Actions: store, read, update, search, list, archive.',
+    description: 'Manage vault memories. Actions: store, read, update, search, list, archive, restore.',
     inputSchema: {
       type: 'object',
       properties: {
-        action: enumProp(['store', 'read', 'update', 'search', 'list', 'archive'] as const, 'Action.'),
-        path: stringProp('Memory path (read, update).'),
+        action: enumProp(['store', 'read', 'update', 'search', 'list', 'archive', 'restore'] as const, 'Action.'),
+        path: stringProp('Memory path (read, update, archive one, restore an archived path).'),
         content: stringProp('Body text (store, update).'),
         type: enumProp(MEMORY_TYPES, 'Type filter.'),
         tags: stringArrayProp('Tags.'),
@@ -105,7 +105,8 @@ export const TOOLS = [
         session_id: stringProp('Session UUID.'),
         summary: stringProp('Summary for context loading.'),
         thread: stringProp('Thread scope (omit for global).'),
-        older_than_days: numberProp('Min age in days (archive).'),
+        older_than_days: numberProp('Archive sweep: forgotten memories at least this many days old (> 0). Use instead of path.'),
+        dry_run: booleanProp('Archive: list without moving. Default true for sweeps, false for path.'),
       },
       required: ['action'],
     },

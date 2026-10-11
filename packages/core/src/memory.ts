@@ -458,6 +458,9 @@ export class MemoryManager {
   // ─── Archive & conversation (delegated to MemoryExtraOperations) ──────────
 
   async archiveForgotten(olderThanDays?: number): Promise<string[]> { return await this.extraOperations.archiveForgotten(olderThanDays); }
+  async listForgottenForArchive(olderThanDays?: number): Promise<VaultNote[]> { return await this.extraOperations.listForgottenForArchive(olderThanDays); }
+  async archiveMemory(filePath: string, dryRun = false): Promise<string> { return await this.extraOperations.archiveMemory(this.normalizePath(filePath), dryRun); }
+  async restoreArchived(filePath: string): Promise<string> { return await this.extraOperations.restoreArchived(this.normalizePath(filePath)); }
   async saveConversation(conversation: Conversation, slug?: string): Promise<VaultNote> { return await this.extraOperations.saveConversation(conversation, slug); }
   async storeConversation(messages: Array<Pick<Message, 'role' | 'content'>>, summary?: string, tags?: string[], slug?: string): Promise<VaultNote> { return await this.extraOperations.storeConversation(messages, summary, tags ?? [], slug); }
 }

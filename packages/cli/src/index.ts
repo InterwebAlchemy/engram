@@ -789,18 +789,25 @@ async function buildMemoryInvocation(action: string | undefined, tokens: string[
       };
     }
     case 'archive': {
-      ensureKnownOptions(parsed, ['older-than-days']);
+      ensureKnownOptions(parsed, ['path', 'older-than-days', 'dry-run']);
       ensureNoPositionals(parsed);
       return {
         name: 'memory',
         args: {
           action: 'archive',
+          path: readOptionString(parsed, 'path'),
           older_than_days: readOptionNumber(parsed, 'older-than-days'),
+          dry_run: readOptionBoolean(parsed, 'dry-run'),
         },
       };
     }
+    case 'restore': {
+      ensureKnownOptions(parsed, ['path']);
+      ensureNoPositionals(parsed);
+      return { name: 'memory', args: { action: 'restore', path: requireOptionString(parsed, 'path') } };
+    }
     default:
-      throw new Error('Usage: engram memory <store|search|read|list|update|archive> ...');
+      throw new Error('Usage: engram memory <store|search|read|list|update|archive|restore> ...');
   }
 }
 
@@ -1073,7 +1080,7 @@ function printHelp(): void {
     '  thread resolve|get|list|set|update|merge|todo-add|todo-complete|todo-reopen|todo-remove|todo-list',
     '  context load --query <text>',
     '  scratch append|read|compact|prune|delete|clear',
-    '  memory store|search|read|list|update|archive',
+    '  memory store|search|read|list|update|archive|restore',
     '  inbox list|add|read|remove',
     '  note create|read|update|append|list|search|delete',
     '  skill list|get|store',
